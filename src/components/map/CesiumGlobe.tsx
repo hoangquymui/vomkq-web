@@ -33,20 +33,22 @@ export const CesiumGlobe: React.FC = () => {
     clearFlyTo,
   } = useTacticalStore();
 
-  // 1. Khởi tạo Cesium Viewer với Địa hình 3D (Cesium World Terrain)
+  // 1. Khởi tạo Cesium Viewer sử dụng hoàn toàn bản đồ và địa hình trong thư mục public/
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Lớp bản đồ nền mặc định
-    const baseImagery = Cesium.ImageryLayer.fromWorldImagery({});
+    // Lớp bản đồ ảnh vệ tinh tải trực tiếp từ thư mục public/offline-satellite/
+    const publicSatellite = new Cesium.ImageryLayer(
+      new Cesium.UrlTemplateImageryProvider({
+        url: './offline-satellite/{z}/{x}/{y}.jpg',
+        minimumLevel: 0,
+        maximumLevel: 8,
+      })
+    );
 
-    // Khởi tạo Viewer tích hợp sẵn Cesium World Terrain cho chế độ 3D
+    // Khởi tạo Viewer
     const viewer = new Cesium.Viewer(containerRef.current, {
-      baseLayer: baseImagery,
-      terrain: Cesium.Terrain.fromWorldTerrain({
-        requestVertexNormals: true,
-        requestWaterMask: true,
-      }),
+      baseLayer: publicSatellite,
       baseLayerPicker: false,
       geocoder: false,
       homeButton: false,
@@ -61,6 +63,17 @@ export const CesiumGlobe: React.FC = () => {
     });
 
     viewerRef.current = viewer;
+
+    // Nạp địa hình 3D trực tiếp từ thư mục public/offline-terrain/
+    Cesium.CesiumTerrainProvider.fromUrl('./offline-terrain')
+      .then((provider) => {
+        if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+          viewerRef.current.scene.terrainProvider = provider;
+        }
+      })
+      .catch((err) => {
+        console.warn('Lỗi nạp địa hình từ public/offline-terrain:', err);
+      });
 
     // Vô hiệu hoá double click zoom quá gần mặc định của Cesium
     viewer.screenSpaceEventHandler.removeInputAction(
@@ -99,7 +112,7 @@ export const CesiumGlobe: React.FC = () => {
     };
   }, []);
 
-  // 2. Chuyển đổi chế độ 3D (Tự động kích hoạt địa hình 3D lồi lõm) / 2D (Bản đồ phẳng)
+  // 2. Chuyển đổi chế độ 3D (Địa hình lồi lõm từ public) / 2D (Bản đồ phẳng từ public)
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
@@ -112,27 +125,37 @@ export const CesiumGlobe: React.FC = () => {
       }
       viewer.scene.globe.depthTestAgainstTerrain = false;
     } else {
-      // Chế độ 3D tự động kích hoạt Địa hình lồi lõm
+      // Chế độ 3D kích hoạt Địa hình lồi lõm từ public/offline-terrain
       if (viewer.scene.mode !== Cesium.SceneMode.SCENE3D) {
         viewer.scene.morphTo3D(1.0);
       }
-      viewer.scene.setTerrain(
-        Cesium.Terrain.fromWorldTerrain({
-          requestVertexNormals: true,
-          requestWaterMask: true,
-        })
-      );
       viewer.scene.globe.depthTestAgainstTerrain = true;
+      Cesium.CesiumTerrainProvider.fromUrl('./offline-terrain')
+        .then((provider) => {
+          if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+            viewerRef.current.scene.terrainProvider = provider;
+          }
+        })
+        .catch((err) => {
+          console.warn('Lỗi nạp địa hình public 3D:', err);
+        });
     }
   }, [viewMode, terrainExaggeration]);
 
-  // 3. Sử dụng duy nhất Bản Đồ Ảnh Vệ Tinh (Satellite Imagery)
+  // 3. Duy trì lớp bản đồ ảnh vệ tinh từ public/offline-satellite
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
 
     viewer.imageryLayers.removeAll();
-    viewer.imageryLayers.add(Cesium.ImageryLayer.fromWorldImagery({}));
+    const publicSatellite = new Cesium.ImageryLayer(
+      new Cesium.UrlTemplateImageryProvider({
+        url: './offline-satellite/{z}/{x}/{y}.jpg',
+        minimumLevel: 0,
+        maximumLevel: 8,
+      })
+    );
+    viewer.imageryLayers.add(publicSatellite);
   }, []);
 
   // 4. Cắt gọn và giới hạn phạm vi hiển thị chỉ vùng Việt Nam
