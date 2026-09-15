@@ -1,0 +1,24 @@
+{
+  "name": "Bản đồ Vệ tinh & Địa hình 3D Việt Nam Offline",
+  "downloadedAt": "2026-09-15T09:29:52.877Z",
+  "bounds": {
+    "minLon": 101.5,
+    "maxLon": 118.5,
+    "minLat": 6,
+    "maxLat": 24
+  },
+  "satellite": {
+    "provider": "ESRI World Imagery",
+    "zoomLevels": "0-7",
+    "tileCount": 261,
+    "format": "JPEG Slippy Map (XYZ)",
+    "localPath": "/offline-satellite/{z}/{x}/{y}.jpg"
+  },
+  "terrain": {
+    "provider": "Cesium World Terrain (quantized-mesh-1.0)",
+    "zoomLevels": "0-6",
+    "tileCount": 268,
+    "format": "Quantized Mesh 1.0 (uncompressed binary)",
+    "localPath": "/offline-terrain"
+  }
+}
