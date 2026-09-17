@@ -9,6 +9,7 @@ import {
   FolderOpen,
   MapPin,
   Share2,
+  BarChart3,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { PRESET_LOCATIONS } from '../../data/equipmentTemplates';
@@ -33,6 +34,7 @@ export const TopBar: React.FC = () => {
     exportToLayout,
     importFromLayout,
     loadSampleScenario,
+    setShowRadarFieldModal,
   } = useTacticalStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -214,6 +216,16 @@ export const TopBar: React.FC = () => {
         >
           <Ruler className="w-3.5 h-3.5 text-emerald-400" />
           <span className="hidden lg:inline">Thước Đo</span>
+        </button>
+
+        {/* Đánh giá Trường Radar Tổng Hợp */}
+        <button
+          onClick={() => setShowRadarFieldModal(true)}
+          title="Xem bảng đánh giá chỉ số Trường Radar (K_trl, P_ph, S_trường)"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border border-cyan-500/40 bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.2)] transition-all cursor-pointer"
+        >
+          <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+          <span className="hidden xl:inline">Trường Radar</span>
         </button>
       </div>
 

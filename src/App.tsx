@@ -5,6 +5,7 @@ import { LeftSidebar } from "./components/ui/LeftSidebar";
 import { RightInspector } from "./components/ui/RightInspector";
 import { MeasurementPanel } from "./components/ui/MeasurementPanel";
 import { PlacementBanner } from "./components/ui/PlacementBanner";
+import { RadarFieldStatsModal } from "./components/ui/RadarFieldStatsModal";
 import { useTacticalStore } from "./store/useTacticalStore";
 
 export function App() {
@@ -34,6 +35,9 @@ export function App() {
 
       {/* Thanh công cụ đo khoảng cách khi kích hoạt thước đo */}
       <MeasurementPanel />
+
+      {/* Modal đánh giá chỉ số Trường Radar Tổng Hợp */}
+      <RadarFieldStatsModal />
     </div>
   );
 }

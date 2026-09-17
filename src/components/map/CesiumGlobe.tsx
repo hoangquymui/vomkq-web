@@ -3,6 +3,8 @@ import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { Pin, PinOff, ArrowUp, ArrowDown } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { computeRadarCoverage } from '../../utils/radarLosEngine';
+import { buildRadarVisualizationEntities } from '../../utils/radarGeometryBuilder';
 
 // Access token cấu hình từ dự án VomKQ (CesiumIonServer)
 Cesium.Ion.defaultAccessToken =
@@ -31,6 +33,14 @@ export const CesiumGlobe: React.FC = () => {
     addEquipment,
     addMeasurePoint,
     clearFlyTo,
+    targetHeightMeters,
+    showBlindZones,
+    showConeOfSilence,
+    azimuthStepDeg,
+    kFactor,
+    coverageResults,
+    setCoverageResult,
+    setIsCalculatingLOS,
   } = useTacticalStore();
 
   // 1. Khởi tạo Cesium Viewer sử dụng hoàn toàn bản đồ và địa hình trong thư mục public/
@@ -110,7 +120,7 @@ export const CesiumGlobe: React.FC = () => {
         viewerRef.current = null;
       }
     };
-  }, []);
+  }, [terrainExaggeration]);
 
   // 2. Chuyển đổi chế độ 3D (Địa hình lồi lõm từ public) / 2D (Bản đồ phẳng từ public)
   useEffect(() => {
@@ -317,6 +327,59 @@ export const CesiumGlobe: React.FC = () => {
     };
   }, [activeTool, pendingTemplate, instances, addEquipment, addMeasurePoint, selectEquipment]);
 
+  // 5b. Tính toán Quang tuyến LOS & Vùng phủ cắt địa hình cho tất cả các đài radar
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || instances.length === 0) return;
+
+    let isCancelled = false;
+    setIsCalculatingLOS(true);
+
+    const calcAll = async () => {
+      for (const inst of instances) {
+        if (isCancelled) break;
+        if (inst.rangeKm > 0 && inst.showDome) {
+          try {
+            const res = await computeRadarCoverage(
+              inst,
+              viewer.scene.terrainProvider,
+              {
+                targetHeightMeters,
+                azimuthStepDeg,
+                radialStepMeters: Math.max(1500, Math.round((inst.rangeKm * 1000) / 45)),
+                kFactor,
+                showBlindZones,
+              }
+            );
+            if (!isCancelled) {
+              setCoverageResult(inst.instanceId, res);
+            }
+          } catch (e) {
+            console.warn('Lỗi tính toán LOS cho khí tài:', inst.name, e);
+          }
+        }
+      }
+      if (!isCancelled) {
+        setIsCalculatingLOS(false);
+      }
+    };
+
+    calcAll();
+
+    return () => {
+      isCancelled = true;
+      setIsCalculatingLOS(false);
+    };
+  }, [
+    instances,
+    targetHeightMeters,
+    azimuthStepDeg,
+    kFactor,
+    showBlindZones,
+    setCoverageResult,
+    setIsCalculatingLOS,
+  ]);
+
   // 6. Render Entities trên bề mặt địa hình lồi lõm
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -382,26 +445,41 @@ export const CesiumGlobe: React.FC = () => {
         });
       }
 
-      // 3. Vòm Radar 3D (Hemispherical Dome)
+      // 3. Vòm Radar 3D Cắt Địa Hình Thực Tế (Terrain-Cut Dome & Radar Shadows)
       if (showAllDomes && inst.showDome && inst.rangeKm > 0) {
-        const radiusMeters = inst.rangeKm * 1000;
-        const heightMeters = Math.min(radiusMeters, inst.coverageHeightKm * 1000);
+        const cov = coverageResults[inst.instanceId];
+        if (cov && cov.profiles && cov.profiles.length > 0) {
+          const { visibleEntities, blindEntities, coneOfSilenceEntities } =
+            buildRadarVisualizationEntities(cov, showBlindZones, inst.color);
 
-        viewer.entities.add({
-          position: Cesium.Cartesian3.fromDegrees(
-            inst.longitude,
-            inst.latitude,
-            inst.altitude
-          ),
-          ellipsoid: {
-            radii: new Cesium.Cartesian3(radiusMeters, radiusMeters, heightMeters),
-            maximumCone: Cesium.Math.PI_OVER_TWO,
-            material: baseColor.withAlpha(isSelected ? 0.28 : 0.12),
-            outline: true,
-            outlineColor: baseColor.withAlpha(isSelected ? 0.8 : 0.3),
-            outlineWidth: 1,
-          },
-        });
+          visibleEntities.forEach((e) => viewer.entities.add(e));
+          if (showBlindZones) {
+            blindEntities.forEach((e) => viewer.entities.add(e));
+          }
+          if (showConeOfSilence) {
+            coneOfSilenceEntities.forEach((e) => viewer.entities.add(e));
+          }
+        } else {
+          // Fallback bán cầu 3D mờ trong khi đang nạp dữ liệu quang tuyến
+          const radiusMeters = inst.rangeKm * 1000;
+          const heightMeters = Math.min(radiusMeters, inst.coverageHeightKm * 1000);
+
+          viewer.entities.add({
+            position: Cesium.Cartesian3.fromDegrees(
+              inst.longitude,
+              inst.latitude,
+              inst.altitude
+            ),
+            ellipsoid: {
+              radii: new Cesium.Cartesian3(radiusMeters, radiusMeters, heightMeters),
+              maximumCone: Cesium.Math.PI_OVER_TWO,
+              material: baseColor.withAlpha(isSelected ? 0.28 : 0.12),
+              outline: true,
+              outlineColor: baseColor.withAlpha(isSelected ? 0.8 : 0.3),
+              outlineWidth: 1,
+            },
+          });
+        }
       }
     });
 
@@ -509,6 +587,9 @@ export const CesiumGlobe: React.FC = () => {
     showCommandLinks,
     measurePoints,
     vietnamOnly,
+    coverageResults,
+    showBlindZones,
+    showConeOfSilence,
   ]);
 
   // 7. Thao tác Ghim vị trí điểm đặt & Kéo lên xuống theo chiều cao

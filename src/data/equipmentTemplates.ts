@@ -14,7 +14,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 25,
     coverageHeightKm: 30,
     symbolColor: '#06b6d4', // Cyan
-    iconName: 'Radar'
+    iconName: 'Radar',
+    wavelengthM: 0.1, // Sóng dm (S-band ~10cm)
   },
   {
     id: 'radar_p18',
@@ -29,7 +30,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 12,
     coverageHeightKm: 25,
     symbolColor: '#0ea5e9', // Sky blue
-    iconName: 'Radio'
+    iconName: 'Radio',
+    wavelengthM: 2.0, // Sóng mét (VHF ~2m)
   },
   {
     id: 'radar_kolchuga',

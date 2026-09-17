@@ -21,6 +21,7 @@ export interface EquipmentTemplate {
   coverageHeightKm: number;
   symbolColor: string;
   iconName: string;
+  wavelengthM?: number; // Bước sóng của đài (m): sóng mét ~2m, sóng cm ~0.05m
 }
 
 export interface EquipmentInstance {
@@ -43,6 +44,7 @@ export interface EquipmentInstance {
   showDome: boolean;
   showSweep: boolean;
   currentSweepHeading?: number; // deg
+  wavelengthM?: number;
 }
 
 export interface PresetLocation {

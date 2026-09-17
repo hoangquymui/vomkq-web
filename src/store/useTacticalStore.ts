@@ -30,6 +30,16 @@ interface TacticalState {
   // Navigation Target
   flyToTarget: PresetLocation | null;
 
+  // Radar Coverage & LOS Parameters
+  targetHeightMeters: number; // Độ cao mục tiêu H_mt (m)
+  showBlindZones: boolean; // Hiển thị vùng mù (Đỏ)
+  showConeOfSilence: boolean; // Hiển thị nón mù đỉnh đầu
+  azimuthStepDeg: number; // Bước góc lấy mẫu (độ)
+  kFactor: number; // Hệ số khúc xạ 4/3
+  coverageResults: Record<string, import('../types/radarCoverage').RadarCoverageResult>;
+  isCalculatingLOS: boolean;
+  showRadarFieldModal: boolean;
+
   // Actions
   addEquipment: (instance: EquipmentInstance) => void;
   updateEquipment: (instanceId: string, updates: Partial<EquipmentInstance>) => void;
@@ -49,6 +59,17 @@ interface TacticalState {
   toggleDomes: () => void;
   toggleCommandLinks: () => void;
   toggleSweeps: () => void;
+
+  // Radar Coverage Actions
+  setTargetHeightMeters: (heightMeters: number) => void;
+  toggleBlindZones: () => void;
+  toggleConeOfSilence: () => void;
+  setAzimuthStepDeg: (step: number) => void;
+  setKFactor: (k: number) => void;
+  setCoverageResult: (instanceId: string, result: import('../types/radarCoverage').RadarCoverageResult) => void;
+  setIsCalculatingLOS: (calculating: boolean) => void;
+  setShowRadarFieldModal: (show: boolean) => void;
+  clearCoverageResults: () => void;
 
   addMeasurePoint: (point: { lat: number; lon: number; height: number }) => void;
   clearMeasurePoints: () => void;
@@ -137,6 +158,33 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   toggleCommandLinks: () =>
     set((state) => ({ showCommandLinks: !state.showCommandLinks })),
   toggleSweeps: () => set((state) => ({ showSweeps: !state.showSweeps })),
+
+  // Radar Coverage Initial State & Actions
+  targetHeightMeters: 300, // Độ cao mục tiêu khảo sát mặc định 300m
+  showBlindZones: true, // Mặc định hiển thị vùng mù (màu Đỏ)
+  showConeOfSilence: true,
+  azimuthStepDeg: 4, // 4 độ để quét 90 tia rất nhanh và mượt mà
+  kFactor: 4 / 3, // Hệ số khúc xạ khí quyển chuẩn 4/3
+  coverageResults: {},
+  isCalculatingLOS: false,
+  showRadarFieldModal: false,
+
+  setTargetHeightMeters: (heightMeters) =>
+    set({ targetHeightMeters: Math.max(10, heightMeters) }),
+  toggleBlindZones: () =>
+    set((state) => ({ showBlindZones: !state.showBlindZones })),
+  toggleConeOfSilence: () =>
+    set((state) => ({ showConeOfSilence: !state.showConeOfSilence })),
+  setAzimuthStepDeg: (step) =>
+    set({ azimuthStepDeg: Math.max(1, Math.min(15, step)) }),
+  setKFactor: (k) => set({ kFactor: Math.max(1.0, Math.min(2.0, k)) }),
+  setCoverageResult: (instanceId, result) =>
+    set((state) => ({
+      coverageResults: { ...state.coverageResults, [instanceId]: result },
+    })),
+  setIsCalculatingLOS: (calculating) => set({ isCalculatingLOS: calculating }),
+  setShowRadarFieldModal: (show) => set({ showRadarFieldModal: show }),
+  clearCoverageResults: () => set({ coverageResults: {} }),
 
   addMeasurePoint: (point) =>
     set((state) => ({ measurePoints: [...state.measurePoints, point] })),

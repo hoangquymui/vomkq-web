@@ -252,7 +252,108 @@ export const RightInspector: React.FC = () => {
           </div>
         </div>
 
-        {/* 5. Quan hệ Chỉ Huy Tác Chiến (C2) */}
+        {/* 5. Cắt Địa Hình & Vùng Mù Sóng Radar (Line-of-Sight) */}
+        <div className="bg-slate-900/60 p-3 rounded-lg border border-cyan-900/50 space-y-3 shadow-sm">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-semibold text-cyan-300 flex items-center gap-1.5">
+              <Radio className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Cắt Địa Hình 3D & Vùng Mù (LOS)</span>
+            </label>
+            <span className="text-[9px] bg-cyan-950 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded font-mono">
+              k = 4/3
+            </span>
+          </div>
+
+          {/* Chọn Độ cao mục tiêu bay H_mt */}
+          <div>
+            <div className="flex justify-between text-[11px] mb-1">
+              <span className="text-slate-400">Độ cao mục tiêu (H_mt):</span>
+              <span className="text-cyan-300 font-mono font-bold">
+                {useTacticalStore.getState().targetHeightMeters} m
+              </span>
+            </div>
+            <div className="grid grid-cols-4 gap-1 mb-2">
+              {[
+                { label: '50m', value: 50, note: 'Sát đất' },
+                { label: '300m', value: 300, note: 'Bay thấp' },
+                { label: '1km', value: 1000, note: 'Bay trung' },
+                { label: '5km', value: 5000, note: 'Bay cao' },
+              ].map((btn) => (
+                <button
+                  key={btn.value}
+                  onClick={() => useTacticalStore.getState().setTargetHeightMeters(btn.value)}
+                  className={`py-1 rounded text-[10px] font-mono border transition-all ${
+                    useTacticalStore.getState().targetHeightMeters === btn.value
+                      ? 'bg-cyan-950 text-cyan-300 border-cyan-500 font-bold shadow-[0_0_8px_rgba(6,182,212,0.3)]'
+                      : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:border-slate-700'
+                  }`}
+                  title={btn.note}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+            <input
+              type="range"
+              min="20"
+              max="15000"
+              step="50"
+              value={useTacticalStore.getState().targetHeightMeters}
+              onChange={(e) =>
+                useTacticalStore.getState().setTargetHeightMeters(parseFloat(e.target.value))
+              }
+              className="w-full accent-cyan-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+            />
+          </div>
+
+          {/* Hiển thị tính toán công thức thực tế */}
+          <div className="grid grid-cols-2 gap-2 p-2 bg-slate-950/80 rounded-lg border border-slate-800 font-mono text-[10px]">
+            <div>
+              <span className="text-slate-500 block">KHU MÙ ĐỈNH (R_kh)</span>
+              <span className="text-amber-300 font-bold">
+                {(
+                  (useTacticalStore.getState().targetHeightMeters *
+                    (1 / Math.tan((selected.maxElevationDeg * Math.PI) / 180))) /
+                  1000
+                ).toFixed(2)}{' '}
+                km
+              </span>
+              <span className="text-[9px] text-slate-500 block">H_mt · cotg ε_max</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block">CHÂN TRỜI (D_nt)</span>
+              <span className="text-cyan-300 font-bold">
+                {(
+                  4.12 *
+                  (Math.sqrt(selected.antennaHeightAGL) +
+                    Math.sqrt(useTacticalStore.getState().targetHeightMeters))
+                ).toFixed(1)}{' '}
+                km
+              </span>
+              <span className="text-[9px] text-slate-500 block">4.12·(√ha + √Hmt)</span>
+            </div>
+          </div>
+
+          {/* Công tắc Bật/Tắt Vùng mù địa hình (Đỏ) */}
+          <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
+            <span className="text-slate-300 text-[11px] flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+              <span>Hiện Vùng Mù Địa Hình</span>
+            </span>
+            <button
+              onClick={() => useTacticalStore.getState().toggleBlindZones()}
+              className={`px-2 py-1 rounded text-[10px] font-semibold border transition-all ${
+                useTacticalStore.getState().showBlindZones
+                  ? 'bg-rose-950 text-rose-300 border-rose-500/60 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
+                  : 'bg-slate-950 text-slate-500 border-slate-800'
+              }`}
+            >
+              {useTacticalStore.getState().showBlindZones ? 'BẬT (MÀU ĐỎ)' : 'TẮT'}
+            </button>
+          </div>
+        </div>
+
+        {/* 6. Quan hệ Chỉ Huy Tác Chiến (C2) */}
         <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 space-y-2">
           <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
             <Share2 className="w-3.5 h-3.5 text-amber-400" />
@@ -281,7 +382,7 @@ export const RightInspector: React.FC = () => {
           </p>
         </div>
 
-        {/* 6. Hiển thị riêng cho khí tài */}
+        {/* 7. Hiển thị riêng cho khí tài */}
         <div className="flex items-center justify-between p-2.5 bg-slate-900/60 rounded-lg border border-slate-800">
           <span className="text-slate-300 text-xs">Hiển thị Vòm 3D đơn vị</span>
           <button
