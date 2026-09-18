@@ -150,6 +150,21 @@ export const MapDownloadModal: React.FC = () => {
                 </p>
               </div>
 
+              {/* Thẻ Địa Hình 3D Toàn Bộ Miền Trung */}
+              <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/50 col-span-1 sm:col-span-2 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-emerald-300">
+                    🏔️ Toàn Bộ Miền Trung & Tây Nguyên (Địa Hình 3D Nét Cao Level 8 - 13)
+                  </span>
+                  <span className="text-[10px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/50 font-mono font-bold">
+                    Đã Tải 100% (109.254 Files • 3.9 GB)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  Địa hình lồi lõm thực tế Quantized-Mesh chuẩn Cesium World Terrain, kèm bảng vector pháp tuyến đỉnh (`octvertexnormals`). Tự động hiển thị ở chế độ 3D với bóng đổ sống động, chuẩn xác 100% như online.
+                </p>
+              </div>
+
               <div className="p-3 rounded-lg bg-slate-950/40 border border-emerald-500/30">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-bold text-emerald-300">⛰️ Dãy Núi Tam Đảo (3D Terrain)</span>
