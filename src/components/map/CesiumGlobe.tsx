@@ -199,28 +199,53 @@ export const CesiumGlobe: React.FC = () => {
     }
   }, [viewMode, terrainExaggeration]);
 
-  // 3. Phản ứng khi thay đổi Lớp Bản đồ Nền (Basemap)
+  // 3. Phản ứng khi thay đổi Lớp Bản đồ Nền (Basemap) hoặc Chuyển đổi 2D/3D
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed()) return;
 
     viewer.imageryLayers.removeAll();
-    try {
-      const provider = createImageryProvider(basemap);
-      const layer = new Cesium.ImageryLayer(provider);
-      viewer.imageryLayers.add(layer);
-    } catch (err) {
-      console.error('Lỗi nạp Basemap:', err);
-      const fallbackLayer = new Cesium.ImageryLayer(
+
+    if (viewMode === '2D') {
+      // CHẾ ĐỘ 2D: CHỈ LOAD DUY NHẤT BẢN ĐỒ TOPO ĐỘ CAO
+      // Lớp nền dự phòng trực tuyến OpenTopoMap
+      const onlineTopoLayer = new Cesium.ImageryLayer(
         new Cesium.UrlTemplateImageryProvider({
-          url: './offline-satellite/{z}/{x}/{y}.jpg',
+          url: 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+          maximumLevel: 17,
+          credit: new Cesium.Credit('© OpenTopoMap contributors'),
+        })
+      );
+      viewer.imageryLayers.add(onlineTopoLayer);
+
+      // Lớp ngoại tuyến ưu tiên tải từ public/offline-topo/
+      const offlineTopoLayer = new Cesium.ImageryLayer(
+        new Cesium.UrlTemplateImageryProvider({
+          url: './offline-topo/{z}/{x}/{y}.png',
           minimumLevel: 0,
           maximumLevel: 16,
         })
       );
-      viewer.imageryLayers.add(fallbackLayer);
+      viewer.imageryLayers.add(offlineTopoLayer);
+    } else {
+      // CHẾ ĐỘ 3D: Nạp lớp bản đồ nền theo lựa chọn của người dùng (Vệ tinh, Ngoại tuyến, v.v.)
+      try {
+        const provider = createImageryProvider(basemap);
+        const layer = new Cesium.ImageryLayer(provider);
+        viewer.imageryLayers.add(layer);
+      } catch (err) {
+        console.error('Lỗi nạp Basemap:', err);
+        const fallbackLayer = new Cesium.ImageryLayer(
+          new Cesium.UrlTemplateImageryProvider({
+            url: './offline-satellite/{z}/{x}/{y}.jpg',
+            minimumLevel: 0,
+            maximumLevel: 16,
+          })
+        );
+        viewer.imageryLayers.add(fallbackLayer);
+      }
     }
-  }, [basemap]);
+  }, [basemap, viewMode]);
 
   // 4. Cắt gọn và giới hạn phạm vi hiển thị chỉ vùng Việt Nam
   useEffect(() => {

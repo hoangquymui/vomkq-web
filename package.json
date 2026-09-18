@@ -13,7 +13,10 @@
     "download-binhdinh": "node download-tactical-map.js --region=binhdinh --minZoom=9 --maxZoom=13",
     "download-terrain": "node download-tactical-terrain.js",
     "download-terrain-tamdao": "node download-tactical-terrain.js --region=tamdao --minZoom=8 --maxZoom=13",
-    "download-terrain-binhdinh": "node download-tactical-terrain.js --region=binhdinh --minZoom=8 --maxZoom=13"
+    "download-terrain-binhdinh": "node download-tactical-terrain.js --region=binhdinh --minZoom=8 --maxZoom=13",
+    "download-topo-mientrung": "node download-tactical-topo.js --region=mientrung --minZoom=8 --maxZoom=13",
+    "download-topo-mientrung-fast": "node download-tactical-topo.js --region=mientrung --minZoom=8 --maxZoom=12",
+    "download-topo-tamdao": "node download-tactical-topo.js --region=tamdao --minZoom=8 --maxZoom=13"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
