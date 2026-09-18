@@ -19,6 +19,14 @@ interface PackInfo {
     downloadedAt: string;
     tileCount: number;
   }>;
+  topo?: Array<{
+    region: string;
+    bounds: { minLat: number; maxLat: number; minLon: number; maxLon: number };
+    zoomLevels: string;
+    downloadedAt: string;
+    tileCount: number;
+    localPath: string;
+  }>;
 }
 
 export const MapDownloadModal: React.FC = () => {
@@ -30,8 +38,8 @@ export const MapDownloadModal: React.FC = () => {
   } = useTacticalStore();
 
   const [packInfo, setPackInfo] = useState<PackInfo | null>(null);
-  const [selectedRegion, setSelectedRegion] = useState<string>('tamdao');
-  const [minZoom, setMinZoom] = useState<number>(9);
+  const [selectedRegion, setSelectedRegion] = useState<string>('mientrung');
+  const [minZoom, setMinZoom] = useState<number>(8);
   const [maxZoom, setMaxZoom] = useState<number>(13);
 
   useEffect(() => {
@@ -48,6 +56,7 @@ export const MapDownloadModal: React.FC = () => {
   const cliAllCommand = `node download-tactical-all.js --region=${selectedRegion}`;
   const cliSatCommand = `node download-tactical-map.js --region=${selectedRegion} --minZoom=${minZoom} --maxZoom=${maxZoom}`;
   const cliTerrainCommand = `node download-tactical-terrain.js --region=${selectedRegion} --minZoom=8 --maxZoom=13`;
+  const cliTopoCommand = `node download-tactical-topo.js --region=${selectedRegion} --minZoom=8 --maxZoom=13`;
 
   const [copiedType, setCopiedType] = useState<string | null>(null);
 
@@ -122,15 +131,30 @@ export const MapDownloadModal: React.FC = () => {
           <div className="space-y-2">
             <h3 className="text-xs font-bold font-mono text-cyan-400 flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              CÁC VÙNG TÁC CHIẾN ĐÃ CÓ BẢN ĐỒ ĐỘ NÉT CAO OFFLINE (ZOOM 9-13):
+              CÁC VÙNG TÁC CHIẾN ĐÃ CÓ BẢN ĐỒ ĐỘ NÉT CAO OFFLINE (ZOOM 8-13):
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {/* Thẻ Bản Đồ Topo Toàn Bộ Miền Trung */}
+              <div className="p-3 rounded-lg bg-cyan-950/40 border border-cyan-500/50 col-span-1 sm:col-span-2 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-cyan-300">
+                    🗺️ Toàn Bộ Miền Trung & Tây Nguyên (Bản Đồ Topo Độ Cao 2D)
+                  </span>
+                  <span className="text-[10px] bg-cyan-950 text-cyan-400 px-2 py-0.5 rounded border border-cyan-500/50 font-mono font-bold">
+                    Đã Tải 100% (31.076 Files • 795 MB)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  Phạm vi từ Thanh Hóa đến Bình Thuận & 5 tỉnh Tây Nguyên (Level 8 - 13). Tự động kích hoạt khi ở chế độ 2D, hiển thị đầy đủ đường đồng mức, độ cao từng đỉnh núi, đèo dốc và địa danh tác chiến không cần Internet.
+                </p>
+              </div>
+
               <div className="p-3 rounded-lg bg-slate-950/40 border border-emerald-500/30">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-emerald-300">Dãy Núi Tam Đảo</span>
+                  <span className="text-xs font-bold text-emerald-300">⛰️ Dãy Núi Tam Đảo (3D Terrain)</span>
                   <span className="text-[10px] bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/40 font-mono">
-                    Đã Tải (Zoom 9-13)
+                    Đã Tải (Zoom 8-13)
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400">
@@ -140,13 +164,13 @@ export const MapDownloadModal: React.FC = () => {
 
               <div className="p-3 rounded-lg bg-slate-950/40 border border-emerald-500/30">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-emerald-300">Bình Định - Đèo An Khê</span>
+                  <span className="text-xs font-bold text-emerald-300">⛰️ Bình Định - Đèo An Khê (3D Terrain)</span>
                   <span className="text-[10px] bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/40 font-mono">
-                    Đã Tải (Zoom 9-13)
+                    Đã Tải (Zoom 8-13)
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Bán kính 40km bao trọn Tây Sơn, An Khê, Quy Nhơn và vùng ven biển.
+                  Bán kính 40km bao trọn Tây Sơn, An Khê, Quy Nhơn và vùng ven biển với địa hình 3D lồi lõm cực nét.
                 </p>
               </div>
             </div>
@@ -162,7 +186,7 @@ export const MapDownloadModal: React.FC = () => {
           <div className="p-3.5 rounded-lg bg-slate-950/60 border border-cyan-900/40 space-y-3">
             <h3 className="text-xs font-bold font-mono text-cyan-300 flex items-center gap-1.5">
               <Terminal className="w-4 h-4 text-cyan-400" />
-              LỆNH TẢI BẢN ĐỒ VỆ TINH ĐỘ PHÂN GIẢI CAO TỰ ĐỘNG:
+              LỆNH TẢI BẢN ĐỒ VỆ TINH & ĐỊA HÌNH ĐỘ PHÂN GIẢI CAO:
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
@@ -173,6 +197,8 @@ export const MapDownloadModal: React.FC = () => {
                   onChange={(e) => setSelectedRegion(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-medium"
                 >
+                  <option value="mientrung">🗺️ Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa → Bình Thuận)</option>
+                  <option value="mientrung_core">🗺️ Trọng Điểm Miền Trung (Huế - Đà Nẵng - Quy Nhơn)</option>
                   <option value="tamdao">⛰️ Dãy Núi Tam Đảo (Vĩnh Phúc - Thái Nguyên)</option>
                   <option value="binhdinh">⛰️ Đèo An Khê - Tây Sơn (Bình Định - Gia Lai)</option>
                   <option value="haivan">⛰️ Đèo Hải Vân & Bán Đảo Sơn Trà (Đà Nẵng)</option>
@@ -191,7 +217,7 @@ export const MapDownloadModal: React.FC = () => {
                   onChange={(e) => setMinZoom(parseInt(e.target.value, 10))}
                   className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
                 >
-                  <option value="8">Level 8 (Bao quát tỉnh)</option>
+                  <option value="8">Level 8 (Bao quát toàn cảnh)</option>
                   <option value="9">Level 9 (Tầm trung)</option>
                   <option value="10">Level 10 (Rõ huyện)</option>
                 </select>
@@ -205,7 +231,7 @@ export const MapDownloadModal: React.FC = () => {
                   className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
                 >
                   <option value="12">Level 12 (Rõ sườn núi)</option>
-                  <option value="13">Level 13 (Cực nét - Khuyên dùng)</option>
+                  <option value="13">Level 13 (Cực nét - Chuẩn quân sự)</option>
                   <option value="14">Level 14 (Chi tiết công sự)</option>
                 </select>
               </div>
@@ -237,6 +263,17 @@ export const MapDownloadModal: React.FC = () => {
             <div className="space-y-2 pt-1 border-t border-slate-800/80">
               <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Hoặc tải riêng từng phần:</span>
               
+              {/* Bản đồ Topo độ cao 2D */}
+              <div className="flex items-center gap-2 p-2 bg-slate-900 rounded border border-slate-800 font-mono text-[11px]">
+                <span className="text-amber-400 flex-1 truncate">{cliTopoCommand}</span>
+                <button
+                  onClick={() => handleCopy(cliTopoCommand, 'topo')}
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs transition-colors shrink-0"
+                >
+                  {copiedType === 'topo' ? '✓ Đã Sao Chép' : 'Tải Riêng Topo'}
+                </button>
+              </div>
+
               {/* Ảnh vệ tinh */}
               <div className="flex items-center gap-2 p-2 bg-slate-900 rounded border border-slate-800 font-mono text-[11px]">
                 <span className="text-slate-300 flex-1 truncate">{cliSatCommand}</span>

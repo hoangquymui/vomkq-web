@@ -15,6 +15,18 @@ const CESIUM_ION_TOKEN =
 
 // Các khu vực chiến thuật trọng điểm
 const PRESET_REGIONS = {
+  mientrung: {
+    name: 'Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)',
+    bounds: { minLat: 10.5, maxLat: 20.0, minLon: 105.0, maxLon: 109.5 },
+    minZoom: 8,
+    maxZoom: 13,
+  },
+  mientrung_core: {
+    name: 'Trọng Điểm Miền Trung (Huế - Đà Nẵng - Quảng Nam - Bình Định - Khánh Hòa)',
+    bounds: { minLat: 11.8, maxLat: 16.8, minLon: 107.3, maxLon: 109.5 },
+    minZoom: 8,
+    maxZoom: 13,
+  },
   tamdao: {
     name: 'Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)',
     lat: 21.45,
@@ -283,8 +295,12 @@ async function main() {
   }
 
   console.log(`📍 Khu vực mục tiêu: ${regionConfig.name}`);
-  console.log(`🌐 Toạ độ tâm: Lat ${regionConfig.lat}, Lon ${regionConfig.lon}`);
-  console.log(`📏 Bán kính bao phủ: ${regionConfig.radiusKm} km`);
+  if (regionConfig.bounds) {
+    console.log(`🌐 Khung toạ độ: Lat [${regionConfig.bounds.minLat}, ${regionConfig.bounds.maxLat}], Lon [${regionConfig.bounds.minLon}, ${regionConfig.bounds.maxLon}]`);
+  } else {
+    console.log(`🌐 Toạ độ tâm: Lat ${regionConfig.lat}, Lon ${regionConfig.lon}`);
+    console.log(`📏 Bán kính bao phủ: ${regionConfig.radiusKm} km`);
+  }
   console.log(`🔍 Mức Zoom: Level ${regionConfig.minZoom} -> Level ${regionConfig.maxZoom}`);
 
   // 1. Kết nối Cesium Ion lấy endpoint
@@ -326,7 +342,9 @@ async function main() {
   console.log(`   ✓ Đã cập nhật public/offline-terrain/layer.json (maxzoom: ${layerConfig.maxzoom})`);
 
   // 3. Lập danh sách tile terrain và tải
-  const bounds = getBoundsFromCenter(regionConfig.lat, regionConfig.lon, regionConfig.radiusKm);
+  const bounds = regionConfig.bounds
+    ? regionConfig.bounds
+    : getBoundsFromCenter(regionConfig.lat, regionConfig.lon, regionConfig.radiusKm);
   const tiles = getTerrainTilesForBounds(bounds, regionConfig.minZoom, regionConfig.maxZoom);
   console.log(`📦 Dự kiến tải: ${tiles.length} mảnh địa hình 3D\n`);
 
