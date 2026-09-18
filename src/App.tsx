@@ -6,6 +6,8 @@ import { RightInspector } from "./components/ui/RightInspector";
 import { MeasurementPanel } from "./components/ui/MeasurementPanel";
 import { PlacementBanner } from "./components/ui/PlacementBanner";
 import { RadarFieldStatsModal } from "./components/ui/RadarFieldStatsModal";
+import { RadarCrossSectionPanel } from "./components/ui/RadarCrossSectionPanel";
+import { MapDownloadModal } from "./components/ui/MapDownloadModal";
 import { useTacticalStore } from "./store/useTacticalStore";
 
 export function App() {
@@ -38,6 +40,12 @@ export function App() {
 
       {/* Modal đánh giá chỉ số Trường Radar Tổng Hợp */}
       <RadarFieldStatsModal />
+
+      {/* Modal Quản lý và Tải bản đồ ngoại tuyến */}
+      <MapDownloadModal />
+
+      {/* Bảng phân tích Mặt Cắt Ngang 2D (Cross Section) */}
+      <RadarCrossSectionPanel />
     </div>
   );
 }

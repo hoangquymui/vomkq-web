@@ -8,7 +8,12 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "download-tiles": "node download-vietnam-tiles.js"
+    "download-tiles": "node download-tactical-map.js",
+    "download-tamdao": "node download-tactical-map.js --region=tamdao --minZoom=9 --maxZoom=13",
+    "download-binhdinh": "node download-tactical-map.js --region=binhdinh --minZoom=9 --maxZoom=13",
+    "download-terrain": "node download-tactical-terrain.js",
+    "download-terrain-tamdao": "node download-tactical-terrain.js --region=tamdao --minZoom=8 --maxZoom=13",
+    "download-terrain-binhdinh": "node download-tactical-terrain.js --region=binhdinh --minZoom=8 --maxZoom=13"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

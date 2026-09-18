@@ -201,3 +201,152 @@ export function calculateNotificationDistances(params: {
     notifyAccurateKm: Math.round(notifyAccurateKm),
   };
 }
+
+/**
+ * 9. Nội suy cự ly phát hiện tối đa từ Coverage Profile theo góc tà
+ * Đảm bảo góc ngoài phạm vi [minElevationDeg, maxElevationDeg] có cự ly = 0
+ */
+export function getProfileMaxRange(
+  profile: import('../types/radarCoverage').CoverageProfile | undefined,
+  elevationDeg: number,
+  fallbackRangeKm: number = 200
+): number {
+  if (!profile || !profile.points || profile.points.length === 0) {
+    return fallbackRangeKm;
+  }
+
+  // Góc nằm ngoài biên cho phép của profile -> Không có vùng phủ sóng
+  if (
+    elevationDeg < profile.minElevationDeg - 0.001 ||
+    elevationDeg > profile.maxElevationDeg + 0.001
+  ) {
+    return 0;
+  }
+
+  const pts = profile.points;
+  if (elevationDeg <= pts[0].elevationDeg) {
+    return pts[0].maxRangeKm;
+  }
+  if (elevationDeg >= pts[pts.length - 1].elevationDeg) {
+    return pts[pts.length - 1].maxRangeKm;
+  }
+
+  // Tìm đoạn chứa elevationDeg và nội suy tuyến tính
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    if (elevationDeg >= p1.elevationDeg && elevationDeg <= p2.elevationDeg) {
+      const deltaElev = p2.elevationDeg - p1.elevationDeg;
+      if (deltaElev <= 0) return p1.maxRangeKm;
+      const t = (elevationDeg - p1.elevationDeg) / deltaElev;
+      const range = p1.maxRangeKm + t * (p2.maxRangeKm - p1.maxRangeKm);
+      return Math.max(0, range);
+    }
+  }
+
+  return fallbackRangeKm;
+}
+
+/**
+ * 10. Chuyển đổi mã màu Hex sang HSL
+ */
+export function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  let cleanHex = hex.replace('#', '');
+  if (cleanHex.length === 3) {
+    cleanHex = cleanHex
+      .split('')
+      .map((c) => c + c)
+      .join('');
+  }
+
+  const num = parseInt(cleanHex, 16) || 0;
+  const r = ((num >> 16) & 255) / 255;
+  const g = ((num >> 8) & 255) / 255;
+  const b = (num & 255) / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0);
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      case b:
+        h = (r - g) / d + 4;
+        break;
+    }
+    h /= 6;
+  }
+
+  return {
+    h: Math.round(h * 360),
+    s: Math.round(s * 100),
+    l: Math.round(l * 100),
+  };
+}
+
+/**
+ * 11. Tạo màu chiến thuật quân sự theo chuẩn:
+ * - Khi chưa chọn: Giữ Hue và độ sáng gốc của khí tài, không dùng gradient để tránh hỗn tạp đa đài
+ * - Khi chọn một đài: Giữ Hue, ánh xạ độ cao vào Brightness (Height -> Lightness), Opacity cho Visible/Shadow
+ * Tuyệt đối không dùng dải màu cầu vồng (rainbow).
+ */
+export function getCoverageFieldColor(
+  baseHex: string,
+  heightM: number,
+  minHeightM: number,
+  maxHeightM: number,
+  isShadow: boolean,
+  isSelected: boolean
+): { css: string; alpha: number; hex: string } {
+  const { h, s, l } = hexToHsl(baseHex);
+
+  if (!isSelected) {
+    // Chế độ mặc định: Không gradient độ cao, giữ màu riêng của khí tài
+    if (isShadow) {
+      const shadowLightness = Math.max(8, Math.round(l * 0.45));
+      return {
+        css: `hsla(${h}, ${s}%, ${shadowLightness}%, 0.08)`,
+        alpha: 0.08,
+        hex: baseHex,
+      };
+    }
+    return {
+      css: `hsla(${h}, ${s}%, ${l}%, 0.25)`,
+      alpha: 0.25,
+      hex: baseHex,
+    };
+  }
+
+  // Chế độ đài được chọn: Giữ nguyên Hue, ánh xạ Height vào Brightness
+  const heightSpan = Math.max(1, maxHeightM - minHeightM);
+  const normHeight = Math.max(0, Math.min(1, (heightM - minHeightM) / heightSpan));
+
+  if (isShadow) {
+    // Vùng Shadow: Độ sáng thấp hơn (12% -> 35%), alpha mờ
+    const shadowL = Math.round(12 + normHeight * 25);
+    return {
+      css: `hsla(${h}, ${Math.max(20, s * 0.6)}%, ${shadowL}%, 0.12)`,
+      alpha: 0.12,
+      hex: baseHex,
+    };
+  }
+
+  // Vùng Visible: Độ sáng ánh xạ từ 25% (tối ở chân địa hình) đến 78% (sáng ở đỉnh trần)
+  const visibleL = Math.round(25 + normHeight * 53);
+  return {
+    css: `hsla(${h}, ${s}%, ${visibleL}%, 0.35)`,
+    alpha: 0.35,
+    hex: baseHex,
+  };
+}
+

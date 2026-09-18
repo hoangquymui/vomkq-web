@@ -1,14 +1,10 @@
 import * as Cesium from 'cesium';
-import type { RadarCoverageResult, RayProfile } from '../types/radarCoverage';
+import type { RadarCoverageField, RadarCoverageResult } from '../types/radarCoverage';
+import { destinationPoint } from './radarLosEngine';
 
 /**
- * Xây dựng các thực thể 3D trong Cesium để trực quan hoá:
- * 1. Vòm sóng 3D cắt địa hình (Màu Xanh / Cyan cho vùng nhìn thấy)
- * 2. Khối nan quạt / Thung lũng mù địa hình (Màu Đỏ / Cam cho vùng bị che khuất)
- * 3. Vết quét 2D ôm sát mặt đất (Ground footprint)
- * 4. Khu mù đỉnh đầu (Cone of Silence)
+ * Cấu trúc các thực thể 3D trực quan hoá trường radar
  */
-
 export interface RadarVisualizationEntities {
   visibleEntities: Cesium.Entity[];
   blindEntities: Cesium.Entity[];
@@ -16,7 +12,310 @@ export interface RadarVisualizationEntities {
 }
 
 /**
- * Tạo các thực thể Cesium Entity từ kết quả tính toán quang tuyến LOS
+ * Kiểm tra toạ độ Cartesian3 có hợp lệ và hữu hạn hay không
+ */
+function isValidCartesian(p: Cesium.Cartesian3 | null | undefined): boolean {
+  return (
+    p !== null &&
+    p !== undefined &&
+    Number.isFinite(p.x) &&
+    Number.isFinite(p.y) &&
+    Number.isFinite(p.z)
+  );
+}
+
+/**
+ * XÂY DỰNG HÌNH HỌC 3D TRƯỜNG PHỦ RADAR CHUẨN TÁC CHIẾN
+ * - Khuyết hình nón vùng mù trên đỉnh radar (Cone of Silence) theo H_mt * cotg(eps_max)
+ * - Mép ngoài uốn lượn cắt theo địa hình thực tế và đường chân trời vô tuyến ở độ cao H_mt
+ * - Bề mặt vòm mịn màng, liền khối, trong suốt (alpha thấp), KHÔNG bật outline nan quạt gây rối mắt
+ * - Vùng khuất địa hình (Shadow) hiển thị bằng màu đỏ cam cảnh báo và mảng bóng đổ bám đất
+ * - Thay đổi trực quan tức thì khi người chỉ huy điều chỉnh độ cao mục tiêu H_mt
+ */
+export function buildRadarCoverageFieldEntities(
+  field: RadarCoverageField,
+  showBlindZones: boolean = true,
+  themeColorHex: string = '#06b6d4',
+  isSelected: boolean = false,
+  showConeOfSilence: boolean = true
+): RadarVisualizationEntities {
+  const visibleEntities: Cesium.Entity[] = [];
+  const blindEntities: Cesium.Entity[] = [];
+  const coneOfSilenceEntities: Cesium.Entity[] = [];
+
+  const {
+    radarLat,
+    radarLon,
+    radarAltM,
+    azimuthRays,
+    maxElevationDeg,
+    maxRangeKm,
+    targetHeightM,
+    radarHorizonKm,
+  } = field;
+
+  const baseColor = Cesium.Color.fromCssColorString(themeColorHex);
+  const targetH = targetHeightM || 300;
+  const maxElev = maxElevationDeg || 30;
+
+  // 1. Tính bán kính vùng mù đỉnh đầu ở độ cao mục tiêu H_mt: R_kh = H_mt * cotg(eps_max)
+  const maxElevRad = (maxElev * Math.PI) / 180;
+  const cotgMaxElev = maxElev > 0 && maxElev < 90 ? 1 / Math.tan(maxElevRad) : 0;
+  const coneRadiusM = Math.max(0, targetH * cotgMaxElev);
+
+  // 2. Cự ly tối đa phát hiện mục tiêu ở độ cao H_mt theo chân trời vô tuyến và giản đồ profile
+  const horizonM = (radarHorizonKm || 4.12 * (Math.sqrt(field.antennaHeightAGL || 15) + Math.sqrt(targetH))) * 1000;
+  const profileMaxM = (maxRangeKm || 100) * 1000;
+  const maxDetectionDistanceM = Math.min(profileMaxM, horizonM);
+
+  const azimuths = Object.keys(azimuthRays)
+    .map(Number)
+    .sort((a, b) => a - b);
+  const numAz = azimuths.length;
+
+  if (numAz === 0) return { visibleEntities, blindEntities, coneOfSilenceEntities };
+
+  // Mảng lưu tọa độ đỉnh mép trong (Inner Ring) và mép ngoài (Outer Ring) để vẽ đường viền phát quang
+  const innerRingPositions: Cesium.Cartesian3[] = [];
+  const outerRingPositions: Cesium.Cartesian3[] = [];
+
+  interface AzimuthGeometryData {
+    az: number;
+    pInner: Cesium.Cartesian3;
+    pOuter: Cesium.Cartesian3;
+    pShadowEnd: Cesium.Cartesian3;
+    hasOcclusion: boolean;
+    sOccDistM: number;
+    sOccLat: number;
+    sOccLon: number;
+    sEndLat: number;
+    sEndLon: number;
+  }
+
+  const azDataList: AzimuthGeometryData[] = [];
+
+  for (let i = 0; i < numAz; i++) {
+    const az = azimuths[i];
+    const rays = azimuthRays[az] || [];
+    const botRay = rays[0]; // Tia góc tà thấp nhất bám sát địa hình
+
+    // Điểm mép trong (mép lỗ khuyết đỉnh đầu ở độ cao H_mt)
+    const destInner = destinationPoint(radarLat, radarLon, coneRadiusM, az);
+    const pInner = Cesium.Cartesian3.fromDegrees(
+      destInner.lon,
+      destInner.lat,
+      radarAltM + targetH
+    );
+
+    // Kiểm tra chắn địa hình
+    let effectiveDistM = maxDetectionDistanceM;
+    let outerAltM = radarAltM + targetH;
+    let isBlocked = false;
+    let sOccDistM = 0;
+    let sOccLat = radarLat;
+    let sOccLon = radarLon;
+
+    if (botRay && botRay.hasOcclusion && botRay.occlusionPoint) {
+      const occDistM = botRay.occlusionPoint.distanceM;
+      if (occDistM > coneRadiusM && occDistM < maxDetectionDistanceM) {
+        effectiveDistM = occDistM;
+        outerAltM = Math.max(botRay.occlusionPoint.terrainAltM, radarAltM + 10);
+        isBlocked = true;
+        sOccDistM = occDistM;
+        sOccLat = botRay.occlusionPoint.lat;
+        sOccLon = botRay.occlusionPoint.lon;
+      }
+    }
+
+    const destOuter = destinationPoint(radarLat, radarLon, effectiveDistM, az);
+    const pOuter = Cesium.Cartesian3.fromDegrees(destOuter.lon, destOuter.lat, outerAltM);
+
+    const destShadowEnd = destinationPoint(radarLat, radarLon, maxDetectionDistanceM, az);
+    const pShadowEnd = Cesium.Cartesian3.fromDegrees(
+      destShadowEnd.lon,
+      destShadowEnd.lat,
+      radarAltM + targetH
+    );
+
+    azDataList.push({
+      az,
+      pInner,
+      pOuter,
+      pShadowEnd,
+      hasOcclusion: isBlocked,
+      sOccDistM,
+      sOccLat,
+      sOccLon,
+      sEndLat: destShadowEnd.lat,
+      sEndLon: destShadowEnd.lon,
+    });
+
+    if (isValidCartesian(pInner)) innerRingPositions.push(pInner);
+    if (isValidCartesian(pOuter)) outerRingPositions.push(pOuter);
+  }
+
+  // Khép kín vòng tròn cho polylines
+  if (innerRingPositions.length > 0) innerRingPositions.push(innerRingPositions[0]);
+  if (outerRingPositions.length > 0) outerRingPositions.push(outerRingPositions[0]);
+
+  // -------------------------------------------------------------
+  // A. DỰNG MẶT VÒM PHỦ SÓNG 3D (Mượt mà, liền khối, khoét nón đỉnh đầu, cắt theo địa hình)
+  // -------------------------------------------------------------
+  const visibleColor = baseColor.withAlpha(isSelected ? 0.25 : 0.15);
+  const innerConeColor = Cesium.Color.fromCssColorString('#eab308').withAlpha(isSelected ? 0.16 : 0.08);
+  const centerAntennaPos = Cesium.Cartesian3.fromDegrees(radarLon, radarLat, radarAltM);
+
+  for (let i = 0; i < numAz; i++) {
+    const cur = azDataList[i];
+    const next = azDataList[(i + 1) % numAz];
+
+    // 1. Mặt nón ngược vùng mù đỉnh đầu (Funnel from antenna to inner ring)
+    if (showConeOfSilence && coneRadiusM > 200 && isValidCartesian(cur.pInner) && isValidCartesian(next.pInner)) {
+      coneOfSilenceEntities.push(
+        new Cesium.Entity({
+          name: `Phễu nón vùng mù đỉnh đầu (${cur.az}°)`,
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy([centerAntennaPos, cur.pInner, next.pInner]),
+            perPositionHeight: true,
+            material: innerConeColor,
+            outline: false,
+          },
+        })
+      );
+    }
+
+    // 2. Mặt vòm phủ sóng Visible (từ vòng khuyết đỉnh đầu ra mép ngoài cắt theo địa hình)
+    if (
+      isValidCartesian(cur.pInner) &&
+      isValidCartesian(cur.pOuter) &&
+      isValidCartesian(next.pOuter) &&
+      isValidCartesian(next.pInner)
+    ) {
+      visibleEntities.push(
+        new Cesium.Entity({
+          name: `Vòm phủ sóng (${cur.az}°-${next.az}°)`,
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy([
+              cur.pInner,
+              cur.pOuter,
+              next.pOuter,
+              next.pInner,
+            ]),
+            perPositionHeight: true,
+            material: visibleColor,
+            outline: false, // Giữ mặt vòm mịn màng, không có nan quạt mắt lưới rối mắt
+          },
+        })
+      );
+    }
+
+    // 3. Khối vùng mù địa hình (Shadow) phía sau sườn núi
+    if (showBlindZones && (cur.hasOcclusion || next.hasOcclusion)) {
+      const shadowColor = Cesium.Color.fromCssColorString('#ef4444').withAlpha(
+        isSelected ? 0.35 : 0.22
+      );
+      const groundShadowColor = Cesium.Color.fromCssColorString('#dc2626').withAlpha(
+        isSelected ? 0.45 : 0.3
+      );
+
+      // A. Mảng bóng râm bám đất sườn núi (Clamp to Ground)
+      const gOcc1 = Cesium.Cartesian3.fromDegrees(cur.sOccLon, cur.sOccLat);
+      const gEnd1 = Cesium.Cartesian3.fromDegrees(cur.sEndLon, cur.sEndLat);
+      const gEnd2 = Cesium.Cartesian3.fromDegrees(next.sEndLon, next.sEndLat);
+      const gOcc2 = Cesium.Cartesian3.fromDegrees(next.sOccLon, next.sOccLat);
+
+      if (
+        isValidCartesian(gOcc1) &&
+        isValidCartesian(gEnd1) &&
+        isValidCartesian(gEnd2) &&
+        isValidCartesian(gOcc2)
+      ) {
+        blindEntities.push(
+          new Cesium.Entity({
+            name: `Bóng râm địa hình sườn núi (${cur.az}°-${next.az}°)`,
+            polygon: {
+              hierarchy: new Cesium.PolygonHierarchy([gOcc1, gEnd1, gEnd2, gOcc2]),
+              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+              classificationType: Cesium.ClassificationType.TERRAIN,
+              material: groundShadowColor,
+            },
+          })
+        );
+      }
+
+      // B. Khối nêm không gian vùng mù nối từ điểm cản ra cự ly xa nhất
+      if (
+        isValidCartesian(cur.pOuter) &&
+        isValidCartesian(cur.pShadowEnd) &&
+        isValidCartesian(next.pShadowEnd) &&
+        isValidCartesian(next.pOuter)
+      ) {
+        blindEntities.push(
+          new Cesium.Entity({
+            name: `Khối mù không gian (${cur.az}°-${next.az}°)`,
+            polygon: {
+              hierarchy: new Cesium.PolygonHierarchy([
+                cur.pOuter,
+                cur.pShadowEnd,
+                next.pShadowEnd,
+                next.pOuter,
+              ]),
+              perPositionHeight: true,
+              material: shadowColor,
+              outline: false,
+            },
+          })
+        );
+      }
+    }
+  }
+
+  // -------------------------------------------------------------
+  // B. HAI ĐƯỜNG VIỀN PHÁT QUANG TINH TẾ (Inner & Outer Rings)
+  // -------------------------------------------------------------
+  // 1. Viền mép lỗ khuyết đỉnh đầu
+  if (showConeOfSilence && coneRadiusM > 200 && innerRingPositions.length > 2) {
+    coneOfSilenceEntities.push(
+      new Cesium.Entity({
+        name: `Vành khuyết vùng mù đỉnh đầu - ${field.radarName}`,
+        polyline: {
+          positions: innerRingPositions,
+          width: 2,
+          material: new Cesium.PolylineDashMaterialProperty({
+            color: Cesium.Color.fromCssColorString('#facc15'),
+            dashLength: 14,
+          }),
+        },
+      })
+    );
+  }
+
+  // 2. Viền mép ngoài uốn lượn theo địa hình thực tế
+  if (outerRingPositions.length > 2) {
+    visibleEntities.push(
+      new Cesium.Entity({
+        name: `Biên phát hiện radar bám địa hình - ${field.radarName}`,
+        polyline: {
+          positions: outerRingPositions,
+          width: isSelected ? 3 : 2,
+          material: new Cesium.PolylineGlowMaterialProperty({
+            color: baseColor,
+            glowPower: isSelected ? 0.35 : 0.2,
+          }),
+        },
+      })
+    );
+  }
+
+  return {
+    visibleEntities,
+    blindEntities: showBlindZones ? blindEntities : [],
+    coneOfSilenceEntities: showConeOfSilence ? coneOfSilenceEntities : [],
+  };
+}
+
+/**
+ * Hàm tương thích ngược với kết quả RadarCoverageResult cũ
  */
 export function buildRadarVisualizationEntities(
   result: RadarCoverageResult,
@@ -37,25 +336,14 @@ export function buildRadarVisualizationEntities(
   } = result;
 
   const baseColor = Cesium.Color.fromCssColorString(themeColorHex);
-  const visibleGreen = Cesium.Color.fromCssColorString('#10b981'); // Xanh lá có phủ
-  const blindRed = Cesium.Color.fromCssColorString('#ef4444'); // Đỏ mù địa hình
-
+  const blindRed = Cesium.Color.fromCssColorString('#ef4444');
   const centerPos = Cesium.Cartesian3.fromDegrees(radarLon, radarLat, radarAltM);
 
-  // -------------------------------------------------------------
-  // 1. KHU MÙ ĐỈNH ĐẦU (Cone of Silence)
-  // Vẽ vòng tròn vàng cảnh báo và nón ngược trên đỉnh đài
-  // -------------------------------------------------------------
   if (coneOfSilenceRadiusKm > 0) {
-    // Vòng tròn giới hạn khu mù tại độ cao mục tiêu H_mt
     coneOfSilenceEntities.push(
       new Cesium.Entity({
         name: `Khu mù đỉnh đầu - ${result.radarName}`,
-        position: Cesium.Cartesian3.fromDegrees(
-          radarLon,
-          radarLat,
-          radarAltM + targetHeightM
-        ),
+        position: Cesium.Cartesian3.fromDegrees(radarLon, radarLat, radarAltM + targetHeightM),
         ellipse: {
           semiMajorAxis: coneOfSilenceRadiusKm * 1000,
           semiMinorAxis: coneOfSilenceRadiusKm * 1000,
@@ -67,145 +355,48 @@ export function buildRadarVisualizationEntities(
         },
       })
     );
-
-    // Vành nón khu mù đỉnh đầu nối từ anten lên độ cao mục tiêu
-    coneOfSilenceEntities.push(
-      new Cesium.Entity({
-        name: `Trục nón khu mù đỉnh đầu`,
-        polyline: {
-          positions: [
-            centerPos,
-            Cesium.Cartesian3.fromDegrees(
-              radarLon,
-              radarLat,
-              radarAltM + Math.max(1000, targetHeightM * 2)
-            ),
-          ],
-          width: 2,
-          material: new Cesium.PolylineDashMaterialProperty({
-            color: Cesium.Color.fromCssColorString('#eab308'),
-            dashLength: 12,
-          }),
-        },
-      })
-    );
   }
 
-  // -------------------------------------------------------------
-  // 2. VÒM SÓNG 3D CẮT ĐỊA HÌNH (Canopy Mesh & Ray Curtains)
-  // Phân tách 2 mảng màu rõ rệt: XANH (Có phủ) và ĐỎ (Mù địa hình)
-  // -------------------------------------------------------------
   const numProfiles = profiles.length;
-
   for (let i = 0; i < numProfiles; i++) {
     const pCurrent = profiles[i];
     const pNext = profiles[(i + 1) % numProfiles];
 
-    const isCurrentBlocked = pCurrent.maskingAngleRad > 0.05; // ~3° trở lên
+    const isCurrentBlocked = pCurrent.maskingAngleRad > 0.05;
     const isNextBlocked = pNext.maskingAngleRad > 0.05;
     const isSectorBlind = isCurrentBlocked || isNextBlocked;
 
-    // Lấy điểm xa nhất trên 2 tia liền kề
     const curEndSample = pCurrent.samples[pCurrent.samples.length - 1];
     const nextEndSample = pNext.samples[pNext.samples.length - 1];
-
     if (!curEndSample || !nextEndSample) continue;
 
-    // Đỉnh chóp sóng phía trên (trần phủ sóng hoặc độ cao mục tiêu)
     const curCeiling = Math.max(targetHeightM, curEndSample.rayAltM);
     const nextCeiling = Math.max(targetHeightM, nextEndSample.rayAltM);
 
-    // Toạ độ 3D của các góc nan quạt
-    const posCenter = centerPos;
-    const posCurTop = Cesium.Cartesian3.fromDegrees(
-      curEndSample.lon,
-      curEndSample.lat,
-      curCeiling
-    );
-    const posNextTop = Cesium.Cartesian3.fromDegrees(
-      nextEndSample.lon,
-      nextEndSample.lat,
-      nextCeiling
-    );
+    const posCurTop = Cesium.Cartesian3.fromDegrees(curEndSample.lon, curEndSample.lat, curCeiling);
+    const posNextTop = Cesium.Cartesian3.fromDegrees(nextEndSample.lon, nextEndSample.lat, nextCeiling);
 
-    // Phân loại: Nếu hướng này bị núi chắn -> Đỏ / Cam; nếu thông thoáng -> Xanh ngọc / Xanh lục
-    const sectorColor = isSectorBlind
-      ? blindRed.withAlpha(0.28)
-      : baseColor.withAlpha(0.22);
-    const sectorOutlineColor = isSectorBlind
-      ? blindRed.withAlpha(0.7)
-      : baseColor.withAlpha(0.6);
+    if (!isValidCartesian(centerPos) || !isValidCartesian(posCurTop) || !isValidCartesian(posNextTop)) {
+      continue;
+    }
 
+    const sectorColor = isSectorBlind ? blindRed.withAlpha(0.28) : baseColor.withAlpha(0.22);
     const targetList = isSectorBlind ? blindEntities : visibleEntities;
 
-    // A. MẶT VÒM TRÊN (3D Upper Canopy Sector)
     targetList.push(
       new Cesium.Entity({
         name: `Nan vòm ${pCurrent.azimuthDeg}°`,
         polygon: {
-          hierarchy: new Cesium.PolygonHierarchy([
-            posCenter,
-            posCurTop,
-            posNextTop,
-          ]),
+          hierarchy: new Cesium.PolygonHierarchy([centerPos, posCurTop, posNextTop]),
           perPositionHeight: true,
           material: sectorColor,
           outline: true,
-          outlineColor: sectorOutlineColor,
+          outlineColor: sectorColor.withAlpha(0.6),
           outlineWidth: 1,
         },
       })
     );
-
-    // B. TƯỜNG CẮT SƯỜN NÚI NGOÀI CÙNG (Outer Ray Curtain)
-    targetList.push(
-      new Cesium.Entity({
-        name: `Lát cắt quang tuyến ${pCurrent.azimuthDeg}°`,
-        wall: {
-          positions: [posCurTop, posNextTop],
-          minimumHeights: [curEndSample.terrainAltM, nextEndSample.terrainAltM],
-          material: sectorColor,
-        },
-      })
-    );
   }
-
-  // -------------------------------------------------------------
-  // 3. MẶT CẮT 2D MẶT ĐẤT ÔM SÁT ĐỊA HÌNH (Ground Clamped Footprint)
-  // Phân màu chi tiết dọc theo sườn núi và thung lũng
-  // -------------------------------------------------------------
-  profiles.forEach((profile: RayProfile) => {
-    // Duyệt qua các đoạn ray xem đoạn nào nhìn thấy, đoạn nào bị che khuất
-    for (let k = 0; k < profile.samples.length - 1; k++) {
-      const s1 = profile.samples[k];
-      const s2 = profile.samples[k + 1];
-
-      const isBlocked = s2.isBlocked;
-      const lineColor = isBlocked
-        ? blindRed.withAlpha(0.75)
-        : visibleGreen.withAlpha(0.6);
-
-      const targetEntityList = isBlocked ? blindEntities : visibleEntities;
-
-      targetEntityList.push(
-        new Cesium.Entity({
-          name: `Tia LOS ${profile.azimuthDeg}° (${s1.distanceM / 1000}-${s2.distanceM / 1000}km)`,
-          polyline: {
-            positions: [
-              Cesium.Cartesian3.fromDegrees(s1.lon, s1.lat, s1.terrainAltM + 5),
-              Cesium.Cartesian3.fromDegrees(s2.lon, s2.lat, s2.terrainAltM + 5),
-            ],
-            width: isBlocked ? 3 : 2,
-            clampToGround: true,
-            material: new Cesium.PolylineGlowMaterialProperty({
-              color: lineColor,
-              glowPower: isBlocked ? 0.25 : 0.15,
-            }),
-          },
-        })
-      );
-    }
-  });
 
   return {
     visibleEntities,
@@ -213,3 +404,4 @@ export function buildRadarVisualizationEntities(
     coneOfSilenceEntities,
   };
 }
+

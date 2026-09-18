@@ -16,6 +16,21 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     symbolColor: '#06b6d4', // Cyan
     iconName: 'Radar',
     wavelengthM: 0.1, // Sóng dm (S-band ~10cm)
+    coverageProfile: {
+      id: 'prof_36d6',
+      name: 'Giản đồ 36D6 ST-68UM',
+      minElevationDeg: 0.5,
+      maxElevationDeg: 30,
+      points: [
+        { elevationDeg: 0.5, maxRangeKm: 300 },
+        { elevationDeg: 2.0, maxRangeKm: 300 },
+        { elevationDeg: 5.0, maxRangeKm: 260 },
+        { elevationDeg: 10.0, maxRangeKm: 180 },
+        { elevationDeg: 15.0, maxRangeKm: 120 },
+        { elevationDeg: 20.0, maxRangeKm: 80 },
+        { elevationDeg: 30.0, maxRangeKm: 40 },
+      ],
+    },
   },
   {
     id: 'radar_p18',
@@ -32,6 +47,21 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     symbolColor: '#0ea5e9', // Sky blue
     iconName: 'Radio',
     wavelengthM: 2.0, // Sóng mét (VHF ~2m)
+    coverageProfile: {
+      id: 'prof_p18',
+      name: 'Giản đồ P-18M Spoon Rest',
+      minElevationDeg: 0,
+      maxElevationDeg: 25,
+      points: [
+        { elevationDeg: 0.0, maxRangeKm: 250 },
+        { elevationDeg: 2.0, maxRangeKm: 250 },
+        { elevationDeg: 4.0, maxRangeKm: 230 },
+        { elevationDeg: 8.0, maxRangeKm: 170 },
+        { elevationDeg: 14.0, maxRangeKm: 100 },
+        { elevationDeg: 20.0, maxRangeKm: 55 },
+        { elevationDeg: 25.0, maxRangeKm: 25 },
+      ],
+    },
   },
   {
     id: 'radar_kolchuga',
@@ -46,7 +76,21 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 18,
     coverageHeightKm: 40,
     symbolColor: '#8b5cf6', // Violet
-    iconName: 'Antenna'
+    iconName: 'Antenna',
+    coverageProfile: {
+      id: 'prof_kolchuga',
+      name: 'Giản đồ Thụ động Kolchuga-M',
+      minElevationDeg: 0,
+      maxElevationDeg: 45,
+      points: [
+        { elevationDeg: 0.0, maxRangeKm: 400 },
+        { elevationDeg: 5.0, maxRangeKm: 380 },
+        { elevationDeg: 12.0, maxRangeKm: 300 },
+        { elevationDeg: 20.0, maxRangeKm: 200 },
+        { elevationDeg: 30.0, maxRangeKm: 120 },
+        { elevationDeg: 45.0, maxRangeKm: 50 },
+      ],
+    },
   },
   {
     id: 'sam_s300',
@@ -61,7 +105,20 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 8,
     coverageHeightKm: 27,
     symbolColor: '#ef4444', // Red
-    iconName: 'Crosshair'
+    iconName: 'Crosshair',
+    coverageProfile: {
+      id: 'prof_s300',
+      name: 'Khu vực Tiêu diệt S-300PMU2',
+      minElevationDeg: 3,
+      maxElevationDeg: 65,
+      points: [
+        { elevationDeg: 3.0, maxRangeKm: 200 },
+        { elevationDeg: 15.0, maxRangeKm: 200 },
+        { elevationDeg: 30.0, maxRangeKm: 170 },
+        { elevationDeg: 45.0, maxRangeKm: 110 },
+        { elevationDeg: 65.0, maxRangeKm: 35 },
+      ],
+    },
   },
   {
     id: 'sam_spyder',
@@ -76,7 +133,20 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 5,
     coverageHeightKm: 16,
     symbolColor: '#f97316', // Orange
-    iconName: 'Zap'
+    iconName: 'Zap',
+    coverageProfile: {
+      id: 'prof_spyder',
+      name: 'Khu vực Tiêu diệt Spyder-MR',
+      minElevationDeg: 5,
+      maxElevationDeg: 75,
+      points: [
+        { elevationDeg: 5.0, maxRangeKm: 50 },
+        { elevationDeg: 20.0, maxRangeKm: 50 },
+        { elevationDeg: 40.0, maxRangeKm: 42 },
+        { elevationDeg: 60.0, maxRangeKm: 25 },
+        { elevationDeg: 75.0, maxRangeKm: 12 },
+      ],
+    },
   },
   {
     id: 'c2_command_post',
@@ -91,7 +161,18 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 30,
     coverageHeightKm: 15,
     symbolColor: '#eab308', // Yellow/Gold
-    iconName: 'ShieldAlert'
+    iconName: 'ShieldAlert',
+    coverageProfile: {
+      id: 'prof_c2',
+      name: 'Phạm vi Chỉ huy C2',
+      minElevationDeg: 0,
+      maxElevationDeg: 90,
+      points: [
+        { elevationDeg: 0.0, maxRangeKm: 80 },
+        { elevationDeg: 45.0, maxRangeKm: 80 },
+        { elevationDeg: 90.0, maxRangeKm: 80 },
+      ],
+    },
   },
   {
     id: 'aaa_zsu23',
@@ -106,7 +187,20 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 4,
     coverageHeightKm: 3,
     symbolColor: '#10b981', // Emerald
-    iconName: 'Target'
+    iconName: 'Target',
+    coverageProfile: {
+      id: 'prof_zsu23',
+      name: 'Xạ giới Pháo ZSU-23-4',
+      minElevationDeg: -4,
+      maxElevationDeg: 85,
+      points: [
+        { elevationDeg: -4.0, maxRangeKm: 3.5 },
+        { elevationDeg: 0.0, maxRangeKm: 5.0 },
+        { elevationDeg: 30.0, maxRangeKm: 5.0 },
+        { elevationDeg: 60.0, maxRangeKm: 3.8 },
+        { elevationDeg: 85.0, maxRangeKm: 2.0 },
+      ],
+    },
   }
 ];
 

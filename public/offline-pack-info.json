@@ -20,5 +20,73 @@
     "tileCount": 268,
     "format": "Quantized Mesh 1.0 (uncompressed binary)",
     "localPath": "/offline-terrain"
-  }
+  },
+  "lastUpdated": "2026-09-18T03:02:11.020Z",
+  "highResRegions": [
+    {
+      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
+      "lat": 21.45,
+      "lon": 105.65,
+      "radiusKm": 35,
+      "zoomLevels": "9-11",
+      "downloadedAt": "2026-09-18T02:07:38.989Z",
+      "tileCount": 29
+    },
+    {
+      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
+      "lat": 21.45,
+      "lon": 105.65,
+      "radiusKm": 35,
+      "zoomLevels": "12-12",
+      "downloadedAt": "2026-09-18T02:07:43.646Z",
+      "tileCount": 64
+    },
+    {
+      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
+      "lat": 21.45,
+      "lon": 105.65,
+      "radiusKm": 35,
+      "zoomLevels": "13-13",
+      "downloadedAt": "2026-09-18T02:07:49.864Z",
+      "tileCount": 256
+    },
+    {
+      "name": "Tây Sơn - Đèo An Khê - Quy Nhơn (Bình Định - Gia Lai)",
+      "lat": 13.9,
+      "lon": 108.95,
+      "radiusKm": 40,
+      "zoomLevels": "9-13",
+      "downloadedAt": "2026-09-18T02:08:02.219Z",
+      "tileCount": 425
+    }
+  ],
+  "highResTerrain": [
+    {
+      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
+      "lat": 21.45,
+      "lon": 105.65,
+      "radiusKm": 35,
+      "zoomLevels": "8-12",
+      "downloadedAt": "2026-09-18T02:32:27.867Z",
+      "tileCount": 344
+    },
+    {
+      "name": "Tây Sơn - Đèo An Khê - Quy Nhơn (Bình Định - Gia Lai)",
+      "lat": 13.9,
+      "lon": 108.95,
+      "radiusKm": 40,
+      "zoomLevels": "8-12",
+      "downloadedAt": "2026-09-18T02:32:40.438Z",
+      "tileCount": 425
+    },
+    {
+      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
+      "lat": 21.45,
+      "lon": 105.65,
+      "radiusKm": 35,
+      "zoomLevels": "8-13",
+      "downloadedAt": "2026-09-18T03:02:11.024Z",
+      "tileCount": 1304
+    }
+  ]
 }

@@ -10,6 +10,7 @@ import {
   MapPin,
   Share2,
   BarChart3,
+  HardDriveDownload,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { PRESET_LOCATIONS } from '../../data/equipmentTemplates';
@@ -23,6 +24,8 @@ export const TopBar: React.FC = () => {
     setActiveTool,
     terrainExaggeration,
     setTerrainExaggeration,
+    basemap,
+    setBasemap,
     vietnamOnly,
     toggleVietnamOnly,
     showAllDomes,
@@ -35,6 +38,7 @@ export const TopBar: React.FC = () => {
     importFromLayout,
     loadSampleScenario,
     setShowRadarFieldModal,
+    setShowMapDownloadModal,
   } = useTacticalStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -155,6 +159,43 @@ export const TopBar: React.FC = () => {
         >
           <span className="text-xs">🇻🇳</span>
           <span>{vietnamOnly ? 'Chỉ Vùng VN' : 'Toàn Cầu'}</span>
+        </button>
+
+        {/* Bộ chọn Lớp Bản Đồ Nền (Basemap) */}
+        <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border border-slate-700 text-xs">
+          <Globe2 className="w-3.5 h-3.5 text-cyan-400" />
+          <select
+            value={basemap}
+            onChange={(e) => setBasemap(e.target.value as any)}
+            className="bg-transparent text-cyan-300 font-mono font-bold focus:outline-none cursor-pointer"
+            title="Chọn Lớp Bản Đồ Nền (Basemap)"
+          >
+            <option value="satellite" className="bg-slate-900 text-slate-200">
+              🌐 Vệ Tinh Trực Tuyến HD (Nét 0-19)
+            </option>
+            <option value="offline" className="bg-slate-900 text-slate-200">
+              💾 Vệ Tinh Ngoại Tuyến (Offline)
+            </option>
+            <option value="topo" className="bg-slate-900 text-slate-200">
+              🗺️ Bản Đồ Địa Hình (Topo)
+            </option>
+            <option value="dark" className="bg-slate-900 text-slate-200">
+              🌑 Tác Chiến Tối (Dark)
+            </option>
+            <option value="osm" className="bg-slate-900 text-slate-200">
+              🧭 Bản Đồ Đường Xá (OSM)
+            </option>
+          </select>
+        </div>
+
+        {/* Nút Mở Quản Lý & Tải Bản Đồ Ngoại Tuyến */}
+        <button
+          onClick={() => setShowMapDownloadModal(true)}
+          title="Quản lý và Tải bản đồ ngoại tuyến độ nét cao"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border border-cyan-500/40 bg-cyan-950/50 hover:bg-cyan-900/70 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.25)] transition-all cursor-pointer"
+        >
+          <HardDriveDownload className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+          <span className="hidden xl:inline">Tải Bản Đồ</span>
         </button>
 
         {/* Độ phóng đại địa hình khi ở chế độ 3D */}

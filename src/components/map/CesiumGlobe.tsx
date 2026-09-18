@@ -3,12 +3,62 @@ import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { Pin, PinOff, ArrowUp, ArrowDown } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
-import { computeRadarCoverage } from '../../utils/radarLosEngine';
-import { buildRadarVisualizationEntities } from '../../utils/radarGeometryBuilder';
+import {
+  computeRadarCoverageField,
+  computeRadarCoverage,
+  destinationPoint,
+  generateCoverageCacheKey,
+} from '../../utils/radarLosEngine';
+import {
+  buildRadarCoverageFieldEntities,
+} from '../../utils/radarGeometryBuilder';
 
 // Access token cấu hình từ dự án VomKQ (CesiumIonServer)
 Cesium.Ion.defaultAccessToken =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzYmIyMWFkMS1lYjc5LTQ0NzMtYThlNS1iNTEzMTA1NTY4MjQiLCJpZCI6NDYwODUzLCJpc3MiOiJodHRwczovL2FwaS5jZXNpdW0uY29tIiwiYXVkIjoidW5kZWZpbmVkX2RlZmF1bHQiLCJpYXQiOjE3ODUxMjM1ODN9.gyB0vWTm1yJXS2pCkaVqyLdbg1RxFzjReo7jeDEMmQU';
+
+// Helper tạo ImageryProvider linh hoạt cho Basemap
+function createImageryProvider(basemap: 'satellite' | 'offline' | 'topo' | 'dark' | 'osm') {
+  switch (basemap) {
+    case 'satellite':
+      // Ảnh vệ tinh trực tuyến độ nét cao (zoom tới level 19 ~0.3m/pixel)
+      return new Cesium.UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        maximumLevel: 19,
+        credit: new Cesium.Credit('© Esri, Maxar, Earthstar Geographics'),
+      });
+    case 'offline':
+      // Ảnh vệ tinh ngoại tuyến từ public/offline-satellite (hỗ trợ tới level 16)
+      return new Cesium.UrlTemplateImageryProvider({
+        url: './offline-satellite/{z}/{x}/{y}.jpg',
+        minimumLevel: 0,
+        maximumLevel: 16,
+      });
+    case 'topo':
+      // Bản đồ địa hình đường đồng mức OpenTopoMap
+      return new Cesium.UrlTemplateImageryProvider({
+        url: 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+        maximumLevel: 17,
+        credit: new Cesium.Credit('© OpenTopoMap contributors'),
+      });
+    case 'dark':
+      // Bản đồ tác chiến tối giản Dark Matter
+      return new Cesium.UrlTemplateImageryProvider({
+        url: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        maximumLevel: 18,
+        credit: new Cesium.Credit('© CARTO'),
+      });
+    case 'osm':
+      return new Cesium.OpenStreetMapImageryProvider({
+        url: 'https://tile.openstreetmap.org/',
+      });
+    default:
+      return new Cesium.UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        maximumLevel: 19,
+      });
+  }
+}
 
 export const CesiumGlobe: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -24,6 +74,7 @@ export const CesiumGlobe: React.FC = () => {
     pendingTemplate,
     viewMode,
     terrainExaggeration,
+    basemap,
     vietnamOnly,
     showAllDomes,
     showCommandLinks,
@@ -37,28 +88,27 @@ export const CesiumGlobe: React.FC = () => {
     showBlindZones,
     showConeOfSilence,
     azimuthStepDeg,
+    elevationStepDeg,
     kFactor,
     coverageResults,
+    coverageFields,
     setCoverageResult,
+    setCoverageField,
     setIsCalculatingLOS,
+    showCrossSection,
+    selectedAzimuthDeg,
   } = useTacticalStore();
 
-  // 1. Khởi tạo Cesium Viewer sử dụng hoàn toàn bản đồ và địa hình trong thư mục public/
+  // 1. Khởi tạo Cesium Viewer
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Lớp bản đồ ảnh vệ tinh tải trực tiếp từ thư mục public/offline-satellite/
-    const publicSatellite = new Cesium.ImageryLayer(
-      new Cesium.UrlTemplateImageryProvider({
-        url: './offline-satellite/{z}/{x}/{y}.jpg',
-        minimumLevel: 0,
-        maximumLevel: 8,
-      })
-    );
+    // Khởi tạo lớp bản đồ ban đầu theo basemap
+    const initialBaseLayer = new Cesium.ImageryLayer(createImageryProvider(basemap));
 
     // Khởi tạo Viewer
     const viewer = new Cesium.Viewer(containerRef.current, {
-      baseLayer: publicSatellite,
+      baseLayer: initialBaseLayer,
       baseLayerPicker: false,
       geocoder: false,
       homeButton: false,
@@ -74,7 +124,7 @@ export const CesiumGlobe: React.FC = () => {
 
     viewerRef.current = viewer;
 
-    // Nạp địa hình 3D trực tiếp từ thư mục public/offline-terrain/
+    // Nạp địa hình 3D trực tiếp từ thư mục public/offline-terrain
     Cesium.CesiumTerrainProvider.fromUrl('./offline-terrain')
       .then((provider) => {
         if (viewerRef.current && !viewerRef.current.isDestroyed()) {
@@ -120,12 +170,12 @@ export const CesiumGlobe: React.FC = () => {
         viewerRef.current = null;
       }
     };
-  }, [terrainExaggeration]);
+  }, []);
 
-  // 2. Chuyển đổi chế độ 3D (Địa hình lồi lõm từ public) / 2D (Bản đồ phẳng từ public)
+  // 2. Chuyển đổi chế độ 3D (Địa hình lồi lõm) / 2D (Bản đồ phẳng)
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer) return;
+    if (!viewer || viewer.isDestroyed()) return;
 
     viewer.scene.verticalExaggeration = terrainExaggeration;
 
@@ -135,7 +185,6 @@ export const CesiumGlobe: React.FC = () => {
       }
       viewer.scene.globe.depthTestAgainstTerrain = false;
     } else {
-      // Chế độ 3D kích hoạt Địa hình lồi lõm từ public/offline-terrain
       if (viewer.scene.mode !== Cesium.SceneMode.SCENE3D) {
         viewer.scene.morphTo3D(1.0);
       }
@@ -146,27 +195,32 @@ export const CesiumGlobe: React.FC = () => {
             viewerRef.current.scene.terrainProvider = provider;
           }
         })
-        .catch((err) => {
-          console.warn('Lỗi nạp địa hình public 3D:', err);
-        });
+        .catch((err) => console.warn('Lỗi nạp địa hình offline 3D:', err));
     }
   }, [viewMode, terrainExaggeration]);
 
-  // 3. Duy trì lớp bản đồ ảnh vệ tinh từ public/offline-satellite
+  // 3. Phản ứng khi thay đổi Lớp Bản đồ Nền (Basemap)
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer) return;
+    if (!viewer || viewer.isDestroyed()) return;
 
     viewer.imageryLayers.removeAll();
-    const publicSatellite = new Cesium.ImageryLayer(
-      new Cesium.UrlTemplateImageryProvider({
-        url: './offline-satellite/{z}/{x}/{y}.jpg',
-        minimumLevel: 0,
-        maximumLevel: 8,
-      })
-    );
-    viewer.imageryLayers.add(publicSatellite);
-  }, []);
+    try {
+      const provider = createImageryProvider(basemap);
+      const layer = new Cesium.ImageryLayer(provider);
+      viewer.imageryLayers.add(layer);
+    } catch (err) {
+      console.error('Lỗi nạp Basemap:', err);
+      const fallbackLayer = new Cesium.ImageryLayer(
+        new Cesium.UrlTemplateImageryProvider({
+          url: './offline-satellite/{z}/{x}/{y}.jpg',
+          minimumLevel: 0,
+          maximumLevel: 16,
+        })
+      );
+      viewer.imageryLayers.add(fallbackLayer);
+    }
+  }, [basemap]);
 
   // 4. Cắt gọn và giới hạn phạm vi hiển thị chỉ vùng Việt Nam
   useEffect(() => {
@@ -327,38 +381,92 @@ export const CesiumGlobe: React.FC = () => {
     };
   }, [activeTool, pendingTemplate, instances, addEquipment, addMeasurePoint, selectEquipment]);
 
-  // 5b. Tính toán Quang tuyến LOS & Vùng phủ cắt địa hình cho tất cả các đài radar
+  // 5b. Tính toán Quang tuyến LOS & Coverage Field cho tất cả các đài radar
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || instances.length === 0) return;
 
     let isCancelled = false;
-    setIsCalculatingLOS(true);
 
     const calcAll = async () => {
+      // 1. Kiểm tra xem có đài nào thực sự cần tính toán mới không
+      const state = useTacticalStore.getState();
+      const currentFields = state.coverageFields;
+      const cache = state.coverageFieldCache;
+
+      let hasPendingCalculation = false;
+      for (const inst of instances) {
+        if (inst.rangeKm > 0 && inst.showDome) {
+          const params = {
+            targetHeightMeters,
+            azimuthStepDeg,
+            elevationStepDeg,
+            radialStepMeters: Math.max(1500, Math.round((inst.rangeKm * 1000) / 45)),
+            kFactor,
+            showBlindZones,
+          };
+          const cacheKey = generateCoverageCacheKey(inst, params);
+          if (currentFields[inst.instanceId]?.cacheKey !== cacheKey && !cache[cacheKey]) {
+            hasPendingCalculation = true;
+            break;
+          }
+        }
+      }
+
+      if (hasPendingCalculation) {
+        setIsCalculatingLOS(true);
+      }
+
       for (const inst of instances) {
         if (isCancelled) break;
         if (inst.rangeKm > 0 && inst.showDome) {
           try {
-            const res = await computeRadarCoverage(
+            const params = {
+              targetHeightMeters,
+              azimuthStepDeg,
+              elevationStepDeg,
+              radialStepMeters: Math.max(1500, Math.round((inst.rangeKm * 1000) / 45)),
+              kFactor,
+              showBlindZones,
+            };
+
+            const cacheKey = generateCoverageCacheKey(inst, params);
+            const latestState = useTacticalStore.getState();
+
+            // Nếu đài này đã có field đúng với cacheKey hiện tại -> bỏ qua không set lại
+            if (latestState.coverageFields[inst.instanceId]?.cacheKey === cacheKey) {
+              continue;
+            }
+
+            // Nếu đã có trong cache -> áp dụng ngay từ cache
+            if (latestState.coverageFieldCache[cacheKey]) {
+              setCoverageField(inst.instanceId, latestState.coverageFieldCache[cacheKey]);
+              continue;
+            }
+
+            // Tính toán mới qua engine địa hình
+            const field = await computeRadarCoverageField(
               inst,
               viewer.scene.terrainProvider,
-              {
-                targetHeightMeters,
-                azimuthStepDeg,
-                radialStepMeters: Math.max(1500, Math.round((inst.rangeKm * 1000) / 45)),
-                kFactor,
-                showBlindZones,
-              }
+              params
             );
+
             if (!isCancelled) {
-              setCoverageResult(inst.instanceId, res);
+              setCoverageField(inst.instanceId, field);
+              // Cập nhật coverageResults để tương thích ngược cho Modal Đánh Giá Chỉ Số
+              const legacyRes = await computeRadarCoverage(
+                inst,
+                viewer.scene.terrainProvider,
+                params
+              );
+              setCoverageResult(inst.instanceId, legacyRes);
             }
           } catch (e) {
-            console.warn('Lỗi tính toán LOS cho khí tài:', inst.name, e);
+            console.warn('Lỗi tính toán Coverage Field cho khí tài:', inst.name, e);
           }
         }
       }
+
       if (!isCancelled) {
         setIsCalculatingLOS(false);
       }
@@ -368,14 +476,15 @@ export const CesiumGlobe: React.FC = () => {
 
     return () => {
       isCancelled = true;
-      setIsCalculatingLOS(false);
     };
   }, [
     instances,
     targetHeightMeters,
     azimuthStepDeg,
+    elevationStepDeg,
     kFactor,
     showBlindZones,
+    setCoverageField,
     setCoverageResult,
     setIsCalculatingLOS,
   ]);
@@ -445,12 +554,18 @@ export const CesiumGlobe: React.FC = () => {
         });
       }
 
-      // 3. Vòm Radar 3D Cắt Địa Hình Thực Tế (Terrain-Cut Dome & Radar Shadows)
+      // 3. Vòm Radar 3D Dựng Trực Tiếp Từ Coverage Field (Single Source of Truth)
       if (showAllDomes && inst.showDome && inst.rangeKm > 0) {
-        const cov = coverageResults[inst.instanceId];
-        if (cov && cov.profiles && cov.profiles.length > 0) {
+        const field = coverageFields[inst.instanceId];
+        if (field && field.rays && field.rays.length > 0) {
           const { visibleEntities, blindEntities, coneOfSilenceEntities } =
-            buildRadarVisualizationEntities(cov, showBlindZones, inst.color);
+            buildRadarCoverageFieldEntities(
+              field,
+              showBlindZones,
+              inst.color,
+              isSelected,
+              showConeOfSilence
+            );
 
           visibleEntities.forEach((e) => viewer.entities.add(e));
           if (showBlindZones) {
@@ -480,6 +595,39 @@ export const CesiumGlobe: React.FC = () => {
             },
           });
         }
+      }
+
+      // 4. Tia định hướng Mặt Cắt Ngang 2D trên quả địa cầu 3D
+      if (showCrossSection && isSelected && inst.rangeKm > 0) {
+        const dest = destinationPoint(
+          inst.latitude,
+          inst.longitude,
+          inst.rangeKm * 1000,
+          selectedAzimuthDeg
+        );
+        viewer.entities.add({
+          name: `Tia định hướng Mặt Cắt ${selectedAzimuthDeg}°`,
+          polyline: {
+            positions: [
+              Cesium.Cartesian3.fromDegrees(
+                inst.longitude,
+                inst.latitude,
+                inst.altitude + inst.antennaHeightAGL + 10
+              ),
+              Cesium.Cartesian3.fromDegrees(
+                dest.lon,
+                dest.lat,
+                inst.altitude + 500
+              ),
+            ],
+            width: 3,
+            material: new Cesium.PolylineGlowMaterialProperty({
+              color: Cesium.Color.YELLOW,
+              glowPower: 0.35,
+            }),
+            clampToGround: true,
+          },
+        });
       }
     });
 
@@ -588,8 +736,11 @@ export const CesiumGlobe: React.FC = () => {
     measurePoints,
     vietnamOnly,
     coverageResults,
+    coverageFields,
     showBlindZones,
     showConeOfSilence,
+    showCrossSection,
+    selectedAzimuthDeg,
   ]);
 
   // 7. Thao tác Ghim vị trí điểm đặt & Kéo lên xuống theo chiều cao

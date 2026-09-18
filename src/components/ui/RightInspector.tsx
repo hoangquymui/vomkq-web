@@ -10,6 +10,8 @@ import {
   EyeOff,
   Activity,
   MapPin,
+  Compass,
+  Layers,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import type { OperationalStatus } from '../../types/equipment';
@@ -22,6 +24,11 @@ export const RightInspector: React.FC = () => {
     updateEquipment,
     removeEquipment,
     triggerFlyTo,
+    showCrossSection,
+    toggleCrossSection,
+    coverageFields,
+    targetHeightMeters,
+    setTargetHeightMeters,
   } = useTacticalStore();
 
   const selected = instances.find((i) => i.instanceId === selectedInstanceId);
@@ -269,7 +276,7 @@ export const RightInspector: React.FC = () => {
             <div className="flex justify-between text-[11px] mb-1">
               <span className="text-slate-400">Độ cao mục tiêu (H_mt):</span>
               <span className="text-cyan-300 font-mono font-bold">
-                {useTacticalStore.getState().targetHeightMeters} m
+                {targetHeightMeters} m
               </span>
             </div>
             <div className="grid grid-cols-4 gap-1 mb-2">
@@ -281,9 +288,9 @@ export const RightInspector: React.FC = () => {
               ].map((btn) => (
                 <button
                   key={btn.value}
-                  onClick={() => useTacticalStore.getState().setTargetHeightMeters(btn.value)}
+                  onClick={() => setTargetHeightMeters(btn.value)}
                   className={`py-1 rounded text-[10px] font-mono border transition-all ${
-                    useTacticalStore.getState().targetHeightMeters === btn.value
+                    targetHeightMeters === btn.value
                       ? 'bg-cyan-950 text-cyan-300 border-cyan-500 font-bold shadow-[0_0_8px_rgba(6,182,212,0.3)]'
                       : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:border-slate-700'
                   }`}
@@ -298,9 +305,9 @@ export const RightInspector: React.FC = () => {
               min="20"
               max="15000"
               step="50"
-              value={useTacticalStore.getState().targetHeightMeters}
+              value={targetHeightMeters}
               onChange={(e) =>
-                useTacticalStore.getState().setTargetHeightMeters(parseFloat(e.target.value))
+                setTargetHeightMeters(parseFloat(e.target.value))
               }
               className="w-full accent-cyan-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
             />
@@ -312,7 +319,7 @@ export const RightInspector: React.FC = () => {
               <span className="text-slate-500 block">KHU MÙ ĐỈNH (R_kh)</span>
               <span className="text-amber-300 font-bold">
                 {(
-                  (useTacticalStore.getState().targetHeightMeters *
+                  (targetHeightMeters *
                     (1 / Math.tan((selected.maxElevationDeg * Math.PI) / 180))) /
                   1000
                 ).toFixed(2)}{' '}
@@ -326,7 +333,7 @@ export const RightInspector: React.FC = () => {
                 {(
                   4.12 *
                   (Math.sqrt(selected.antennaHeightAGL) +
-                    Math.sqrt(useTacticalStore.getState().targetHeightMeters))
+                    Math.sqrt(targetHeightMeters))
                 ).toFixed(1)}{' '}
                 km
               </span>
@@ -334,24 +341,58 @@ export const RightInspector: React.FC = () => {
             </div>
           </div>
 
-          {/* Công tắc Bật/Tắt Vùng mù địa hình (Đỏ) */}
-          <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
-            <span className="text-slate-300 text-[11px] flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
-              <span>Hiện Vùng Mù Địa Hình</span>
-            </span>
+          {/* Nút Kích Hoạt Mặt Cắt Quang Tuyến 2D (Cross Section) */}
+          <div className="pt-2 border-t border-slate-800/80">
             <button
-              onClick={() => useTacticalStore.getState().toggleBlindZones()}
-              className={`px-2 py-1 rounded text-[10px] font-semibold border transition-all ${
-                useTacticalStore.getState().showBlindZones
-                  ? 'bg-rose-950 text-rose-300 border-rose-500/60 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
-                  : 'bg-slate-950 text-slate-500 border-slate-800'
+              onClick={toggleCrossSection}
+              className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all ${
+                showCrossSection
+                  ? 'bg-cyan-950 text-cyan-300 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.4)] ring-1 ring-cyan-400'
+                  : 'bg-slate-950 hover:bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/50'
               }`}
             >
-              {useTacticalStore.getState().showBlindZones ? 'BẬT (MÀU ĐỎ)' : 'TẮT'}
+              <Compass className={`w-4 h-4 ${showCrossSection ? 'animate-spin' : ''}`} style={{ animationDuration: '6s' }} />
+              <span>{showCrossSection ? 'Đang Xem Mặt Cắt 2D (Cross Section)' : 'Mở Mặt Cắt Quang Tuyến 2D'}</span>
             </button>
           </div>
         </div>
+
+        {/* 5b. Coverage Profile & Dữ Liệu Trường 3D (Single Source of Truth) */}
+        {selected.coverageProfile && (
+          <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Coverage Profile (Giản đồ phủ)</span>
+              </label>
+              <span className="text-[9px] text-cyan-300 font-mono">
+                {selected.coverageProfile.name}
+              </span>
+            </div>
+
+            <p className="text-[10px] text-slate-400">
+              Giới hạn cự ly theo từng góc tà (nội suy liên tục, không dùng bán kính phẳng):
+            </p>
+
+            <div className="grid grid-cols-3 gap-1.5 font-mono text-[10px]">
+              {selected.coverageProfile.points.map((pt, idx) => (
+                <div key={idx} className="bg-slate-950/80 p-1.5 rounded border border-slate-800 text-center">
+                  <span className="text-slate-500 block">{pt.elevationDeg}°</span>
+                  <span className="text-cyan-300 font-bold">{pt.maxRangeKm} km</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Trạng thái Coverage Field hiện tại */}
+            {coverageFields[selected.instanceId] && (
+              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                <span>Trường 3D: <strong className="text-cyan-300">{coverageFields[selected.instanceId].totalRays} tia</strong></span>
+                <span>Bị chắn: <strong className="text-rose-400">{coverageFields[selected.instanceId].occludedRaysCount}</strong></span>
+                <span>Tỷ lệ: <strong className="text-emerald-400">{coverageFields[selected.instanceId].coverageRatioPercent}%</strong></span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 6. Quan hệ Chỉ Huy Tác Chiến (C2) */}
         <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 space-y-2">

@@ -16,8 +16,9 @@ interface TacticalState {
   // 3D Terrain & Basemap Options
   terrainEnabled: boolean;
   terrainExaggeration: number; // 1.0 -> 3.0
-  basemap: 'satellite' | 'dark' | 'osm' | 'offline';
+  basemap: 'satellite' | 'offline' | 'topo' | 'dark' | 'osm';
   vietnamOnly: boolean;
+  showMapDownloadModal: boolean;
 
   // Visualization Toggles
   showAllDomes: boolean;
@@ -34,11 +35,16 @@ interface TacticalState {
   targetHeightMeters: number; // Độ cao mục tiêu H_mt (m)
   showBlindZones: boolean; // Hiển thị vùng mù (Đỏ)
   showConeOfSilence: boolean; // Hiển thị nón mù đỉnh đầu
-  azimuthStepDeg: number; // Bước góc lấy mẫu (độ)
+  azimuthStepDeg: number; // Bước góc lấy mẫu phương vị (độ)
+  elevationStepDeg: number; // Bước góc lấy mẫu góc tà (độ)
   kFactor: number; // Hệ số khúc xạ 4/3
   coverageResults: Record<string, import('../types/radarCoverage').RadarCoverageResult>;
+  coverageFields: Record<string, import('../types/radarCoverage').RadarCoverageField>;
+  coverageFieldCache: Record<string, import('../types/radarCoverage').RadarCoverageField>;
   isCalculatingLOS: boolean;
   showRadarFieldModal: boolean;
+  showCrossSection: boolean; // Bật/tắt bảng Mặt cắt ngang 2D
+  selectedAzimuthDeg: number; // Góc phương vị đang khảo sát mặt cắt ngang (0-359)
 
   // Actions
   addEquipment: (instance: EquipmentInstance) => void;
@@ -52,7 +58,8 @@ interface TacticalState {
 
   setTerrainEnabled: (enabled: boolean) => void;
   setTerrainExaggeration: (exaggeration: number) => void;
-  setBasemap: (basemap: 'satellite' | 'dark' | 'osm' | 'offline') => void;
+  setBasemap: (basemap: 'satellite' | 'offline' | 'topo' | 'dark' | 'osm') => void;
+  setShowMapDownloadModal: (show: boolean) => void;
   setVietnamOnly: (vietnamOnly: boolean) => void;
   toggleVietnamOnly: () => void;
 
@@ -65,10 +72,15 @@ interface TacticalState {
   toggleBlindZones: () => void;
   toggleConeOfSilence: () => void;
   setAzimuthStepDeg: (step: number) => void;
+  setElevationStepDeg: (step: number) => void;
   setKFactor: (k: number) => void;
   setCoverageResult: (instanceId: string, result: import('../types/radarCoverage').RadarCoverageResult) => void;
+  setCoverageField: (instanceId: string, field: import('../types/radarCoverage').RadarCoverageField) => void;
   setIsCalculatingLOS: (calculating: boolean) => void;
   setShowRadarFieldModal: (show: boolean) => void;
+  setShowCrossSection: (show: boolean) => void;
+  toggleCrossSection: () => void;
+  setSelectedAzimuthDeg: (azimuthDeg: number) => void;
   clearCoverageResults: () => void;
 
   addMeasurePoint: (point: { lat: number; lon: number; height: number }) => void;
@@ -95,6 +107,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   terrainExaggeration: 1.8,
   basemap: 'satellite',
   vietnamOnly: true,
+  showMapDownloadModal: false,
 
   showAllDomes: true,
   showCommandLinks: true,
@@ -104,12 +117,19 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   flyToTarget: PRESET_LOCATIONS[0], // Bắt đầu tại Tam Đảo (địa hình núi 3D)
 
   addEquipment: (instance) =>
-    set((state) => ({
-      instances: [...state.instances, instance],
-      selectedInstanceId: instance.instanceId,
-      activeTool: 'select',
-      pendingTemplate: null,
-    })),
+    set((state) => {
+      const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === instance.templateId);
+      const instanceWithProfile: EquipmentInstance = {
+        ...instance,
+        coverageProfile: instance.coverageProfile || tmpl?.coverageProfile,
+      };
+      return {
+        instances: [...state.instances, instanceWithProfile],
+        selectedInstanceId: instance.instanceId,
+        activeTool: 'select',
+        pendingTemplate: null,
+      };
+    }),
 
   updateEquipment: (instanceId, updates) =>
     set((state) => ({
@@ -151,6 +171,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   setTerrainEnabled: (enabled) => set({ terrainEnabled: enabled }),
   setTerrainExaggeration: (exaggeration) => set({ terrainExaggeration: exaggeration }),
   setBasemap: (basemap) => set({ basemap }),
+  setShowMapDownloadModal: (showMapDownloadModal) => set({ showMapDownloadModal }),
   setVietnamOnly: (vietnamOnly) => set({ vietnamOnly }),
   toggleVietnamOnly: () => set((state) => ({ vietnamOnly: !state.vietnamOnly })),
 
@@ -163,11 +184,16 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   targetHeightMeters: 300, // Độ cao mục tiêu khảo sát mặc định 300m
   showBlindZones: true, // Mặc định hiển thị vùng mù (màu Đỏ)
   showConeOfSilence: true,
-  azimuthStepDeg: 4, // 4 độ để quét 90 tia rất nhanh và mượt mà
+  azimuthStepDeg: 5, // 5 độ quét 72 hướng cực nhanh và mượt mà
+  elevationStepDeg: 3, // Bước góc tà 3 độ
   kFactor: 4 / 3, // Hệ số khúc xạ khí quyển chuẩn 4/3
   coverageResults: {},
+  coverageFields: {},
+  coverageFieldCache: {},
   isCalculatingLOS: false,
   showRadarFieldModal: false,
+  showCrossSection: false,
+  selectedAzimuthDeg: 45,
 
   setTargetHeightMeters: (heightMeters) =>
     set({ targetHeightMeters: Math.max(10, heightMeters) }),
@@ -177,14 +203,43 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     set((state) => ({ showConeOfSilence: !state.showConeOfSilence })),
   setAzimuthStepDeg: (step) =>
     set({ azimuthStepDeg: Math.max(1, Math.min(15, step)) }),
+  setElevationStepDeg: (step) =>
+    set({ elevationStepDeg: Math.max(1, Math.min(10, step)) }),
   setKFactor: (k) => set({ kFactor: Math.max(1.0, Math.min(2.0, k)) }),
   setCoverageResult: (instanceId, result) =>
-    set((state) => ({
-      coverageResults: { ...state.coverageResults, [instanceId]: result },
-    })),
-  setIsCalculatingLOS: (calculating) => set({ isCalculatingLOS: calculating }),
+    set((state) => {
+      if (state.coverageResults[instanceId] === result) {
+        return state;
+      }
+      return {
+        coverageResults: { ...state.coverageResults, [instanceId]: result },
+      };
+    }),
+  setCoverageField: (instanceId, field) =>
+    set((state) => {
+      if (
+        state.coverageFields[instanceId]?.cacheKey === field.cacheKey &&
+        state.coverageFieldCache[field.cacheKey] === field
+      ) {
+        return state;
+      }
+      return {
+        coverageFields: { ...state.coverageFields, [instanceId]: field },
+        coverageFieldCache: { ...state.coverageFieldCache, [field.cacheKey]: field },
+      };
+    }),
+  setIsCalculatingLOS: (calculating) =>
+    set((state) =>
+      state.isCalculatingLOS === calculating ? state : { isCalculatingLOS: calculating }
+    ),
   setShowRadarFieldModal: (show) => set({ showRadarFieldModal: show }),
-  clearCoverageResults: () => set({ coverageResults: {} }),
+  setShowCrossSection: (show) => set({ showCrossSection: show }),
+  toggleCrossSection: () =>
+    set((state) => ({ showCrossSection: !state.showCrossSection })),
+  setSelectedAzimuthDeg: (azimuthDeg) =>
+    set({ selectedAzimuthDeg: ((azimuthDeg % 360) + 360) % 360 }),
+  clearCoverageResults: () =>
+    set({ coverageResults: {}, coverageFields: {} }),
 
   addMeasurePoint: (point) =>
     set((state) => ({ measurePoints: [...state.measurePoints, point] })),
@@ -229,6 +284,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         color: template.symbolColor,
         showDome: true,
         showSweep: true,
+        coverageProfile: template.coverageProfile,
       };
     });
 
@@ -291,6 +347,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         color: '#eab308',
         showDome: true,
         showSweep: false,
+        coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'c2_command_post')?.coverageProfile,
       },
       {
         instanceId: 'eq_radar_tamdao',
@@ -301,16 +358,17 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         longitude: 105.645,
         altitude: 950,
         antennaHeightAGL: 25,
-        rangeKm: 320,
+        rangeKm: 300,
         scanSpeed: 36,
         minElevationDeg: 0.5,
-        maxElevationDeg: 35,
-        coverageHeightKm: 32,
+        maxElevationDeg: 30,
+        coverageHeightKm: 30,
         status: 'Active',
         commandedByInstanceId: c2Id,
         color: '#06b6d4',
         showDome: true,
         showSweep: true,
+        coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'radar_36d6')?.coverageProfile,
       },
       {
         instanceId: 'eq_radar_fansipan',
@@ -331,6 +389,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         color: '#8b5cf6',
         showDome: true,
         showSweep: false,
+        coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'radar_kolchuga')?.coverageProfile,
       },
       {
         instanceId: 'eq_radar_haiphong',
@@ -341,16 +400,17 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         longitude: 106.78,
         altitude: 60,
         antennaHeightAGL: 18,
-        rangeKm: 260,
+        rangeKm: 250,
         scanSpeed: 24,
         minElevationDeg: 0,
-        maxElevationDeg: 30,
+        maxElevationDeg: 25,
         coverageHeightKm: 25,
         status: 'Active',
         commandedByInstanceId: c2Id,
         color: '#0ea5e9',
         showDome: true,
         showSweep: true,
+        coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'radar_p18')?.coverageProfile,
       },
       {
         instanceId: 'eq_sam_s300_hanoi',
@@ -371,6 +431,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         color: '#ef4444',
         showDome: true,
         showSweep: false,
+        coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_s300')?.coverageProfile,
       },
       {
         instanceId: 'eq_sam_spyder_haiphong',
@@ -391,6 +452,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         color: '#f97316',
         showDome: true,
         showSweep: false,
+        coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_spyder')?.coverageProfile,
       },
     ];
 

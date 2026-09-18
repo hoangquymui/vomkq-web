@@ -1,3 +1,5 @@
+import type { CoverageProfile } from './radarCoverage';
+
 export type EquipmentCategory =
   | 'RadarCanhGioi'
   | 'TenLuaPhongKhong'
@@ -22,6 +24,7 @@ export interface EquipmentTemplate {
   symbolColor: string;
   iconName: string;
   wavelengthM?: number; // Bước sóng của đài (m): sóng mét ~2m, sóng cm ~0.05m
+  coverageProfile?: CoverageProfile;
 }
 
 export interface EquipmentInstance {
@@ -45,6 +48,7 @@ export interface EquipmentInstance {
   showSweep: boolean;
   currentSweepHeading?: number; // deg
   wavelengthM?: number;
+  coverageProfile?: CoverageProfile;
 }
 
 export interface PresetLocation {

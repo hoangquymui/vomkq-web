@@ -2,18 +2,22 @@ import * as Cesium from 'cesium';
 import type { EquipmentInstance } from '../types/equipment';
 import type {
   RadarCalculationParams,
+  RadarCoverageField,
   RadarCoverageResult,
+  RayCoverageData,
+  RayCoverageSample,
   RayProfile,
   RaySamplePoint,
 } from '../types/radarCoverage';
 import {
   calculateConeOfSilenceRadiusKm,
   calculateEarthBulgeMeters,
-  calculateObstacleMaskingAngleRad,
   calculateRadarHorizonDistanceKm,
   DEFAULT_K_FACTOR,
   EARTH_RADIUS_METERS,
+  getProfileMaxRange,
 } from './radarMath';
+import { EQUIPMENT_TEMPLATES } from '../data/equipmentTemplates';
 
 /**
  * Tính toạ độ đích (lat, lon) từ điểm gốc, khoảng cách (m) và góc phương vị (độ)
@@ -45,66 +49,109 @@ export function destinationPoint(
 }
 
 /**
- * Thuật toán Bắn tia Ray-Casting & Tính toán Vùng Che Khuất Radar (LOS)
- * Cắt lát qua địa hình thực tế 3D của Cesium
+ * Tạo khóa cache cho Coverage Field dựa trên thông số khí tài & tham số khảo sát
  */
-export async function computeRadarCoverage(
+export function generateCoverageCacheKey(
+  instance: EquipmentInstance,
+  params: RadarCalculationParams
+): string {
+  const profile =
+    instance.coverageProfile ||
+    EQUIPMENT_TEMPLATES.find((t) => t.id === instance.templateId)?.coverageProfile;
+  const profileVer = profile?.points.map((p) => `${p.elevationDeg}:${p.maxRangeKm}`).join(',') || 'def';
+  const azStep = params.azimuthStepDeg || 5;
+  const elevStep = params.elevationStepDeg || 3;
+  const radStep = params.radialStepMeters || 3000;
+  const k = params.kFactor || DEFAULT_K_FACTOR;
+  const targetH = params.targetHeightMeters || 300;
+  const blind = params.showBlindZones ? 1 : 0;
+
+  return `${instance.instanceId}_${instance.latitude.toFixed(4)}_${instance.longitude.toFixed(4)}_${instance.altitude}_${instance.antennaHeightAGL}_${profileVer}_${azStep}_${elevStep}_${radStep}_${k.toFixed(3)}_H${targetH}_B${blind}`;
+}
+
+/**
+ * ĐỘNG CƠ TÍNH TOÁN COVERAGE FIELD 3D (SINGLE SOURCE OF TRUTH)
+ * Quét không gian theo Azimuth × Elevation, kiểm tra cự ly theo Coverage Profile,
+ * phân tích Line-of-Sight (LOS) cắt qua địa hình thực tế của Cesium.
+ */
+export async function computeRadarCoverageField(
   instance: EquipmentInstance,
   terrainProvider: Cesium.TerrainProvider | null,
   params: RadarCalculationParams
-): Promise<RadarCoverageResult> {
+): Promise<RadarCoverageField> {
   const {
-    targetHeightMeters = 300,
-    azimuthStepDeg = 4,
-    radialStepMeters = 2500,
+    azimuthStepDeg = 5,
+    elevationStepDeg = 3,
+    radialStepMeters = 3000,
     kFactor = DEFAULT_K_FACTOR,
+    targetHeightMeters = 300,
   } = params;
 
-  const maxRangeM = instance.rangeKm * 1000;
   const radarLat = instance.latitude;
   const radarLon = instance.longitude;
   const radarGroundAlt = instance.altitude || 0;
   const antennaHeight = instance.antennaHeightAGL || 15;
   const radarCenterAltM = radarGroundAlt + antennaHeight;
 
-  const minElevRad = (instance.minElevationDeg * Math.PI) / 180;
-  const maxElevRad = (instance.maxElevationDeg * Math.PI) / 180;
+  // Lấy Coverage Profile của khí tài
+  const profile =
+    instance.coverageProfile ||
+    EQUIPMENT_TEMPLATES.find((t) => t.id === instance.templateId)?.coverageProfile;
 
-  // 1. Tạo danh sách các điểm lấy mẫu không gian trên tất cả các tia
+  const minElevDeg = profile ? profile.minElevationDeg : instance.minElevationDeg;
+  const maxElevDeg = profile ? profile.maxElevationDeg : instance.maxElevationDeg;
+
+  // 1. Tạo danh sách góc phương vị (Azimuth)
   const azimuths: number[] = [];
   for (let az = 0; az < 360; az += azimuthStepDeg) {
     azimuths.push(az);
   }
 
-  // Tạo số lượng bước cự ly r_i
-  const sampleDistances: number[] = [];
-  const minSampleDist = Math.max(1000, radialStepMeters);
-  for (let d = minSampleDist; d <= maxRangeM; d += radialStepMeters) {
-    sampleDistances.push(d);
+  // 2. Tạo danh sách góc tà (Elevation)
+  const elevations: number[] = [];
+  for (let el = minElevDeg; el <= maxElevDeg; el += elevationStepDeg) {
+    elevations.push(Number(el.toFixed(1)));
   }
-  if (sampleDistances[sampleDistances.length - 1] !== maxRangeM) {
-    sampleDistances.push(maxRangeM);
+  if (elevations.length === 0 || elevations[elevations.length - 1] < maxElevDeg) {
+    elevations.push(maxElevDeg);
   }
 
-  // Tạo mảng Cartographic để lấy mẫu độ cao địa hình hàng loạt
-  interface GridPoint {
-    azIndex: number;
-    distIndex: number;
-    distanceM: number;
+  // 3. Tìm cự ly xa nhất trên toàn bộ profile để xác định tầm quét địa hình
+  let globalMaxRangeKm = 0;
+  elevations.forEach((el) => {
+    const rKm = getProfileMaxRange(profile, el, instance.rangeKm);
+    if (rKm > globalMaxRangeKm) globalMaxRangeKm = rKm;
+  });
+  if (globalMaxRangeKm <= 0) globalMaxRangeKm = instance.rangeKm || 100;
+  const globalMaxRangeM = globalMaxRangeKm * 1000;
+
+  // 4. Tạo các bước cự ly lấy mẫu địa hình dọc theo mặt đất
+  const sampleDistances: number[] = [];
+  const minSampleDist = Math.max(800, radialStepMeters);
+  for (let d = minSampleDist; d <= globalMaxRangeM; d += radialStepMeters) {
+    sampleDistances.push(d);
+  }
+  if (sampleDistances[sampleDistances.length - 1] !== globalMaxRangeM) {
+    sampleDistances.push(globalMaxRangeM);
+  }
+
+  // 5. Chuẩn bị mảng Cartographic để lấy mẫu độ cao địa hình từ Cesium
+  interface GroundPointMeta {
+    az: number;
+    dist: number;
     lat: number;
     lon: number;
   }
 
-  const allPoints: GridPoint[] = [];
+  const groundPoints: GroundPointMeta[] = [];
   const cartographics: Cesium.Cartographic[] = [];
 
-  azimuths.forEach((az, azIdx) => {
-    sampleDistances.forEach((dist, distIdx) => {
+  azimuths.forEach((az) => {
+    sampleDistances.forEach((dist) => {
       const dest = destinationPoint(radarLat, radarLon, dist, az);
-      allPoints.push({
-        azIndex: azIdx,
-        distIndex: distIdx,
-        distanceM: dist,
+      groundPoints.push({
+        az,
+        dist,
         lat: dest.lat,
         lon: dest.lon,
       });
@@ -112,124 +159,238 @@ export async function computeRadarCoverage(
     });
   });
 
-  // 2. Lấy mẫu độ cao địa hình từ Cesium TerrainProvider
+  // 6. Lấy mẫu độ cao địa hình bất đồng bộ từ Cesium TerrainProvider
   let sampledHeights: number[] = new Array(cartographics.length).fill(0);
+  let terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error' = 'flat_fallback';
+
   if (terrainProvider) {
     try {
-      // Lấy mẫu địa hình chi tiết nhất (bất đồng bộ)
       const sampled = await Cesium.sampleTerrainMostDetailed(
         terrainProvider,
         cartographics
       );
       sampledHeights = sampled.map((c) => (c.height !== undefined ? Math.max(0, c.height) : 0));
+      terrainStatus = 'loaded';
     } catch {
-      // Fallback nếu terrain offline chưa tải kịp tile
       sampledHeights = cartographics.map(() => 0);
+      terrainStatus = 'sampling_error';
     }
   }
 
-  // 3. Phân tích quang tuyến Line-of-Sight (LOS) từng hướng phương vị
-  const profiles: RayProfile[] = [];
-  let blockedRaysCount = 0;
+  // Bản đồ tra cứu nhanh độ cao mặt đất: map[azimuth][distance]
+  const terrainHeightMap = new Map<string, { lat: number; lon: number; alt: number }>();
+  for (let i = 0; i < groundPoints.length; i++) {
+    const gp = groundPoints[i];
+    terrainHeightMap.set(`${gp.az}_${gp.dist}`, {
+      lat: gp.lat,
+      lon: gp.lon,
+      alt: sampledHeights[i] || 0,
+    });
+  }
 
-  let pointCursor = 0;
+  // 7. Xây dựng từng Ray trong không gian 3D (Azimuth × Elevation)
+  const allRays: RayCoverageData[] = [];
+  const azimuthRays: Record<number, RayCoverageData[]> = {};
+
+  let occludedRaysCount = 0;
+  let minHeightFound = radarCenterAltM;
+  let maxHeightFound = radarCenterAltM;
 
   azimuths.forEach((az) => {
-    let maxMaskingAngle = minElevRad;
-    let mainMaskingDistance = 0;
-    const raySamples: RaySamplePoint[] = [];
+    azimuthRays[az] = [];
 
-    sampleDistances.forEach((dist) => {
-      const terrainAlt = sampledHeights[pointCursor] || 0;
-      const pointMeta = allPoints[pointCursor];
-      pointCursor++;
+    elevations.forEach((el) => {
+      // A. Xác định giới hạn tối đa của ray theo Coverage Profile
+      const rayMaxRangeKm = getProfileMaxRange(profile, el, instance.rangeKm);
+      const rayMaxRangeM = rayMaxRangeKm * 1000;
 
-      // Tính góc tà che khuất từ điểm đài radar đến đỉnh chướng ngại vật tại cự ly này
-      const currentMaskingAngle = calculateObstacleMaskingAngleRad(
-        radarCenterAltM,
-        terrainAlt,
-        dist,
-        kFactor
-      );
-
-      if (currentMaskingAngle > maxMaskingAngle) {
-        maxMaskingAngle = currentMaskingAngle;
-        mainMaskingDistance = dist;
+      if (rayMaxRangeM <= 0) {
+        // Góc không được phép phủ sóng -> Không tạo vùng Visible
+        const emptyRay: RayCoverageData = {
+          azimuthDeg: az,
+          elevationDeg: el,
+          maxRangeM: 0,
+          visibleEndM: 0,
+          shadowStartM: null,
+          hasOcclusion: false,
+          occlusionPoint: null,
+          samples: [],
+        };
+        allRays.push(emptyRay);
+        azimuthRays[az].push(emptyRay);
+        return;
       }
 
-      // Kiểm tra mục tiêu bay ở độ cao targetHeightMeters tại cự ly dist có bị che khuất không
-      const hz = calculateEarthBulgeMeters(dist, kFactor);
-      const targetElevAngle = Math.atan2(
-        targetHeightMeters - radarCenterAltM + hz,
-        dist
-      );
+      // B. Duyệt dọc theo ray để tính LOS với địa hình
+      const elRad = (el * Math.PI) / 180;
+      const raySamples: RayCoverageSample[] = [];
 
-      // Điểm bị che khuất nếu góc nâng mục tiêu nhỏ hơn góc chắn địa hình cao nhất phía trước
-      // hoặc nằm ngoài giới hạn cánh sóng đài radar
-      const isBlocked =
-        targetElevAngle < maxMaskingAngle ||
-        targetElevAngle < minElevRad ||
-        targetElevAngle > maxElevRad;
+      let firstOcclusionDist: number | null = null;
+      let occlusionPoint: RayCoverageData['occlusionPoint'] = null;
 
-      // Độ cao tia sóng phát xạ theo mép góc tà min hoặc góc che khuất
-      const effElev = Math.max(minElevRad, maxMaskingAngle);
-      const rayAlt = radarCenterAltM + dist * Math.tan(effElev) - hz;
+      // Lọc các cự ly nằm trong giới hạn rayMaxRangeM
+      const distancesForRay = sampleDistances.filter((d) => d <= rayMaxRangeM);
+      if (distancesForRay.length === 0 || distancesForRay[distancesForRay.length - 1] < rayMaxRangeM) {
+        distancesForRay.push(rayMaxRangeM);
+      }
 
-      raySamples.push({
-        distanceM: dist,
-        lat: pointMeta.lat,
-        lon: pointMeta.lon,
-        terrainAltM: Math.round(terrainAlt),
-        rayAltM: Math.round(rayAlt),
-        isBlocked,
-      });
-    });
+      for (const dist of distancesForRay) {
+        // Lấy toạ độ và độ cao địa hình
+        let groundMeta = terrainHeightMap.get(`${az}_${dist}`);
+        if (!groundMeta) {
+          const dest = destinationPoint(radarLat, radarLon, dist, az);
+          groundMeta = { lat: dest.lat, lon: dest.lon, alt: 0 };
+        }
 
-    if (maxMaskingAngle > minElevRad + 0.005) {
-      // Có góc chắn núi đáng kể (> ~0.3°)
-      blockedRaysCount++;
-    }
+        // Tính độ cao của tia sóng có xét độ cong Trái Đất và khúc xạ
+        const hz = calculateEarthBulgeMeters(dist, kFactor);
+        const rayAlt = radarCenterAltM + dist * Math.tan(elRad) - hz;
 
-    profiles.push({
-      azimuthDeg: az,
-      maskingAngleRad: maxMaskingAngle,
-      maskingDistanceM: mainMaskingDistance,
-      samples: raySamples,
-      maxRangeM,
+        if (rayAlt < minHeightFound) minHeightFound = rayAlt;
+        if (rayAlt > maxHeightFound) maxHeightFound = rayAlt;
+
+        // So sánh đường ray với bề mặt địa hình
+        const isBlockedByTerrain = groundMeta.alt >= rayAlt;
+
+        if (isBlockedByTerrain && firstOcclusionDist === null) {
+          firstOcclusionDist = dist;
+          occlusionPoint = {
+            distanceM: dist,
+            lat: groundMeta.lat,
+            lon: groundMeta.lon,
+            terrainAltM: Math.round(groundMeta.alt),
+          };
+        }
+
+        const isCurrentlyInShadow = firstOcclusionDist !== null && dist >= firstOcclusionDist;
+
+        raySamples.push({
+          distanceM: dist,
+          lat: groundMeta.lat,
+          lon: groundMeta.lon,
+          rayAltM: Math.round(rayAlt),
+          terrainAltM: Math.round(groundMeta.alt),
+          isVisible: !isCurrentlyInShadow,
+          isShadow: isCurrentlyInShadow,
+        });
+      }
+
+      const hasOcclusion = firstOcclusionDist !== null;
+      if (hasOcclusion) occludedRaysCount++;
+
+      const visibleEndM = hasOcclusion ? firstOcclusionDist! : rayMaxRangeM;
+      const shadowStartM = hasOcclusion ? firstOcclusionDist! : null;
+
+      const rayData: RayCoverageData = {
+        azimuthDeg: az,
+        elevationDeg: el,
+        maxRangeM: rayMaxRangeM,
+        visibleEndM,
+        shadowStartM,
+        hasOcclusion,
+        occlusionPoint,
+        samples: raySamples,
+      };
+
+      allRays.push(rayData);
+      azimuthRays[az].push(rayData);
     });
   });
 
-  // 4. Tính toán các chỉ số kỹ chiến thuật
+  // 8. Đóng gói kết quả Coverage Field hoàn chỉnh (Single Source of Truth)
   const coneRadiusKm = calculateConeOfSilenceRadiusKm(
     targetHeightMeters,
     instance.maxElevationDeg
   );
-
   const horizonKm = calculateRadarHorizonDistanceKm(
     antennaHeight,
     targetHeightMeters
   );
 
   const coverageRatio =
-    azimuths.length > 0
-      ? Math.round(((azimuths.length - blockedRaysCount) / azimuths.length) * 100)
+    allRays.length > 0
+      ? Math.round(((allRays.length - occludedRaysCount) / allRays.length) * 100)
       : 100;
+
+  const cacheKey = generateCoverageCacheKey(instance, params);
 
   return {
     instanceId: instance.instanceId,
     radarName: instance.name,
     calculatedAt: Date.now(),
+    cacheKey,
     radarLat,
     radarLon,
     radarAltM: Math.round(radarCenterAltM),
     antennaHeightAGL: antennaHeight,
-    maxRangeKm: instance.rangeKm,
-    targetHeightM: targetHeightMeters,
+    profileId: profile?.id || 'default_profile',
+    minElevationDeg: minElevDeg,
+    maxElevationDeg: maxElevDeg,
+    maxRangeKm: globalMaxRangeKm,
+    minHeightM: Math.round(minHeightFound),
+    maxHeightM: Math.round(maxHeightFound),
+    targetHeightM: Math.round(targetHeightMeters),
+    terrainStatus,
+    rays: allRays,
+    azimuthRays,
+    totalRays: allRays.length,
+    occludedRaysCount,
+    coverageRatioPercent: coverageRatio,
     coneOfSilenceRadiusKm: Number(coneRadiusKm.toFixed(2)),
     radarHorizonKm: Number(horizonKm.toFixed(1)),
-    profiles,
-    totalRays: azimuths.length,
-    blockedRaysCount,
-    coverageRatioPercent: coverageRatio,
   };
 }
+
+/**
+ * Hàm tương thích ngược computeRadarCoverage chuyển đổi từ CoverageField
+ */
+export async function computeRadarCoverage(
+  instance: EquipmentInstance,
+  terrainProvider: Cesium.TerrainProvider | null,
+  params: RadarCalculationParams
+): Promise<RadarCoverageResult> {
+  const field = await computeRadarCoverageField(instance, terrainProvider, params);
+
+  const profiles: RayProfile[] = [];
+  const azimuths = Object.keys(field.azimuthRays).map(Number).sort((a, b) => a - b);
+
+  azimuths.forEach((az) => {
+    const raysAtAz = field.azimuthRays[az] || [];
+    const minElevRay = raysAtAz[0];
+    const raySamples: RaySamplePoint[] = (minElevRay?.samples || []).map((s) => ({
+      distanceM: s.distanceM,
+      lat: s.lat,
+      lon: s.lon,
+      terrainAltM: s.terrainAltM,
+      rayAltM: s.rayAltM,
+      isBlocked: s.isShadow,
+    }));
+
+    profiles.push({
+      azimuthDeg: az,
+      maskingAngleRad: minElevRay?.hasOcclusion ? 0.06 : 0,
+      maskingDistanceM: minElevRay?.occlusionPoint?.distanceM || 0,
+      samples: raySamples,
+      maxRangeM: (minElevRay?.maxRangeM || instance.rangeKm * 1000),
+    });
+  });
+
+  return {
+    instanceId: instance.instanceId,
+    radarName: instance.name,
+    calculatedAt: field.calculatedAt,
+    radarLat: field.radarLat,
+    radarLon: field.radarLon,
+    radarAltM: field.radarAltM,
+    antennaHeightAGL: field.antennaHeightAGL,
+    maxRangeKm: field.maxRangeKm,
+    targetHeightM: params.targetHeightMeters || 300,
+    coneOfSilenceRadiusKm: field.coneOfSilenceRadiusKm,
+    radarHorizonKm: field.radarHorizonKm,
+    profiles,
+    totalRays: field.totalRays,
+    blockedRaysCount: field.occludedRaysCount,
+    coverageRatioPercent: field.coverageRatioPercent,
+  };
+}
+
