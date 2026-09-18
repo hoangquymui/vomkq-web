@@ -21,7 +21,7 @@
     "format": "Quantized Mesh 1.0 (uncompressed binary)",
     "localPath": "/offline-terrain"
   },
-  "lastUpdated": "2026-09-18T08:32:33.949Z",
+  "lastUpdated": "2026-09-18T09:06:29.397Z",
   "highResRegions": [
     {
       "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
@@ -87,6 +87,46 @@
       "zoomLevels": "8-13",
       "downloadedAt": "2026-09-18T03:02:11.024Z",
       "tileCount": 1304
+    },
+    {
+      "name": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
+      "zoomLevel": 8,
+      "downloadedAt": "2026-09-18T09:04:58.847Z",
+      "totalTiles": 105,
+      "downloadedCount": 101,
+      "skippedCount": 4,
+      "notFoundCount": 0,
+      "localPath": "/offline-terrain/8/{x}/{y}.terrain"
+    },
+    {
+      "name": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
+      "zoomLevel": 9,
+      "downloadedAt": "2026-09-18T09:05:01.551Z",
+      "totalTiles": 392,
+      "downloadedCount": 383,
+      "skippedCount": 9,
+      "notFoundCount": 0,
+      "localPath": "/offline-terrain/9/{x}/{y}.terrain"
+    },
+    {
+      "name": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
+      "zoomLevel": 10,
+      "downloadedAt": "2026-09-18T09:05:14.401Z",
+      "totalTiles": 1430,
+      "downloadedCount": 1405,
+      "skippedCount": 25,
+      "notFoundCount": 0,
+      "localPath": "/offline-terrain/10/{x}/{y}.terrain"
+    },
+    {
+      "name": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
+      "zoomLevel": 11,
+      "downloadedAt": "2026-09-18T09:06:29.397Z",
+      "totalTiles": 5668,
+      "downloadedCount": 5587,
+      "skippedCount": 81,
+      "notFoundCount": 0,
+      "localPath": "/offline-terrain/11/{x}/{y}.terrain"
     }
   ],
   "topo": [

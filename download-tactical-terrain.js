@@ -100,6 +100,9 @@ function fetchBuffer(url, headers = {}, timeoutMs = 15000) {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         return fetchBuffer(res.headers.location, headers, timeoutMs).then(resolve, reject);
       }
+      if (res.statusCode === 404) {
+        return reject(new Error('HTTP 404'));
+      }
       if (res.statusCode !== 200) {
         return reject(new Error(`HTTP ${res.statusCode}`));
       }
@@ -154,15 +157,23 @@ function getTerrainTilesForBounds(bounds, minZoom, maxZoom) {
   return tiles;
 }
 
-// Tải song song theo batch
-async function downloadTerrainBatch(tiles, terrainBaseUrl, terrainToken, concurrency = 10) {
+// Tải song song theo batch cho một danh sách mảnh gạch
+async function downloadTerrainBatch(tiles, terrainBaseUrl, terrainToken, concurrency = 20) {
   let completed = 0;
   let downloadedCount = 0;
   let skippedCount = 0;
+  let notFoundCount = 0;
   let failedCount = 0;
 
   const total = tiles.length;
-  console.log(`🏔️ Bắt đầu tải ${total} mảnh địa hình 3D Quantized-Mesh (Đồng thời: ${concurrency})...\n`);
+  console.log(`🏔️ Đang xử lý ${total} mảnh địa hình (Luồng đồng thời: ${concurrency})...`);
+
+  function reportProgress() {
+    const percent = ((completed / total) * 100).toFixed(1);
+    process.stdout.write(
+      `   ⏳ [${completed}/${total} - ${percent}%] | Mới: ${downloadedCount} | Có sẵn: ${skippedCount} | Biển/404: ${notFoundCount} | Lỗi: ${failedCount}\r`
+    );
+  }
 
   async function worker() {
     while (tiles.length > 0) {
@@ -174,18 +185,22 @@ async function downloadTerrainBatch(tiles, terrainBaseUrl, terrainToken, concurr
       fs.mkdirSync(outDir, { recursive: true });
       const outFile = path.join(outDir, `${y}.terrain`);
 
-      // Kiểm tra file có sẵn và có dung lượng đủ lớn (đã có vector pháp tuyến normals)
-      if (fs.existsSync(outFile) && fs.statSync(outFile).size > 15000) {
+      // ⭐ KIỂM TRA BỎ QUA NẾU ĐÃ TẢI RỒI (kích thước hợp lệ > 200 bytes)
+      if (fs.existsSync(outFile) && fs.statSync(outFile).size > 200) {
         completed++;
         skippedCount++;
+        if (completed % 40 === 0 || completed === total) {
+          reportProgress();
+        }
         continue;
       }
 
       const tileUrl = `${terrainBaseUrl}${z}/${x}/${y}.terrain?v=1.2.0&access_token=${terrainToken}`;
       let success = false;
+      let is404 = false;
       let retries = 2;
 
-      while (retries > 0 && !success) {
+      while (retries > 0 && !success && !is404) {
         try {
           const res = await fetchBuffer(tileUrl, {
             Accept:
@@ -205,22 +220,25 @@ async function downloadTerrainBatch(tiles, terrainBaseUrl, terrainToken, concurr
           fs.writeFileSync(outFile, tileBuf);
           downloadedCount++;
           success = true;
-        } catch {
+        } catch (err) {
+          if (err.message && err.message.includes('404')) {
+            // Không có mảnh gạch (vùng biển sâu hoặc quá LOD) -> Không retry vô nghĩa
+            is404 = true;
+            notFoundCount++;
+            break;
+          }
           retries--;
-          if (retries > 0) await new Promise((r) => setTimeout(r, 400));
+          if (retries > 0) await new Promise((r) => setTimeout(r, 300));
         }
       }
 
-      if (!success) {
+      if (!success && !is404) {
         failedCount++;
       }
 
       completed++;
-      if (completed % 15 === 0 || completed === total) {
-        const percent = ((completed / total) * 100).toFixed(1);
-        process.stdout.write(
-          `   ⏳ Tiến trình: ${completed}/${total} (${percent}%) | Mới: ${downloadedCount} | Có sẵn: ${skippedCount} | Lỗi: ${failedCount}\r`
-        );
+      if (completed % 25 === 0 || completed === total) {
+        reportProgress();
       }
     }
   }
@@ -228,25 +246,59 @@ async function downloadTerrainBatch(tiles, terrainBaseUrl, terrainToken, concurr
   const workers = Array.from({ length: concurrency }, () => worker());
   await Promise.all(workers);
 
-  console.log(`\n\n✅ Hoàn tất tải Địa hình 3D!`);
-  console.log(`   - Tổng số mảnh: ${total}`);
-  console.log(`   - Đã tải mới: ${downloadedCount} mảnh`);
-  console.log(`   - Đã có sẵn: ${skippedCount} mảnh`);
-  console.log(`   - Thất bại: ${failedCount} mảnh`);
+  reportProgress();
+  console.log(`\n   ✓ Kết quả: ${downloadedCount} mới, ${skippedCount} có sẵn, ${notFoundCount} biển/404, ${failedCount} lỗi.`);
 
-  return { total, downloadedCount, skippedCount, failedCount };
+  return { total, downloadedCount, skippedCount, notFoundCount, failedCount };
+}
+
+// Lưu thông tin gói sau mỗi tầng zoom
+function savePackInfo(regionConfig, currentZoom, stats) {
+  let info = {};
+  if (fs.existsSync(INFO_FILE)) {
+    try {
+      info = JSON.parse(fs.readFileSync(INFO_FILE, 'utf8'));
+    } catch {
+      info = {};
+    }
+  }
+
+  info.lastUpdated = new Date().toISOString();
+  info.highResTerrain = info.highResTerrain || [];
+
+  const existingIdx = info.highResTerrain.findIndex(
+    (h) => h.name === regionConfig.name && h.zoomLevel === currentZoom
+  );
+  const entry = {
+    name: regionConfig.name,
+    zoomLevel: currentZoom,
+    downloadedAt: new Date().toISOString(),
+    totalTiles: stats.total,
+    downloadedCount: stats.downloadedCount,
+    skippedCount: stats.skippedCount,
+    notFoundCount: stats.notFoundCount,
+    localPath: `/offline-terrain/${currentZoom}/{x}/{y}.terrain`,
+  };
+
+  if (existingIdx >= 0) {
+    info.highResTerrain[existingIdx] = entry;
+  } else {
+    info.highResTerrain.push(entry);
+  }
+
+  fs.writeFileSync(INFO_FILE, JSON.stringify(info, null, 2), 'utf8');
 }
 
 function parseArgs() {
   const args = process.argv.slice(2);
   const options = {
-    region: 'tamdao',
+    region: 'mientrung',
     lat: null,
     lon: null,
     radiusKm: null,
     minZoom: null,
     maxZoom: null,
-    concurrency: 10,
+    concurrency: 20,
   };
 
   for (const arg of args) {
@@ -273,6 +325,7 @@ function parseArgs() {
 async function main() {
   console.log('=====================================================================');
   console.log('🏔️ BỘ TẢI ĐỊA HÌNH 3D NÉT CAO (CESIUM WORLD TERRAIN) NGOẠI TUYẾN');
+  console.log('   Chuẩn Quantized-Mesh + OctVertexNormals (Bóng đổ sườn núi 100%)');
   console.log('=====================================================================\n');
 
   const options = parseArgs();
@@ -285,10 +338,10 @@ async function main() {
       lon: options.lon,
       radiusKm: options.radiusKm || 35,
       minZoom: options.minZoom || 8,
-      maxZoom: options.maxZoom || 12,
+      maxZoom: options.maxZoom || 13,
     };
   } else {
-    regionConfig = PRESET_REGIONS[options.region] || PRESET_REGIONS.tamdao;
+    regionConfig = PRESET_REGIONS[options.region] || PRESET_REGIONS.mientrung;
     if (options.minZoom !== null) regionConfig.minZoom = options.minZoom;
     if (options.maxZoom !== null) regionConfig.maxZoom = options.maxZoom;
     if (options.radiusKm !== null) regionConfig.radiusKm = options.radiusKm;
@@ -296,12 +349,15 @@ async function main() {
 
   console.log(`📍 Khu vực mục tiêu: ${regionConfig.name}`);
   if (regionConfig.bounds) {
-    console.log(`🌐 Khung toạ độ: Lat [${regionConfig.bounds.minLat}, ${regionConfig.bounds.maxLat}], Lon [${regionConfig.bounds.minLon}, ${regionConfig.bounds.maxLon}]`);
+    console.log(
+      `🌐 Khung toạ độ: Lat [${regionConfig.bounds.minLat}, ${regionConfig.bounds.maxLat}], Lon [${regionConfig.bounds.minLon}, ${regionConfig.bounds.maxLon}]`
+    );
   } else {
     console.log(`🌐 Toạ độ tâm: Lat ${regionConfig.lat}, Lon ${regionConfig.lon}`);
     console.log(`📏 Bán kính bao phủ: ${regionConfig.radiusKm} km`);
   }
   console.log(`🔍 Mức Zoom: Level ${regionConfig.minZoom} -> Level ${regionConfig.maxZoom}`);
+  console.log(`⚡ Luồng tải song song: ${options.concurrency}`);
 
   // 1. Kết nối Cesium Ion lấy endpoint
   console.log(`\n🔑 Đang kết nối Cesium Ion Asset 1 (Cesium World Terrain)...`);
@@ -324,11 +380,9 @@ async function main() {
 
   layerConfig.tiles = ['{z}/{x}/{y}.terrain'];
   layerConfig.minzoom = 0;
-  // Đặt maxzoom theo mức tải cao nhất (tối thiểu 13 - độ nét cực hạn)
   layerConfig.maxzoom = Math.max(13, regionConfig.maxZoom);
   layerConfig.extensions = ['octvertexnormals', 'watermask', 'metadata'];
 
-  // Cắt mảng available đúng bằng maxzoom + 1
   if (Array.isArray(layerConfig.available)) {
     layerConfig.available = layerConfig.available.slice(0, layerConfig.maxzoom + 1);
   }
@@ -341,40 +395,46 @@ async function main() {
   );
   console.log(`   ✓ Đã cập nhật public/offline-terrain/layer.json (maxzoom: ${layerConfig.maxzoom})`);
 
-  // 3. Lập danh sách tile terrain và tải
+  // 3. Lập danh sách tile terrain và tải tuần tự theo từng tầng Zoom (Level-by-Level)
   const bounds = regionConfig.bounds
     ? regionConfig.bounds
     : getBoundsFromCenter(regionConfig.lat, regionConfig.lon, regionConfig.radiusKm);
-  const tiles = getTerrainTilesForBounds(bounds, regionConfig.minZoom, regionConfig.maxZoom);
-  console.log(`📦 Dự kiến tải: ${tiles.length} mảnh địa hình 3D\n`);
 
-  const result = await downloadTerrainBatch(tiles, terrainBaseUrl, terrainToken, options.concurrency);
+  console.log(`\n📦 Bắt đầu tiến trình tải địa hình 3D tuần tự từ Zoom ${regionConfig.minZoom} đến ${regionConfig.maxZoom}...`);
 
-  // 4. Cập nhật offline-pack-info.json
-  let info = {};
-  if (fs.existsSync(INFO_FILE)) {
-    try {
-      info = JSON.parse(fs.readFileSync(INFO_FILE, 'utf8'));
-    } catch {
-      info = {};
-    }
+  let grandTotal = 0;
+  let grandDownloaded = 0;
+  let grandSkipped = 0;
+  let grandNotFound = 0;
+  let grandFailed = 0;
+
+  for (let z = regionConfig.minZoom; z <= regionConfig.maxZoom; z++) {
+    const levelTiles = getTerrainTilesForBounds(bounds, z, z);
+    console.log(`\n=====================================================================`);
+    console.log(`⛰️  ĐANG TẢI ZOOM LEVEL ${z} (Tổng: ${levelTiles.length} mảnh gạch)`);
+    console.log(`=====================================================================`);
+
+    const result = await downloadTerrainBatch(levelTiles, terrainBaseUrl, terrainToken, options.concurrency);
+
+    grandTotal += result.total;
+    grandDownloaded += result.downloadedCount;
+    grandSkipped += result.skippedCount;
+    grandNotFound += result.notFoundCount;
+    grandFailed += result.failedCount;
+
+    savePackInfo(regionConfig, z, result);
   }
 
-  info.lastUpdated = new Date().toISOString();
-  info.highResTerrain = info.highResTerrain || [];
-  info.highResTerrain.push({
-    name: regionConfig.name,
-    lat: regionConfig.lat,
-    lon: regionConfig.lon,
-    radiusKm: regionConfig.radiusKm,
-    zoomLevels: `${regionConfig.minZoom}-${regionConfig.maxZoom}`,
-    downloadedAt: new Date().toISOString(),
-    tileCount: result.total - result.failedCount,
-  });
-
-  fs.writeFileSync(INFO_FILE, JSON.stringify(info, null, 2), 'utf8');
-  console.log(`💾 Đã cập nhật thông tin dữ liệu tại public/offline-pack-info.json`);
-  console.log('🚀 Địa hình 3D lồi lõm cực nét (như online) đã sẵn sàng hoạt động ngoại tuyến!');
+  console.log(`\n=====================================================================`);
+  console.log(`🎉 HOÀN TẤT TẤT CẢ CÁC TẦNG ZOOM CHO ${regionConfig.name.toUpperCase()}!`);
+  console.log(`=====================================================================`);
+  console.log(`   - Tổng số mảnh xử lý: ${grandTotal}`);
+  console.log(`   - Mảnh gạch mới tải: ${grandDownloaded}`);
+  console.log(`   - Mảnh gạch có sẵn (đã bỏ qua): ${grandSkipped}`);
+  console.log(`   - Mảnh biển sâu / không có LOD: ${grandNotFound}`);
+  console.log(`   - Mảnh lỗi kết nối: ${grandFailed}`);
+  console.log(`💾 Thông tin đã lưu tại public/offline-pack-info.json`);
+  console.log(`🚀 Địa hình 3D lồi lõm cực nét (như online) đã sẵn sàng hoạt động ngoại tuyến!`);
 }
 
 main().catch(console.error);
