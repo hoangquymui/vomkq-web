@@ -21,7 +21,7 @@
     "format": "Quantized Mesh 1.0 (uncompressed binary)",
     "localPath": "/offline-terrain"
   },
-  "lastUpdated": "2026-09-18T09:06:29.397Z",
+  "lastUpdated": "2026-09-18T09:11:55.277Z",
   "highResRegions": [
     {
       "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
@@ -127,6 +127,16 @@
       "skippedCount": 81,
       "notFoundCount": 0,
       "localPath": "/offline-terrain/11/{x}/{y}.terrain"
+    },
+    {
+      "name": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
+      "zoomLevel": 12,
+      "downloadedAt": "2026-09-18T09:11:55.277Z",
+      "totalTiles": 22454,
+      "downloadedCount": 20036,
+      "skippedCount": 306,
+      "notFoundCount": 2112,
+      "localPath": "/offline-terrain/12/{x}/{y}.terrain"
     }
   ],
   "topo": [
