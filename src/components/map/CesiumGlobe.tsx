@@ -12,6 +12,13 @@ import {
 import {
   buildRadarCoverageFieldEntities,
 } from '../../utils/radarGeometryBuilder';
+import {
+  computeSpxRadarCoverage,
+  generateSpxCacheKey,
+} from '../../utils/spxCoverageEngine';
+import {
+  buildSpxCoverageEntities,
+} from '../../utils/spxGeometryBuilder';
 
 // Access token cấu hình từ dự án VomKQ (CesiumIonServer)
 Cesium.Ion.defaultAccessToken =
@@ -60,6 +67,41 @@ function createImageryProvider(basemap: 'satellite' | 'offline' | 'topo' | 'dark
   }
 }
 
+/**
+ * Lấy toạ độ Cartesian an toàn tuyệt đối từ vị trí nhấp chuột trên màn hình,
+ * kiểm tra chặt chẽ không bao giờ trả về Cartesian có toạ độ NaN
+ * (tương thích hoàn hảo cả SCENE2D, SCENE3D và Depth Testing)
+ */
+function pickGroundCartesian(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): Cesium.Cartesian3 | undefined {
+  const isValid = (c: Cesium.Cartesian3 | undefined | null): c is Cesium.Cartesian3 => {
+    return Boolean(
+      c &&
+      typeof c.x === 'number' && typeof c.y === 'number' && typeof c.z === 'number' &&
+      !isNaN(c.x) && !isNaN(c.y) && !isNaN(c.z) &&
+      isFinite(c.x) && isFinite(c.y) && isFinite(c.z)
+    );
+  };
+
+  // 1. Thử pickPosition nếu depthTest đang bật
+  if (viewer.scene.globe.depthTestAgainstTerrain) {
+    const picked = viewer.scene.pickPosition(screenPos);
+    if (isValid(picked)) return picked;
+  }
+
+  // 2. Thử globe.pick(ray)
+  const ray = viewer.camera.getPickRay(screenPos);
+  if (ray) {
+    const picked = viewer.scene.globe.pick(ray, viewer.scene);
+    if (isValid(picked)) return picked;
+  }
+
+  // 3. Fallback chuẩn xác nhất cho chế độ 2D và viền mép địa cầu: camera.pickEllipsoid
+  const pickedEllipsoid = viewer.camera.pickEllipsoid(screenPos, viewer.scene.globe.ellipsoid);
+  if (isValid(pickedEllipsoid)) return pickedEllipsoid;
+
+  return undefined;
+}
+
 export const CesiumGlobe: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
@@ -82,6 +124,8 @@ export const CesiumGlobe: React.FC = () => {
     flyToTarget,
     selectEquipment,
     addEquipment,
+    updateEquipment,
+    setActiveTool,
     addMeasurePoint,
     clearFlyTo,
     targetHeightMeters,
@@ -97,6 +141,17 @@ export const CesiumGlobe: React.FC = () => {
     setIsCalculatingLOS,
     showCrossSection,
     selectedAzimuthDeg,
+    showSpxPanel,
+    spxConfig,
+    spxResults,
+    setSpxResult,
+    isCalculatingSpx,
+    setIsCalculatingSpx,
+    showCoverageLayer,
+    showRangeRingsLayer,
+    showLabelsLayer,
+    showMarkersLayer,
+    categoryFilter,
   } = useTacticalStore();
 
   // 1. Khởi tạo Cesium Viewer
@@ -179,6 +234,17 @@ export const CesiumGlobe: React.FC = () => {
 
     viewer.scene.verticalExaggeration = terrainExaggeration;
 
+    // Đảm bảo terrainProvider offline được nạp (tránh tạo mới lặp lại nhiều lần)
+    if (viewer.terrainProvider instanceof Cesium.EllipsoidTerrainProvider) {
+      Cesium.CesiumTerrainProvider.fromUrl('./offline-terrain')
+        .then((provider) => {
+          if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+            viewerRef.current.terrainProvider = provider;
+          }
+        })
+        .catch((err) => console.warn('Lỗi nạp địa hình offline 3D:', err));
+    }
+
     if (viewMode === '2D') {
       if (viewer.scene.mode !== Cesium.SceneMode.SCENE2D) {
         viewer.scene.morphTo2D(1.0);
@@ -189,13 +255,6 @@ export const CesiumGlobe: React.FC = () => {
         viewer.scene.morphTo3D(1.0);
       }
       viewer.scene.globe.depthTestAgainstTerrain = true;
-      Cesium.CesiumTerrainProvider.fromUrl('./offline-terrain')
-        .then((provider) => {
-          if (viewerRef.current && !viewerRef.current.isDestroyed()) {
-            viewerRef.current.scene.terrainProvider = provider;
-          }
-        })
-        .catch((err) => console.warn('Lỗi nạp địa hình offline 3D:', err));
     }
   }, [viewMode, terrainExaggeration]);
 
@@ -279,10 +338,22 @@ export const CesiumGlobe: React.FC = () => {
   // 5. Xử lý Fly-To khu vực: Zoom vừa phải (ít thôi), giữ bao quát
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer || !flyToTarget) return;
+    if (
+      !viewer ||
+      !flyToTarget ||
+      typeof flyToTarget.longitude !== 'number' ||
+      typeof flyToTarget.latitude !== 'number' ||
+      isNaN(flyToTarget.longitude) ||
+      isNaN(flyToTarget.latitude) ||
+      !isFinite(flyToTarget.longitude) ||
+      !isFinite(flyToTarget.latitude)
+    ) {
+      return;
+    }
 
     // Giữ độ cao tối thiểu 85.000m để có tầm nhìn bao quát toàn bộ vòm radar và núi non
-    const safeHeight = Math.max(85000, flyToTarget.height);
+    const rawHeight = typeof flyToTarget.height === 'number' && !isNaN(flyToTarget.height) ? flyToTarget.height : 95000;
+    const safeHeight = Math.max(85000, rawHeight);
 
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(
@@ -310,36 +381,39 @@ export const CesiumGlobe: React.FC = () => {
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
     handler.setInputAction((movement: { position: Cesium.Cartesian2 }) => {
-      let cartesian: Cesium.Cartesian3 | undefined;
-      if (viewer.scene.globe.depthTestAgainstTerrain) {
-        cartesian = viewer.scene.pickPosition(movement.position);
-      }
-      if (!cartesian) {
-        const ray = viewer.camera.getPickRay(movement.position);
-        if (ray) {
-          cartesian = viewer.scene.globe.pick(ray, viewer.scene);
-        }
-      }
+      const cartesian = pickGroundCartesian(viewer, movement.position);
 
       // A. Chế độ đo khoảng cách
       if (activeTool === 'measure') {
         if (cartesian) {
           const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
-          addMeasurePoint({
-            lat: Cesium.Math.toDegrees(cartographic.latitude),
-            lon: Cesium.Math.toDegrees(cartographic.longitude),
-            height: Math.max(0, cartographic.height),
-          });
+          if (cartographic && !isNaN(cartographic.latitude) && !isNaN(cartographic.longitude)) {
+            const h = cartographic.height !== undefined && !isNaN(cartographic.height) && isFinite(cartographic.height)
+              ? Math.max(0, cartographic.height)
+              : 0;
+            addMeasurePoint({
+              lat: Cesium.Math.toDegrees(cartographic.latitude),
+              lon: Cesium.Math.toDegrees(cartographic.longitude),
+              height: h,
+            });
+          }
         }
         return;
       }
 
       // B. Chế độ đặt khí tài mới
-      if (activeTool === 'place' && pendingTemplate && cartesian) {
+      if (activeTool === 'place' && pendingTemplate) {
+        if (!cartesian) return;
         const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
-        const lat = Cesium.Math.toDegrees(cartographic.latitude);
-        const lon = Cesium.Math.toDegrees(cartographic.longitude);
-        const groundHeight = Math.max(0, Math.round(cartographic.height));
+        if (!cartographic || isNaN(cartographic.latitude) || isNaN(cartographic.longitude)) return;
+
+        const rawLat = Cesium.Math.toDegrees(cartographic.latitude);
+        const rawLon = Cesium.Math.toDegrees(cartographic.longitude);
+        if (isNaN(rawLat) || isNaN(rawLon) || !isFinite(rawLat) || !isFinite(rawLon)) return;
+
+        const groundHeight = cartographic.height !== undefined && !isNaN(cartographic.height) && isFinite(cartographic.height)
+          ? Math.max(0, Math.round(cartographic.height))
+          : 0;
 
         const newId = `eq_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
         addEquipment({
@@ -347,21 +421,44 @@ export const CesiumGlobe: React.FC = () => {
           templateId: pendingTemplate.id,
           name: `${pendingTemplate.name} #${instances.length + 1}`,
           category: pendingTemplate.category,
-          latitude: Number(lat.toFixed(5)),
-          longitude: Number(lon.toFixed(5)),
+          latitude: Number(rawLat.toFixed(5)),
+          longitude: Number(rawLon.toFixed(5)),
           altitude: groundHeight,
-          antennaHeightAGL: pendingTemplate.antennaHeightAGL,
-          rangeKm: pendingTemplate.defaultRangeKm,
-          scanSpeed: pendingTemplate.defaultScanSpeed,
-          minElevationDeg: pendingTemplate.minElevationDeg,
-          maxElevationDeg: pendingTemplate.maxElevationDeg,
-          coverageHeightKm: pendingTemplate.coverageHeightKm,
+          antennaHeightAGL: pendingTemplate.antennaHeightAGL || 15,
+          rangeKm: pendingTemplate.defaultRangeKm || 50,
+          scanSpeed: pendingTemplate.defaultScanSpeed || 0,
+          minElevationDeg: pendingTemplate.minElevationDeg !== undefined ? pendingTemplate.minElevationDeg : -10,
+          maxElevationDeg: pendingTemplate.maxElevationDeg !== undefined ? pendingTemplate.maxElevationDeg : 40,
+          coverageHeightKm: pendingTemplate.coverageHeightKm || 25,
           status: 'Active',
           commandedByInstanceId: null,
-          color: pendingTemplate.symbolColor,
+          color: pendingTemplate.symbolColor || '#38bdf8',
           showDome: true,
-          showSweep: pendingTemplate.defaultScanSpeed > 0,
+          showSweep: (pendingTemplate.defaultScanSpeed || 0) > 0,
         });
+        return;
+      }
+
+      // B2. Chế độ di chuyển khí tài đã chọn sang vị trí mới (Move / Reposition Tool)
+      if (activeTool === 'move' && selectedInstanceId) {
+        if (!cartesian) return;
+        const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+        if (!cartographic || isNaN(cartographic.latitude) || isNaN(cartographic.longitude)) return;
+
+        const rawLat = Cesium.Math.toDegrees(cartographic.latitude);
+        const rawLon = Cesium.Math.toDegrees(cartographic.longitude);
+        if (isNaN(rawLat) || isNaN(rawLon) || !isFinite(rawLat) || !isFinite(rawLon)) return;
+
+        const groundHeight = cartographic.height !== undefined && !isNaN(cartographic.height) && isFinite(cartographic.height)
+          ? Math.max(0, Math.round(cartographic.height))
+          : 0;
+
+        updateEquipment(selectedInstanceId, {
+          latitude: Number(rawLat.toFixed(5)),
+          longitude: Number(rawLon.toFixed(5)),
+          altitude: groundHeight,
+        });
+        setActiveTool('select');
         return;
       }
 
@@ -375,8 +472,16 @@ export const CesiumGlobe: React.FC = () => {
 
           // Nhấp vào điểm đặt: Không phóng to quá gần (ít thôi!), giữ tầm nhìn bao quát ~95km
           const inst = instances.find((i) => i.instanceId === instId);
-          if (inst) {
-            const currentH = viewer.camera.positionCartographic.height;
+          if (
+            inst &&
+            typeof inst.longitude === 'number' &&
+            typeof inst.latitude === 'number' &&
+            !isNaN(inst.longitude) &&
+            !isNaN(inst.latitude) &&
+            isFinite(inst.longitude) &&
+            isFinite(inst.latitude)
+          ) {
+            const currentH = viewer.camera.positionCartographic?.height ?? 95000;
             const targetH = Math.max(90000, Math.min(currentH, 140000));
             viewer.camera.flyTo({
               destination: Cesium.Cartesian3.fromDegrees(
@@ -404,12 +509,22 @@ export const CesiumGlobe: React.FC = () => {
     return () => {
       handler.destroy();
     };
-  }, [activeTool, pendingTemplate, instances, addEquipment, addMeasurePoint, selectEquipment]);
+  }, [
+    activeTool,
+    pendingTemplate,
+    instances,
+    addEquipment,
+    updateEquipment,
+    setActiveTool,
+    selectedInstanceId,
+    addMeasurePoint,
+    selectEquipment,
+  ]);
 
-  // 5b. Tính toán Quang tuyến LOS & Coverage Field cho tất cả các đài radar
+  // 5b. Tính toán Quang tuyến LOS & Coverage Field cho tất cả các đài radar (Chỉ chạy ở chế độ 3D)
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer || instances.length === 0) return;
+    if (!viewer || instances.length === 0 || viewMode === '2D') return;
 
     let isCancelled = false;
 
@@ -504,6 +619,7 @@ export const CesiumGlobe: React.FC = () => {
     };
   }, [
     instances,
+    viewMode,
     targetHeightMeters,
     azimuthStepDeg,
     elevationStepDeg,
@@ -512,6 +628,74 @@ export const CesiumGlobe: React.FC = () => {
     setCoverageField,
     setCoverageResult,
     setIsCalculatingLOS,
+  ]);
+
+  // 5c. Tính toán SPx Radar Coverage (Vùng Phủ 2D Cambridge Pixel)
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || instances.length === 0) return;
+
+    // Chỉ tính toán khi ở chế độ 2D hoặc khi đang mở Panel SPx
+    if (viewMode !== '2D' && !showSpxPanel) return;
+
+    let isCancelled = false;
+
+    const calcSpxAll = async () => {
+      // Tìm các đài có tầm quét
+      const candidateRadars = instances.filter((i) => i.rangeKm > 0);
+      if (candidateRadars.length === 0) return;
+
+      const state = useTacticalStore.getState();
+      const currentResults = state.spxResults;
+
+      for (const inst of candidateRadars) {
+        if (isCancelled) break;
+        const instConfig = {
+          ...spxConfig,
+          radarHeightAGL: inst.antennaHeightAGL || spxConfig.radarHeightAGL,
+          endRangeM: inst.rangeKm ? inst.rangeKm * 1000 : spxConfig.endRangeM,
+          minElevationDeg: inst.minElevationDeg !== undefined ? inst.minElevationDeg : spxConfig.minElevationDeg,
+          maxElevationDeg: inst.maxElevationDeg !== undefined ? inst.maxElevationDeg : spxConfig.maxElevationDeg,
+          ...(inst.spxConfig || {}),
+        };
+        const cacheKey = generateSpxCacheKey(inst, instConfig);
+        if (currentResults[inst.instanceId]?.cacheKey === cacheKey) {
+          continue;
+        }
+
+        setIsCalculatingSpx(true);
+        try {
+          const res = await computeSpxRadarCoverage(
+            inst,
+            viewer.scene.terrainProvider,
+            instConfig
+          );
+          if (!isCancelled) {
+            setSpxResult(inst.instanceId, res);
+          }
+        } catch (err) {
+          console.error('Lỗi tính toán SPx Coverage cho đài:', inst.name, err);
+        }
+      }
+
+      if (!isCancelled) {
+        setIsCalculatingSpx(false);
+      }
+    };
+
+    calcSpxAll();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    viewMode,
+    showSpxPanel,
+    selectedInstanceId,
+    instances,
+    spxConfig,
+    setSpxResult,
+    setIsCalculatingSpx,
   ]);
 
   // 6. Render Entities trên bề mặt địa hình lồi lõm
@@ -523,64 +707,168 @@ export const CesiumGlobe: React.FC = () => {
 
     const instanceMap = new Map(instances.map((i) => [i.instanceId, i]));
 
+    const hasAnySelected = Boolean(selectedInstanceId && instances.some((i) => i.instanceId === selectedInstanceId));
+
+    // Lọc khí tài theo bộ lọc chuyên mục tác chiến
+    const visibleInstances = instances.filter((inst) => {
+      if (categoryFilter === 'All') return true;
+      return inst.category === categoryFilter;
+    });
+
     // A. Render các khí tài
-    instances.forEach((inst) => {
+    visibleInstances.forEach((inst) => {
+      // Bỏ qua khí tài nếu toạ độ không phải là số hợp lệ
+      if (
+        typeof inst.latitude !== 'number' || typeof inst.longitude !== 'number' ||
+        isNaN(inst.latitude) || isNaN(inst.longitude) ||
+        !isFinite(inst.latitude) || !isFinite(inst.longitude)
+      ) {
+        return;
+      }
+
+      const safeAlt = typeof inst.altitude === 'number' && !isNaN(inst.altitude) && isFinite(inst.altitude)
+        ? Math.max(0, inst.altitude)
+        : 0;
+      const safeAntennaAGL = typeof inst.antennaHeightAGL === 'number' && !isNaN(inst.antennaHeightAGL) && isFinite(inst.antennaHeightAGL)
+        ? Math.max(1, inst.antennaHeightAGL)
+        : 15;
+      const safeRangeKm = typeof inst.rangeKm === 'number' && !isNaN(inst.rangeKm) && isFinite(inst.rangeKm) && inst.rangeKm > 0
+        ? inst.rangeKm
+        : 50;
+
       const isSelected = selectedInstanceId === inst.instanceId;
 
       const position = Cesium.Cartesian3.fromDegrees(
         inst.longitude,
         inst.latitude,
-        inst.antennaHeightAGL || 15
+        safeAntennaAGL
       );
 
-      const baseColor = Cesium.Color.fromCssColorString(inst.color);
+      const baseColor = Cesium.Color.fromCssColorString(inst.color || '#38bdf8');
       const highlightColor = Cesium.Color.WHITE;
 
-      // 1. Marker & Label bám địa hình thực
-      viewer.entities.add({
-        position: position,
-        properties: { instanceId: inst.instanceId },
-        point: {
-          pixelSize: isSelected ? 16 : 11,
-          color: isSelected ? highlightColor : baseColor,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        label: {
-          text: `${inst.name} [${inst.altitude}m]`,
-          font: isSelected ? 'bold 13px Inter, sans-serif' : '11px Inter, sans-serif',
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          fillColor: isSelected ? Cesium.Color.YELLOW : Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 3,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -18),
-          heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-      });
+      const spxRes = spxResults[inst.instanceId];
+      const isSpxActive = (viewMode === '2D' || showSpxPanel) && !!spxRes;
 
-      // 2. Vòng chân vòm 2D ôm theo nếp lồi lõm của sườn núi
-      if (inst.rangeKm > 0) {
-        viewer.entities.add({
-          position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
-          ellipse: {
-            semiMajorAxis: inst.rangeKm * 1000,
-            semiMinorAxis: inst.rangeKm * 1000,
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-            classificationType: Cesium.ClassificationType.TERRAIN,
-            material: baseColor.withAlpha(isSelected ? 0.15 : 0.06),
-            outline: true,
-            outlineColor: baseColor.withAlpha(isSelected ? 0.9 : 0.4),
-            outlineWidth: isSelected ? 2 : 1,
-          },
-        });
+      // 1. Marker & Label bám địa hình thực (hoặc toạ độ phẳng trong 2D) khi không có SPx
+      if (!isSpxActive) {
+        const isPendingCalc = isCalculatingSpx && !spxRes;
+        const shortPrefix = inst.shortId ? `[${inst.shortId}] ` : '';
+        const displayName = `${shortPrefix}${inst.name}`;
+
+        let statusColor = Cesium.Color.fromCssColorString('#06b6d4');
+        if (inst.status === 'Active') {
+          statusColor = Cesium.Color.fromCssColorString('#10b981');
+        } else if (inst.status === 'Standby') {
+          statusColor = Cesium.Color.fromCssColorString('#f59e0b');
+        } else if (inst.status === 'Maintenance') {
+          statusColor = Cesium.Color.fromCssColorString('#f97316');
+        } else if (inst.status === 'Offline') {
+          statusColor = Cesium.Color.fromCssColorString('#f43f5e');
+        }
+
+        const pointConfig = showMarkersLayer
+          ? {
+              pixelSize: isSelected ? 14 : 10,
+              color: isSelected ? highlightColor : baseColor,
+              outlineColor: statusColor,
+              outlineWidth: isSelected ? 3.5 : 2,
+              heightReference: viewMode === '2D' ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            }
+          : undefined;
+
+        const labelConfig = showLabelsLayer
+          ? {
+              text: isPendingCalc ? `${displayName} [Đang quét SPx...]` : `${displayName} [${safeAlt}m]`,
+              font: isSelected ? 'bold 12px "JetBrains Mono", sans-serif' : '11px "JetBrains Mono", sans-serif',
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              fillColor: isPendingCalc ? Cesium.Color.CYAN : (isSelected ? Cesium.Color.YELLOW : Cesium.Color.WHITE),
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 3,
+              showBackground: true,
+              backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.85),
+              backgroundPadding: new Cesium.Cartesian2(6, 4),
+              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+              pixelOffset: new Cesium.Cartesian2(0, -18),
+              heightReference: viewMode === '2D' ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            }
+          : undefined;
+
+        if (pointConfig || labelConfig) {
+          viewer.entities.add({
+            position: position,
+            properties: { instanceId: inst.instanceId },
+            point: pointConfig,
+            label: labelConfig,
+          });
+        }
       }
 
-      // 3. Vòm Radar 3D Dựng Trực Tiếp Từ Coverage Field (Single Source of Truth)
-      if (showAllDomes && inst.showDome && inst.rangeKm > 0) {
+      // 2. Vòng chân vòm / Vòng định hướng 2D (chỉ vẽ khi SPx không kích hoạt và được bật)
+      if (!isSpxActive && safeRangeKm > 0 && showRangeRingsLayer) {
+        if (viewMode === '2D') {
+          // CHẾ ĐỘ 2D: Vẽ vòng ellipse phẳng 2D nhẹ nhàng, TUYỆT ĐỐI KHÔNG dùng CLAMP_TO_GROUND / TERRAIN
+          // để tránh lỗi DeveloperError: cartesian has a NaN component trong SCENE2D
+          viewer.entities.add({
+            position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+            properties: { instanceId: inst.instanceId },
+            ellipse: {
+              semiMajorAxis: safeRangeKm * 1000,
+              semiMinorAxis: safeRangeKm * 1000,
+              height: 0,
+              material: baseColor.withAlpha(isSelected ? 0.15 : 0.06),
+              outline: true,
+              outlineColor: baseColor.withAlpha(isSelected ? 0.8 : 0.4),
+              outlineWidth: isSelected ? 2 : 1,
+            },
+          });
+        } else {
+          // CHẾ ĐỘ 3D: Vòng chân vòm ôm theo nếp lồi lõm sườn núi
+          viewer.entities.add({
+            position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+            properties: { instanceId: inst.instanceId },
+            ellipse: {
+              semiMajorAxis: safeRangeKm * 1000,
+              semiMinorAxis: safeRangeKm * 1000,
+              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+              classificationType: Cesium.ClassificationType.TERRAIN,
+              material: baseColor.withAlpha(isSelected ? 0.15 : 0.06),
+              outline: true,
+              outlineColor: baseColor.withAlpha(isSelected ? 0.9 : 0.4),
+              outlineWidth: isSelected ? 2 : 1,
+            },
+          });
+        }
+      }
+
+      // 3. Vùng Phủ SPx 2D Cambridge Pixel HOẶC Vòm Radar 3D Dựng Từ Coverage Field
+      if (isSpxActive) {
+        const instConfig = {
+          ...spxConfig,
+          radarHeightAGL: safeAntennaAGL,
+          endRangeM: safeRangeKm * 1000,
+          minElevationDeg: inst.minElevationDeg !== undefined ? inst.minElevationDeg : spxConfig.minElevationDeg,
+          maxElevationDeg: inst.maxElevationDeg !== undefined ? inst.maxElevationDeg : spxConfig.maxElevationDeg,
+          ...(inst.spxConfig || {}),
+        };
+        // Render vùng phủ đa tầng màu SPx + vòng cự ly đồng tâm + tâm đài kỹ thuật với đầy đủ tuỳ chọn lớp và Focus/Dimming
+        const spxEntities = buildSpxCoverageEntities(spxRes, instConfig, inst.name, {
+          isSelected,
+          hasAnySelected,
+          showCoverage: showCoverageLayer,
+          showRangeRings: showRangeRingsLayer,
+          showLabels: showLabelsLayer,
+          showMarkers: showMarkersLayer,
+          shortId: inst.shortId,
+          status: inst.status,
+        });
+        spxEntities.forEach((e) => {
+          e.properties = new Cesium.PropertyBag({ instanceId: inst.instanceId });
+          viewer.entities.add(e);
+        });
+      } else if (viewMode === '3D' && showAllDomes && inst.showDome && safeRangeKm > 0 && showCoverageLayer) {
         const field = coverageFields[inst.instanceId];
         if (field && field.rays && field.rays.length > 0) {
           const { visibleEntities, blindEntities, coneOfSilenceEntities } =
@@ -601,14 +889,14 @@ export const CesiumGlobe: React.FC = () => {
           }
         } else {
           // Fallback bán cầu 3D mờ trong khi đang nạp dữ liệu quang tuyến
-          const radiusMeters = inst.rangeKm * 1000;
-          const heightMeters = Math.min(radiusMeters, inst.coverageHeightKm * 1000);
+          const radiusMeters = safeRangeKm * 1000;
+          const heightMeters = Math.min(radiusMeters, ((inst.coverageHeightKm || 25) * 1000));
 
           viewer.entities.add({
             position: Cesium.Cartesian3.fromDegrees(
               inst.longitude,
               inst.latitude,
-              inst.altitude
+              safeAlt
             ),
             ellipsoid: {
               radii: new Cesium.Cartesian3(radiusMeters, radiusMeters, heightMeters),
@@ -623,36 +911,38 @@ export const CesiumGlobe: React.FC = () => {
       }
 
       // 4. Tia định hướng Mặt Cắt Ngang 2D trên quả địa cầu 3D
-      if (showCrossSection && isSelected && inst.rangeKm > 0) {
+      if (showCrossSection && isSelected && safeRangeKm > 0) {
         const dest = destinationPoint(
           inst.latitude,
           inst.longitude,
-          inst.rangeKm * 1000,
+          safeRangeKm * 1000,
           selectedAzimuthDeg
         );
-        viewer.entities.add({
-          name: `Tia định hướng Mặt Cắt ${selectedAzimuthDeg}°`,
-          polyline: {
-            positions: [
-              Cesium.Cartesian3.fromDegrees(
-                inst.longitude,
-                inst.latitude,
-                inst.altitude + inst.antennaHeightAGL + 10
-              ),
-              Cesium.Cartesian3.fromDegrees(
-                dest.lon,
-                dest.lat,
-                inst.altitude + 500
-              ),
-            ],
-            width: 3,
-            material: new Cesium.PolylineGlowMaterialProperty({
-              color: Cesium.Color.YELLOW,
-              glowPower: 0.35,
-            }),
-            clampToGround: true,
-          },
-        });
+        if (!isNaN(dest.lat) && !isNaN(dest.lon) && isFinite(dest.lat) && isFinite(dest.lon)) {
+          viewer.entities.add({
+            name: `Tia định hướng Mặt Cắt ${selectedAzimuthDeg}°`,
+            polyline: {
+              positions: [
+                Cesium.Cartesian3.fromDegrees(
+                  inst.longitude,
+                  inst.latitude,
+                  safeAlt + safeAntennaAGL + 10
+                ),
+                Cesium.Cartesian3.fromDegrees(
+                  dest.lon,
+                  dest.lat,
+                  safeAlt + 500
+                ),
+              ],
+              width: 3,
+              material: new Cesium.PolylineGlowMaterialProperty({
+                color: Cesium.Color.YELLOW,
+                glowPower: 0.35,
+              }),
+              clampToGround: true,
+            },
+          });
+        }
       }
     });
 
@@ -661,16 +951,27 @@ export const CesiumGlobe: React.FC = () => {
       instances.forEach((sub) => {
         if (sub.commandedByInstanceId) {
           const parent = instanceMap.get(sub.commandedByInstanceId);
-          if (parent) {
+          if (
+            parent &&
+            typeof parent.latitude === 'number' && !isNaN(parent.latitude) && isFinite(parent.latitude) &&
+            typeof parent.longitude === 'number' && !isNaN(parent.longitude) && isFinite(parent.longitude) &&
+            typeof sub.latitude === 'number' && !isNaN(sub.latitude) && isFinite(sub.latitude) &&
+            typeof sub.longitude === 'number' && !isNaN(sub.longitude) && isFinite(sub.longitude)
+          ) {
+            const parentAlt = typeof parent.altitude === 'number' && !isNaN(parent.altitude) && isFinite(parent.altitude) ? parent.altitude : 0;
+            const parentAGL = typeof parent.antennaHeightAGL === 'number' && !isNaN(parent.antennaHeightAGL) && isFinite(parent.antennaHeightAGL) ? parent.antennaHeightAGL : 15;
+            const subAlt = typeof sub.altitude === 'number' && !isNaN(sub.altitude) && isFinite(sub.altitude) ? sub.altitude : 0;
+            const subAGL = typeof sub.antennaHeightAGL === 'number' && !isNaN(sub.antennaHeightAGL) && isFinite(sub.antennaHeightAGL) ? sub.antennaHeightAGL : 15;
+
             const parentPos = Cesium.Cartesian3.fromDegrees(
               parent.longitude,
               parent.latitude,
-              parent.altitude + parent.antennaHeightAGL + 60
+              parentAlt + parentAGL + 60
             );
             const subPos = Cesium.Cartesian3.fromDegrees(
               sub.longitude,
               sub.latitude,
-              sub.altitude + sub.antennaHeightAGL + 30
+              subAlt + subAGL + 30
             );
 
             viewer.entities.add({
@@ -678,9 +979,8 @@ export const CesiumGlobe: React.FC = () => {
                 positions: [parentPos, subPos],
                 width: 3,
                 material: new Cesium.PolylineGlowMaterialProperty({
-                  glowPower: 0.2,
-                  taperPower: 0.5,
-                  color: Cesium.Color.fromCssColorString('#eab308'),
+                  color: Cesium.Color.fromCssColorString('#06b6d4'),
+                  glowPower: 0.25,
                 }),
               },
             });
@@ -690,8 +990,19 @@ export const CesiumGlobe: React.FC = () => {
     }
 
     // C. Render công cụ đo khoảng cách
-    if (measurePoints.length > 0) {
-      measurePoints.forEach((p, idx) => {
+    const validMeasurePoints = measurePoints.filter(
+      (p) =>
+        typeof p.lon === 'number' &&
+        typeof p.lat === 'number' &&
+        !isNaN(p.lon) &&
+        !isNaN(p.lat) &&
+        isFinite(p.lon) &&
+        isFinite(p.lat)
+    );
+
+    if (validMeasurePoints.length > 0) {
+      validMeasurePoints.forEach((p, idx) => {
+        const safeH = typeof p.height === 'number' && !isNaN(p.height) && isFinite(p.height) ? p.height : 0;
         viewer.entities.add({
           position: Cesium.Cartesian3.fromDegrees(p.lon, p.lat, 0),
           point: {
@@ -703,7 +1014,7 @@ export const CesiumGlobe: React.FC = () => {
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
           label: {
-            text: `Mốc ${idx + 1} (${Math.round(p.height)}m)`,
+            text: `Mốc ${idx + 1} (${Math.round(safeH)}m)`,
             font: '11px monospace',
             fillColor: Cesium.Color.CHARTREUSE,
             outlineColor: Cesium.Color.BLACK,
@@ -715,10 +1026,11 @@ export const CesiumGlobe: React.FC = () => {
         });
       });
 
-      if (measurePoints.length >= 2) {
-        const positions = measurePoints.map((p) =>
-          Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.height + 15)
-        );
+      if (validMeasurePoints.length >= 2) {
+        const positions = validMeasurePoints.map((p) => {
+          const safeH = typeof p.height === 'number' && !isNaN(p.height) && isFinite(p.height) ? p.height : 0;
+          return Cesium.Cartesian3.fromDegrees(p.lon, p.lat, safeH + 15);
+        });
         viewer.entities.add({
           polyline: {
             positions: positions,
@@ -766,6 +1078,16 @@ export const CesiumGlobe: React.FC = () => {
     showConeOfSilence,
     showCrossSection,
     selectedAzimuthDeg,
+    viewMode,
+    showSpxPanel,
+    spxConfig,
+    spxResults,
+    isCalculatingSpx,
+    showCoverageLayer,
+    showRangeRingsLayer,
+    showLabelsLayer,
+    showMarkersLayer,
+    categoryFilter,
   ]);
 
   // 7. Thao tác Ghim vị trí điểm đặt & Kéo lên xuống theo chiều cao
@@ -781,7 +1103,11 @@ export const CesiumGlobe: React.FC = () => {
       setIsPinned(true);
       if (selectedInstanceId) {
         const inst = instances.find((i) => i.instanceId === selectedInstanceId);
-        if (inst) {
+        if (
+          inst &&
+          typeof inst.longitude === 'number' && !isNaN(inst.longitude) && isFinite(inst.longitude) &&
+          typeof inst.latitude === 'number' && !isNaN(inst.latitude) && isFinite(inst.latitude)
+        ) {
           viewer.camera.flyTo({
             destination: Cesium.Cartesian3.fromDegrees(
               inst.longitude,
@@ -800,13 +1126,18 @@ export const CesiumGlobe: React.FC = () => {
       }
 
       // Ghim tại tâm bản đồ
-      const ray = viewer.camera.getPickRay(
-        new Cesium.Cartesian2(viewer.canvas.clientWidth / 2, viewer.canvas.clientHeight / 2)
+      const centerScreenPos = new Cesium.Cartesian2(
+        viewer.canvas.clientWidth / 2,
+        viewer.canvas.clientHeight / 2
       );
-      if (ray) {
-        const cartesian = viewer.scene.globe.pick(ray, viewer.scene);
-        if (cartesian) {
-          const carto = Cesium.Cartographic.fromCartesian(cartesian);
+      const cartesian = pickGroundCartesian(viewer, centerScreenPos);
+      if (cartesian) {
+        const carto = Cesium.Cartographic.fromCartesian(cartesian);
+        if (
+          carto &&
+          typeof carto.longitude === 'number' && !isNaN(carto.longitude) &&
+          typeof carto.latitude === 'number' && !isNaN(carto.latitude)
+        ) {
           viewer.camera.flyTo({
             destination: Cesium.Cartesian3.fromDegrees(
               Cesium.Math.toDegrees(carto.longitude),
@@ -838,12 +1169,15 @@ export const CesiumGlobe: React.FC = () => {
       ? instances.find((i) => i.instanceId === selectedInstanceId)
       : null;
 
-    const lon = selectedInst
+    const rawLon = selectedInst
       ? selectedInst.longitude
-      : Cesium.Math.toDegrees(viewer.camera.positionCartographic.longitude);
-    const lat = selectedInst
+      : (viewer.camera.positionCartographic ? Cesium.Math.toDegrees(viewer.camera.positionCartographic.longitude) : 108.12081);
+    const rawLat = selectedInst
       ? selectedInst.latitude
-      : Cesium.Math.toDegrees(viewer.camera.positionCartographic.latitude);
+      : (viewer.camera.positionCartographic ? Cesium.Math.toDegrees(viewer.camera.positionCartographic.latitude) : 16.043);
+
+    const lon = typeof rawLon === 'number' && !isNaN(rawLon) && isFinite(rawLon) ? rawLon : 108.12081;
+    const lat = typeof rawLat === 'number' && !isNaN(rawLat) && isFinite(rawLat) ? rawLat : 16.043;
 
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(lon, lat, clampedAlt),

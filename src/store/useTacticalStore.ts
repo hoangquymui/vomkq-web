@@ -1,7 +1,14 @@
 import { create } from 'zustand';
-import type { EquipmentInstance, EquipmentTemplate, PresetLocation } from '../types/equipment';
+import type {
+  EquipmentCategory,
+  EquipmentInstance,
+  EquipmentTemplate,
+  PresetLocation,
+} from '../types/equipment';
+import { CATEGORY_META } from '../types/equipment';
 import type { LayoutSaveData, SavedEquipmentEntry } from '../types/layout';
 import { EQUIPMENT_TEMPLATES, PRESET_LOCATIONS } from '../data/equipmentTemplates';
+import { DEFAULT_SPX_CONFIG } from '../types/spxRadarCoverage';
 
 interface TacticalState {
   // Battlefield Entities
@@ -9,7 +16,7 @@ interface TacticalState {
   selectedInstanceId: string | null;
 
   // Tools & Modes
-  activeTool: 'select' | 'place' | 'measure';
+  activeTool: 'select' | 'place' | 'measure' | 'move';
   pendingTemplate: EquipmentTemplate | null;
   viewMode: '3D' | '2D';
 
@@ -46,15 +53,29 @@ interface TacticalState {
   showCrossSection: boolean; // Bật/tắt bảng Mặt cắt ngang 2D
   selectedAzimuthDeg: number; // Góc phương vị đang khảo sát mặt cắt ngang (0-359)
 
+  // SPx Multi-Altitude Coverage (Cambridge Pixel Standard)
+  showSpxPanel: boolean;
+  spxConfig: import('../types/spxRadarCoverage').SpxRadarCoverageConfig;
+  spxResults: Record<string, import('../types/spxRadarCoverage').SpxCoverageResult>;
+  isCalculatingSpx: boolean;
+  setShowSpxPanel: (show: boolean) => void;
+  toggleSpxPanel: () => void;
+  updateSpxConfig: (updates: Partial<import('../types/spxRadarCoverage').SpxRadarCoverageConfig>) => void;
+  setSpxResult: (instanceId: string, result: import('../types/spxRadarCoverage').SpxCoverageResult) => void;
+  setIsCalculatingSpx: (calculating: boolean) => void;
+
   // Actions
   addEquipment: (instance: EquipmentInstance) => void;
   updateEquipment: (instanceId: string, updates: Partial<EquipmentInstance>) => void;
   removeEquipment: (instanceId: string) => void;
   selectEquipment: (instanceId: string | null) => void;
-
-  setActiveTool: (tool: 'select' | 'place' | 'measure') => void;
+  setActiveTool: (tool: 'select' | 'place' | 'measure' | 'move') => void;
   setPendingTemplate: (template: EquipmentTemplate | null) => void;
   setViewMode: (mode: '3D' | '2D') => void;
+  updateEquipmentSpxConfig: (
+    instanceId: string,
+    updates: Partial<import('../types/spxRadarCoverage').SpxRadarCoverageConfig>
+  ) => void;
 
   setTerrainEnabled: (enabled: boolean) => void;
   setTerrainExaggeration: (exaggeration: number) => void;
@@ -66,6 +87,19 @@ interface TacticalState {
   toggleDomes: () => void;
   toggleCommandLinks: () => void;
   toggleSweeps: () => void;
+
+  // 2D Tactical Layer Controls & Filters
+  showCoverageLayer: boolean;
+  showRangeRingsLayer: boolean;
+  showLabelsLayer: boolean;
+  showMarkersLayer: boolean;
+  categoryFilter: EquipmentCategory | 'All';
+
+  toggleCoverageLayer: () => void;
+  toggleRangeRingsLayer: () => void;
+  toggleLabelsLayer: () => void;
+  toggleMarkersLayer: () => void;
+  setCategoryFilter: (category: EquipmentCategory | 'All') => void;
 
   // Radar Coverage Actions
   setTargetHeightMeters: (heightMeters: number) => void;
@@ -113,14 +147,29 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   showCommandLinks: true,
   showSweeps: true,
 
+  // 2D Tactical Layer Controls & Filters
+  showCoverageLayer: true,
+  showRangeRingsLayer: true,
+  showLabelsLayer: true,
+  showMarkersLayer: true,
+  categoryFilter: 'All',
+
   measurePoints: [],
   flyToTarget: PRESET_LOCATIONS[0], // Bắt đầu tại Tam Đảo (địa hình núi 3D)
 
   addEquipment: (instance) =>
     set((state) => {
       const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === instance.templateId);
+      const category = instance.category || tmpl?.category || 'RadarCanhGioi';
+      const prefix = CATEGORY_META[category]?.prefix || 'EQ';
+      const countSameCategory =
+        state.instances.filter((i) => i.category === category).length + 1;
+      const autoShortId = `${prefix}-${countSameCategory.toString().padStart(2, '0')}`;
+
       const instanceWithProfile: EquipmentInstance = {
         ...instance,
+        category,
+        shortId: instance.shortId || autoShortId,
         coverageProfile: instance.coverageProfile || tmpl?.coverageProfile,
       };
       return {
@@ -135,6 +184,21 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     set((state) => ({
       instances: state.instances.map((item) =>
         item.instanceId === instanceId ? { ...item, ...updates } : item
+      ),
+    })),
+
+  updateEquipmentSpxConfig: (instanceId, updates) =>
+    set((state) => ({
+      instances: state.instances.map((item) =>
+        item.instanceId === instanceId
+          ? {
+              ...item,
+              spxConfig: {
+                ...(item.spxConfig || {}),
+                ...updates,
+              },
+            }
+          : item
       ),
     })),
 
@@ -180,6 +244,16 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     set((state) => ({ showCommandLinks: !state.showCommandLinks })),
   toggleSweeps: () => set((state) => ({ showSweeps: !state.showSweeps })),
 
+  toggleCoverageLayer: () =>
+    set((state) => ({ showCoverageLayer: !state.showCoverageLayer })),
+  toggleRangeRingsLayer: () =>
+    set((state) => ({ showRangeRingsLayer: !state.showRangeRingsLayer })),
+  toggleLabelsLayer: () =>
+    set((state) => ({ showLabelsLayer: !state.showLabelsLayer })),
+  toggleMarkersLayer: () =>
+    set((state) => ({ showMarkersLayer: !state.showMarkersLayer })),
+  setCategoryFilter: (category) => set({ categoryFilter: category }),
+
   // Radar Coverage Initial State & Actions
   targetHeightMeters: 300, // Độ cao mục tiêu khảo sát mặc định 300m
   showBlindZones: true, // Mặc định hiển thị vùng mù (màu Đỏ)
@@ -194,6 +268,25 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   showRadarFieldModal: false,
   showCrossSection: false,
   selectedAzimuthDeg: 45,
+
+  // SPx Multi-Altitude Coverage (Cambridge Pixel Standard)
+  showSpxPanel: false,
+  spxConfig: DEFAULT_SPX_CONFIG,
+  spxResults: {},
+  isCalculatingSpx: false,
+
+  setShowSpxPanel: (show) => set({ showSpxPanel: show }),
+  toggleSpxPanel: () => set((state) => ({ showSpxPanel: !state.showSpxPanel })),
+  updateSpxConfig: (updates) =>
+    set((state) => ({ spxConfig: { ...state.spxConfig, ...updates } })),
+  setSpxResult: (instanceId, result) =>
+    set((state) => ({
+      spxResults: { ...state.spxResults, [instanceId]: result },
+    })),
+  setIsCalculatingSpx: (calculating) =>
+    set((state) =>
+      state.isCalculatingSpx === calculating ? state : { isCalculatingSpx: calculating }
+    ),
 
   setTargetHeightMeters: (heightMeters) =>
     set({ targetHeightMeters: Math.max(10, heightMeters) }),
@@ -330,6 +423,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     const sample: EquipmentInstance[] = [
       {
         instanceId: c2Id,
+        shortId: 'CP-01',
         templateId: 'c2_command_post',
         name: 'Sở Chỉ Huy Trung Đoàn PK Sóc Sơn',
         category: 'SoChiHuy',
@@ -351,6 +445,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       },
       {
         instanceId: 'eq_radar_tamdao',
+        shortId: 'R-01',
         templateId: 'radar_36d6',
         name: 'Đài Radar 36D6 Đỉnh Tam Đảo (Cao độ ~950m)',
         category: 'RadarCanhGioi',
@@ -372,6 +467,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       },
       {
         instanceId: 'eq_radar_fansipan',
+        shortId: 'OP-01',
         templateId: 'radar_kolchuga',
         name: 'Trạm Trinh Sát Fansipan - Hoàng Liên Sơn (Cao độ ~3.140m)',
         category: 'TramQuanSat',
@@ -393,6 +489,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       },
       {
         instanceId: 'eq_radar_haiphong',
+        shortId: 'R-02',
         templateId: 'radar_p18',
         name: 'Trạm Radar P-18M Đồ Sơn - Hải Phòng',
         category: 'RadarCanhGioi',
@@ -413,7 +510,30 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'radar_p18')?.coverageProfile,
       },
       {
+        instanceId: 'eq_radar_danang_spx',
+        shortId: 'R-03',
+        templateId: 'radar_36d6',
+        name: 'Trạm Radar Sơn Trà - Đà Nẵng (Ảnh mẫu SPx)',
+        category: 'RadarCanhGioi',
+        latitude: 16.043,
+        longitude: 108.1208,
+        altitude: 103,
+        antennaHeightAGL: 40,
+        rangeKm: 50,
+        scanSpeed: 30,
+        minElevationDeg: -10,
+        maxElevationDeg: 40,
+        coverageHeightKm: 20,
+        status: 'Active',
+        commandedByInstanceId: c2Id,
+        color: '#06b6d4',
+        showDome: true,
+        showSweep: false,
+        coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'radar_36d6')?.coverageProfile,
+      },
+      {
         instanceId: 'eq_sam_s300_hanoi',
+        shortId: 'SAM-01',
         templateId: 'sam_s300',
         name: 'Trận Địa Tên Lửa S-300PMU2 Đông Anh',
         category: 'TenLuaPhongKhong',
@@ -435,6 +555,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       },
       {
         instanceId: 'eq_sam_spyder_haiphong',
+        shortId: 'SAM-02',
         templateId: 'sam_spyder',
         name: 'Trận Địa Tên Lửa Spyder-MR Cảng Hải Phòng',
         category: 'TenLuaPhongKhong',

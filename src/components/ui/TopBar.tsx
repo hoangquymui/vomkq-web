@@ -11,6 +11,7 @@ import {
   Share2,
   BarChart3,
   HardDriveDownload,
+  Radio,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { PRESET_LOCATIONS } from '../../data/equipmentTemplates';
@@ -39,6 +40,8 @@ export const TopBar: React.FC = () => {
     loadSampleScenario,
     setShowRadarFieldModal,
     setShowMapDownloadModal,
+    showSpxPanel,
+    toggleSpxPanel,
   } = useTacticalStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -146,6 +149,23 @@ export const TopBar: React.FC = () => {
             2D
           </button>
         </div>
+
+        {/* Nút bật SPx Radar Coverage 2D (Cambridge Pixel) */}
+        <button
+          onClick={() => {
+            if (viewMode !== '2D') setViewMode('2D');
+            toggleSpxPanel();
+          }}
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded border transition-all ${
+            showSpxPanel
+              ? 'bg-amber-950/85 text-amber-300 border-amber-500/70 shadow-[0_0_10px_rgba(245,158,11,0.35)]'
+              : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-amber-500/50 hover:text-amber-200'
+          }`}
+          title="Bật/Tắt: Bảng điều khiển mô phỏng vùng phủ radar SPx đa tầng độ cao (Cambridge Pixel)"
+        >
+          <Radio className={`w-3.5 h-3.5 ${showSpxPanel ? 'text-amber-400' : 'text-cyan-400'}`} />
+          <span>SPx Vùng Phủ 2D</span>
+        </button>
 
         {/* Nút Chỉ Vùng Việt Nam / Toàn Cầu */}
         <button

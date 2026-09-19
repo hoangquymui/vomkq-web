@@ -3,8 +3,7 @@ import {
   Radar,
   Radio,
   Crosshair,
-  ShieldAlert,
-  Target,
+  Shield,
   Antenna,
   Zap,
   PlusCircle,
@@ -31,6 +30,7 @@ export const LeftSidebar: React.FC = () => {
     setPendingTemplate,
     removeEquipment,
     triggerFlyTo,
+    categoryFilter,
   } = useTacticalStore();
 
   // Mapping Icon
@@ -43,10 +43,8 @@ export const LeftSidebar: React.FC = () => {
         return <Radio {...props} />;
       case 'Crosshair':
         return <Crosshair {...props} />;
-      case 'ShieldAlert':
-        return <ShieldAlert {...props} />;
-      case 'Target':
-        return <Target {...props} />;
+      case 'Shield':
+        return <Shield {...props} />;
       case 'Antenna':
         return <Antenna {...props} />;
       case 'Zap':
@@ -56,10 +54,16 @@ export const LeftSidebar: React.FC = () => {
     }
   };
 
-  // Lọc danh sách khí tài đã đặt
-  const filteredInstances = instances.filter((inst) =>
-    inst.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Lọc danh sách khí tài đã đặt theo tìm kiếm và danh mục tác chiến
+  const filteredInstances = instances.filter((inst) => {
+    const query = searchQuery.toLowerCase().trim();
+    const matchesSearch =
+      query === '' ||
+      inst.name.toLowerCase().includes(query) ||
+      (inst.shortId && inst.shortId.toLowerCase().includes(query));
+    const matchesCategory = categoryFilter === 'All' || inst.category === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <aside
@@ -230,20 +234,36 @@ export const LeftSidebar: React.FC = () => {
                     return (
                       <div
                         key={inst.instanceId}
-                        onClick={() => selectEquipment(inst.instanceId)}
+                        onClick={() => {
+                          selectEquipment(inst.instanceId);
+                          triggerFlyTo({
+                            id: inst.instanceId,
+                            name: inst.name,
+                            latitude: inst.latitude,
+                            longitude: inst.longitude,
+                            height: 95000,
+                            pitch: -35,
+                          });
+                        }}
                         className={`p-2.5 rounded-lg border cursor-pointer transition-all ${
                           isSelected
-                            ? 'bg-cyan-950/70 border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.25)]'
+                            ? 'bg-cyan-950/70 border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.35)]'
                             : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 overflow-hidden">
+                          <div className="flex items-center gap-1.5 overflow-hidden">
                             <span
                               className={`w-2 h-2 rounded-full flex-shrink-0 ${
                                 statusColorMap[inst.status]
                               }`}
+                              title={`Trạng thái: ${inst.status}`}
                             />
+                            {inst.shortId && (
+                              <span className="px-1.5 py-0.2 text-[10px] font-mono font-bold bg-cyan-950/90 text-cyan-300 border border-cyan-700/60 rounded flex-shrink-0 shadow-sm">
+                                {inst.shortId}
+                              </span>
+                            )}
                             <span className="text-xs font-semibold text-slate-200 truncate">
                               {inst.name}
                             </span>
@@ -286,7 +306,7 @@ export const LeftSidebar: React.FC = () => {
 
                         <div className="flex items-center justify-between mt-1.5 text-[10px] text-slate-400 font-mono">
                           <span>
-                            {inst.latitude.toFixed(3)}°N, {inst.longitude.toFixed(3)}°E
+                            {inst.latitude.toFixed(3)}°N, {inst.longitude.toFixed(3)}°E • {inst.altitude || 0}m
                           </span>
                           <span className="text-cyan-300 font-medium">
                             {inst.rangeKm} km

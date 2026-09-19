@@ -159,17 +159,25 @@ export async function computeRadarCoverageField(
     });
   });
 
-  // 6. Lấy mẫu độ cao địa hình bất đồng bộ từ Cesium TerrainProvider
+  // 6. Lấy mẫu độ cao địa hình bất đồng bộ từ Cesium TerrainProvider theo lô an toàn
   let sampledHeights: number[] = new Array(cartographics.length).fill(0);
   let terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error' = 'flat_fallback';
 
   if (terrainProvider) {
     try {
-      const sampled = await Cesium.sampleTerrainMostDetailed(
-        terrainProvider,
-        cartographics
-      );
-      sampledHeights = sampled.map((c) => (c.height !== undefined ? Math.max(0, c.height) : 0));
+      const batchSize = 2500;
+      for (let i = 0; i < cartographics.length; i += batchSize) {
+        const chunk = cartographics.slice(i, i + batchSize);
+        try {
+          await Cesium.sampleTerrain(terrainProvider, 11, chunk, false);
+        } catch {
+          await Cesium.sampleTerrain(terrainProvider, 10, chunk, false);
+        }
+        for (let j = 0; j < chunk.length; j++) {
+          const h = chunk[j].height;
+          sampledHeights[i + j] = h !== undefined && !isNaN(h) ? Math.max(0, h) : 0;
+        }
+      }
       terrainStatus = 'loaded';
     } catch {
       sampledHeights = cartographics.map(() => 0);

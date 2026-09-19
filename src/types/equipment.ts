@@ -47,9 +47,22 @@ export interface EquipmentInstance {
   showDome: boolean;
   showSweep: boolean;
   currentSweepHeading?: number; // deg
+  shortId?: string; // Mã định danh quân sự ngắn: R-01, SAM-01, CP-01...
   wavelengthM?: number;
   coverageProfile?: CoverageProfile;
+  spxConfig?: Partial<import('./spxRadarCoverage').SpxRadarCoverageConfig>;
 }
+
+export const CATEGORY_META: Record<
+  EquipmentCategory,
+  { prefix: string; nameVi: string; icon: string }
+> = {
+  RadarCanhGioi: { prefix: 'R', nameVi: 'Radar Cảnh Giới', icon: 'Radar' },
+  TenLuaPhongKhong: { prefix: 'SAM', nameVi: 'Tên Lửa Phòng Không', icon: 'Target' },
+  SoChiHuy: { prefix: 'CP', nameVi: 'Sở Chỉ Huy', icon: 'Radio' },
+  PhaoPhongKhong: { prefix: 'AAA', nameVi: 'Pháo Phòng Không', icon: 'Zap' },
+  TramQuanSat: { prefix: 'OP', nameVi: 'Trạm Quan Sát', icon: 'Antenna' },
+};
 
 export interface PresetLocation {
   id: string;

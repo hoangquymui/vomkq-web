@@ -7,7 +7,10 @@ import { MeasurementPanel } from "./components/ui/MeasurementPanel";
 import { PlacementBanner } from "./components/ui/PlacementBanner";
 import { RadarFieldStatsModal } from "./components/ui/RadarFieldStatsModal";
 import { RadarCrossSectionPanel } from "./components/ui/RadarCrossSectionPanel";
+import { SpxRadarCoveragePanel } from "./components/ui/SpxRadarCoveragePanel";
 import { MapDownloadModal } from "./components/ui/MapDownloadModal";
+import { TacticalLayerControls } from "./components/ui/TacticalLayerControls";
+import { TacticalMapLegend } from "./components/ui/TacticalMapLegend";
 import { useTacticalStore } from "./store/useTacticalStore";
 
 export function App() {
@@ -32,6 +35,12 @@ export function App() {
       {/* Bảng điều khiển phải: Bảng thuộc tính chiến thuật (Inspector) */}
       <RightInspector />
 
+      {/* Thanh điều khiển lớp bản đồ & Bộ lọc chuyên ngành tác chiến */}
+      <TacticalLayerControls />
+
+      {/* Bảng chú giải ký hiệu bản đồ & dải tầng màu SPx */}
+      <TacticalMapLegend />
+
       {/* Banner thông báo khi đang đặt khí tài */}
       <PlacementBanner />
 
@@ -46,6 +55,9 @@ export function App() {
 
       {/* Bảng phân tích Mặt Cắt Ngang 2D (Cross Section) */}
       <RadarCrossSectionPanel />
+
+      {/* Bảng điều khiển mô phỏng vùng phủ radar SPx (Cambridge Pixel) */}
+      <SpxRadarCoveragePanel />
     </div>
   );
 }
