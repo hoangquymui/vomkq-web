@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { CesiumGlobe } from "./components/map/CesiumGlobe";
 import { TopBar } from "./components/ui/TopBar";
 import { LeftSidebar } from "./components/ui/LeftSidebar";
@@ -9,17 +8,11 @@ import { RadarFieldStatsModal } from "./components/ui/RadarFieldStatsModal";
 import { RadarCrossSectionPanel } from "./components/ui/RadarCrossSectionPanel";
 import { SpxRadarCoveragePanel } from "./components/ui/SpxRadarCoveragePanel";
 import { MapDownloadModal } from "./components/ui/MapDownloadModal";
+import { LayoutModal } from "./components/ui/LayoutModal";
 import { TacticalLayerControls } from "./components/ui/TacticalLayerControls";
 import { TacticalMapLegend } from "./components/ui/TacticalMapLegend";
-import { useTacticalStore } from "./store/useTacticalStore";
 
 export function App() {
-  const { loadSampleScenario } = useTacticalStore();
-
-  // Nạp sẵn kịch bản mẫu lúc khởi động
-  useEffect(() => {
-    loadSampleScenario();
-  }, [loadSampleScenario]);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans">
@@ -52,6 +45,9 @@ export function App() {
 
       {/* Modal Quản lý và Tải bản đồ ngoại tuyến */}
       <MapDownloadModal />
+
+      {/* Modal Quản lý Bố Cục Trận Địa (Lưu / Nạp / Xóa JSON) */}
+      <LayoutModal />
 
       {/* Bảng phân tích Mặt Cắt Ngang 2D (Cross Section) */}
       <RadarCrossSectionPanel />

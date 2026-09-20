@@ -87,7 +87,38 @@ export const TacticalMapLegend: React.FC = () => {
               </div>
             </div>
 
-            {/* 3. Trạng thái khí tài */}
+            {/* 3. Vùng hỏa lực & Liên kết tác chiến */}
+            <div>
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-mono mb-2">
+                <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Hỏa Lực & Liên Kết Tác Chiến</span>
+              </div>
+              <div className="space-y-1.5 font-mono text-[11px]">
+                <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/50 border border-slate-800/60">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full border-2 border-red-500 bg-red-500/20 flex-shrink-0" />
+                    <span className="text-slate-300">Vùng hỏa lực Tên lửa (SAM)</span>
+                  </div>
+                  <span className="text-[10px] text-red-400 font-semibold">Tầm diệt MT</span>
+                </div>
+                <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/50 border border-slate-800/60">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full border-2 border-emerald-500 bg-emerald-500/20 flex-shrink-0" />
+                    <span className="text-slate-300">Vùng hỏa lực Pháo PK (AAA)</span>
+                  </div>
+                  <span className="text-[10px] text-emerald-400 font-semibold">Tầm gần</span>
+                </div>
+                <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/50 border border-slate-800/60">
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-[3px] bg-amber-400 shadow-[0_0_6px_#fde047]" />
+                    <span className="text-slate-300">Đường liên kết chỉ huy (C2)</span>
+                  </div>
+                  <span className="text-[10px] text-amber-300 font-semibold">CP ➜ Đơn vị</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Trạng thái khí tài */}
             <div>
               <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-mono mb-2">
                 <Activity className="w-3.5 h-3.5 text-cyan-400" />
@@ -113,7 +144,7 @@ export const TacticalMapLegend: React.FC = () => {
               </div>
             </div>
 
-            {/* 4. Mã định danh quân sự ngắn */}
+            {/* 5. Mã định danh quân sự ngắn */}
             <div>
               <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-mono mb-2">
                 <Shield className="w-3.5 h-3.5 text-cyan-400" />
@@ -127,22 +158,28 @@ export const TacticalMapLegend: React.FC = () => {
                   <span className="text-slate-300 truncate">Radar Cảnh Giới</span>
                 </div>
                 <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-slate-900/50 border border-slate-800/60">
-                  <span className="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold text-[10px]">
+                  <span className="px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-800 font-bold text-[10px]">
                     SAM-xx
                   </span>
                   <span className="text-slate-300 truncate">Tên Lửa PK</span>
                 </div>
                 <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-slate-900/50 border border-slate-800/60">
-                  <span className="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold text-[10px]">
+                  <span className="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold text-[10px]">
                     CP-xx
                   </span>
                   <span className="text-slate-300 truncate">Sở Chỉ Huy</span>
                 </div>
                 <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-slate-900/50 border border-slate-800/60">
-                  <span className="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold text-[10px]">
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold text-[10px]">
                     AAA-xx
                   </span>
                   <span className="text-slate-300 truncate">Pháo PK</span>
+                </div>
+                <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-slate-900/50 border border-slate-800/60 col-span-2">
+                  <span className="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-bold text-[10px]">
+                    OP-xx
+                  </span>
+                  <span className="text-slate-300 truncate">Trạm Quan Sát / Trinh Sát Quang Học</span>
                 </div>
               </div>
             </div>

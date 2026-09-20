@@ -466,9 +466,10 @@ export async function computeSpxRadarCoverage(
       const labelPt = destinationPoint(radarLat, radarLon, ringRangeM, 0);
 
       const isMax = ringRangeM === endRangeM;
+      const distStr = ringRangeM >= 1000 ? `${ringRangeM / 1000}km` : `${ringRangeM}m`;
       rangeRings.push({
         rangeM: ringRangeM,
-        label: isMax ? `${ringRangeM}m [MAX]` : `${ringRangeM}m`,
+        label: isMax ? `${distStr} [MAX]` : distStr,
         positions: ringPositions,
         labelPosition: labelPt,
       });

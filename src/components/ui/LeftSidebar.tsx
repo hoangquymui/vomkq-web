@@ -16,6 +16,7 @@ import {
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
 import type { EquipmentTemplate } from '../../types/equipment';
+import { ASSET_TYPE_REGISTRY } from '../../utils/assetVisualization';
 
 export const LeftSidebar: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'catalog' | 'outliner'>('catalog');
@@ -231,6 +232,22 @@ export const LeftSidebar: React.FC = () => {
                       Offline: 'bg-rose-400',
                     };
 
+                    const meta = ASSET_TYPE_REGISTRY[inst.category] || ASSET_TYPE_REGISTRY.RadarCanhGioi;
+                    const parentInst = inst.commandedByInstanceId ? instances.find((i) => i.instanceId === inst.commandedByInstanceId) : null;
+
+                    let rangeLabel = `${inst.rangeKm} km`;
+                    if (inst.category === 'SoChiHuy') {
+                      rangeLabel = `C2: ${inst.rangeKm} km`;
+                    } else if (inst.category === 'TenLuaPhongKhong') {
+                      rangeLabel = `Hỏa lực: ${inst.rangeKm} km`;
+                    } else if (inst.category === 'PhaoPhongKhong') {
+                      rangeLabel = `Tầm bắn: ${inst.rangeKm} km`;
+                    } else if (inst.category === 'TramQuanSat') {
+                      rangeLabel = `Quan sát: ${inst.rangeKm} km`;
+                    } else {
+                      rangeLabel = `Trinh sát: ${inst.rangeKm} km`;
+                    }
+
                     return (
                       <div
                         key={inst.instanceId}
@@ -247,7 +264,7 @@ export const LeftSidebar: React.FC = () => {
                         }}
                         className={`p-2.5 rounded-lg border cursor-pointer transition-all ${
                           isSelected
-                            ? 'bg-cyan-950/70 border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.35)]'
+                            ? 'bg-cyan-950/70 border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)] ring-1 ring-cyan-400'
                             : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
                         }`}
                       >
@@ -260,7 +277,14 @@ export const LeftSidebar: React.FC = () => {
                               title={`Trạng thái: ${inst.status}`}
                             />
                             {inst.shortId && (
-                              <span className="px-1.5 py-0.2 text-[10px] font-mono font-bold bg-cyan-950/90 text-cyan-300 border border-cyan-700/60 rounded flex-shrink-0 shadow-sm">
+                              <span
+                                className="px-1.5 py-0.2 text-[10px] font-mono font-bold rounded flex-shrink-0 shadow-sm border"
+                                style={{
+                                  backgroundColor: `${meta.defaultColor}20`,
+                                  borderColor: `${meta.defaultColor}80`,
+                                  color: meta.defaultColor,
+                                }}
+                              >
                                 {inst.shortId}
                               </span>
                             )}
@@ -304,12 +328,34 @@ export const LeftSidebar: React.FC = () => {
                           </div>
                         </div>
 
+                        {/* Phân loại chuyên ngành & Cấp chỉ huy liên kết */}
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                          <span
+                            className="text-[9px] font-medium px-1.5 py-0.2 rounded border"
+                            style={{
+                              backgroundColor: `${meta.defaultColor}15`,
+                              borderColor: `${meta.defaultColor}40`,
+                              color: meta.defaultColor,
+                            }}
+                          >
+                            {meta.nameVi}
+                          </span>
+                          {parentInst && (
+                            <span className="text-[9px] text-amber-300/90 bg-amber-950/50 border border-amber-700/40 px-1.5 py-0.2 rounded font-mono truncate max-w-[150px]">
+                              ↳ Thuộc {parentInst.shortId || 'C2'}
+                            </span>
+                          )}
+                        </div>
+
                         <div className="flex items-center justify-between mt-1.5 text-[10px] text-slate-400 font-mono">
                           <span>
                             {inst.latitude.toFixed(3)}°N, {inst.longitude.toFixed(3)}°E • {inst.altitude || 0}m
                           </span>
-                          <span className="text-cyan-300 font-medium">
-                            {inst.rangeKm} km
+                          <span
+                            className="font-medium"
+                            style={{ color: isSelected ? '#fbbf24' : meta.defaultColor }}
+                          >
+                            {rangeLabel}
                           </span>
                         </div>
                       </div>

@@ -8,7 +8,7 @@ import { destinationPoint } from './spxCoverageEngine';
 /**
  * Helper chuyển toạ độ thập phân sang định dạng DMS (Độ, Phút, Giây)
  */
-function toDmsString(deg: number, isLat: boolean): string {
+export function toDmsString(deg: number, isLat: boolean): string {
   const abs = Math.abs(deg);
   const d = Math.floor(abs);
   const minFloat = (abs - d) * 60;
@@ -16,6 +16,65 @@ function toDmsString(deg: number, isLat: boolean): string {
   const s = ((minFloat - m) * 60).toFixed(1);
   const dir = isLat ? (deg >= 0 ? 'N' : 'S') : deg >= 0 ? 'E' : 'W';
   return `${d}° ${m}' ${s}" ${dir}`;
+}
+
+/**
+ * =========================================================================================
+ * 🎨 NƠI CHỈNH MÀU SẮC VÀ KIỂU DÁNG VÒNG CỰ LY RADAR (RANGE RINGS)
+ * File: src/utils/spxGeometryBuilder.ts
+ * 
+ * Bạn có thể dễ dàng thay đổi mã màu HEX hoặc hướng hiển thị nhãn tại đây:
+ * =========================================================================================
+ */
+export const RANGE_RING_THEME = {
+  // Màu các vòng cự ly thông thường (Mặc định: Vàng hổ phách #fbbf24 - Nổi bật trên nền biển xanh và đất liền)
+  ringColor: '#0465b5ff',
+
+  // Màu vòng cự ly tối đa ngoài cùng [MAX] (Mặc định: Vàng cam #f59e0b)
+  maxRingColor: '#0f5702ff',
+
+  // Màu chữ số khoảng cách trên nhãn (Mặc định: Trắng phát sáng #ffffff)
+  labelTextColor: '#076effff',
+
+  // Màu nền của hộp nhãn khoảng cách (Mặc định: Đen quân sự #020617)
+  labelBgColor: '#bbc7fbff',
+
+  // Màu 4 trục chữ thập Đông Tây Nam Bắc (Mặc định: Xám bạc #94a3b8)
+  axisColor: '#0465b5ff',
+
+  // Hướng đặt nhãn cự ly (0: Hướng Bắc, 90: Hướng Đông - Khuyến nghị 0° để không bị rối)
+  labelBearingDeg: 0,
+};
+
+/**
+ * =========================================================================================
+ * 📝 NƠI CHỈNH SỬA NỘI DUNG, ĐỊNH DẠNG & XUỐNG DÒNG NHÃN KHÍ TÀI (RADAR INFO CARD)
+ * File: src/utils/spxGeometryBuilder.ts
+ * 
+ * Bạn có thể tự do chỉnh sửa lỗi xuống dòng, thêm bớt trường, thay đổi ký tự tại hàm này:
+ * =========================================================================================
+ */
+export function formatRadarInfoCardText(params: {
+  shortId?: string;
+  name?: string;
+  latDms: string;
+  lonDms: string;
+  latDec: string;
+  lonDec: string;
+  groundMsl: string;
+  antennaAgl: string;
+  rangeKm: string;
+  statusVi: string;
+}): string {
+  const shortPrefix = params.shortId ? `[${params.shortId}] ` : '';
+  const displayName = params.name ? `${shortPrefix}${params.name}` : `${shortPrefix}Đài Radar`;
+
+  return [
+    `▶ ${displayName}`,
+    `  Tọa độ : ${params.latDms}, ${params.lonDms}`,
+    `  Cao độ : ${params.groundMsl} (MSL)  |  Anten: ${params.antennaAgl} (AGL)`,
+    `  Tác chiến: Tầm ${params.rangeKm}  |  [${params.statusVi}]`,
+  ].join('\n');
 }
 
 export interface SpxRenderOptions {
@@ -27,6 +86,56 @@ export interface SpxRenderOptions {
   showMarkers?: boolean;
   shortId?: string;
   status?: string;
+  category?: import('../types/equipment').EquipmentCategory;
+  is2D?: boolean;
+  antennaHeightAGL?: number;
+  rangeKm?: number;
+  color?: string;
+}
+
+/**
+ * Tạo cờ hiệu quân sự tác chiến dạng SVG Data URL cắm tại tâm đài radar
+ * - Cán cờ kim loại có chân cắm và chóp nhọn cắm thẳng xuống tọa độ tâm
+ * - Lá cờ đuôi nheo quân sự viền màu nhận diện khí tài kèm mã ngắn (R-01, R-02...)
+ * - Điểm chân cờ có tâm chữ thập chuẩn xác tuyệt đối
+ */
+export function createTacticalFlagSvg(
+  shortId: string,
+  color: string,
+  isSelected: boolean
+): string {
+  const borderColor = isSelected ? '#fbbf24' : (color || '#06b6d4');
+  const glowColor = isSelected ? '#f59e0b' : (color || '#06b6d4');
+  const poleColor = isSelected ? '#fef08a' : '#94a3b8';
+  const cleanId = shortId ? (shortId.length > 6 ? shortId.substring(0, 6) : shortId) : 'RADAR';
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="58" viewBox="0 0 56 58">
+    <defs>
+      <filter id="glow_${cleanId}" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="0" stdDeviation="${isSelected ? '2.5' : '1.5'}" flood-color="${glowColor}" flood-opacity="0.85"/>
+      </filter>
+      <linearGradient id="flagGrad_${cleanId}" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#020617" stop-opacity="0.95"/>
+        <stop offset="50%" stop-color="#0f172a" stop-opacity="0.90"/>
+        <stop offset="100%" stop-color="${color || '#06b6d4'}" stop-opacity="0.55"/>
+      </linearGradient>
+    </defs>
+    <!-- Điểm cắm chân cờ & Chữ thập định vị tâm radar -->
+    <circle cx="10" cy="54" r="3.5" fill="${borderColor}" stroke="#000000" stroke-width="1.2"/>
+    <line x1="10" y1="49" x2="10" y2="58" stroke="#ffffff" stroke-width="1.2"/>
+    <line x1="5" y1="54" x2="15" y2="54" stroke="#ffffff" stroke-width="1.2"/>
+    <!-- Cán cờ kim loại -->
+    <line x1="10" y1="6" x2="10" y2="52" stroke="${poleColor}" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="10" cy="5" r="3" fill="#fbbf24" stroke="#78350f" stroke-width="1"/>
+    <!-- Lá cờ tác chiến đuôi nheo quân sự -->
+    <polygon points="10,7 52,7 44,19 52,31 10,31" fill="url(#flagGrad_${cleanId})" stroke="${borderColor}" stroke-width="${isSelected ? '2.2' : '1.5'}" filter="url(#glow_${cleanId})"/>
+    <!-- Ký hiệu radar phát sóng bên trong cờ -->
+    <circle cx="16" cy="19" r="2.5" fill="${borderColor}"/>
+    <!-- Mã ngắn định danh đài (R-01, R-02...) -->
+    <text x="31" y="22.5" font-family="'JetBrains Mono', 'Segoe UI', monospace" font-size="10" font-weight="900" fill="#ffffff" text-anchor="middle" stroke="#000000" stroke-width="0.8" paint-order="stroke fill">${cleanId}</text>
+  </svg>`;
+
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 /**
@@ -34,7 +143,7 @@ export interface SpxRenderOptions {
  * - Các dải màu loang theo DEM chuẩn xác cho từng tầng độ cao mục tiêu (500m, 800m, 1000m, 2000m)
  * - Hỗ trợ hiệu ứng Focus/Dimming khi có khí tài được chọn (chuẩn tài liệu tác chiến)
  * - Vòng tròn cự ly đồng tâm (Range rings) nội suy thông minh
- * - Điểm tâm đài chuẩn Tactical Military Marker với mã định danh ngắn (R-01) và chấm trạng thái
+ * - Cờ cắm tác chiến & Nhãn thông tin đa dòng đầy đủ: Tên, Tọa độ DMS/Decimal, Độ cao đặt đài MSL, Anten AGL, Tầm quét
  */
 export function buildSpxCoverageEntities(
   result: SpxCoverageResult,
@@ -52,16 +161,16 @@ export function buildSpxCoverageEntities(
   const showRangeRings = options?.showRangeRings !== false;
   const showLabels = options?.showLabels !== false;
   const showMarkers = options?.showMarkers !== false;
+  const is2D = Boolean(options?.is2D);
 
   const safeLat = typeof radarLat === 'number' && !isNaN(radarLat) && isFinite(radarLat) ? radarLat : 16.043;
   const safeLon = typeof radarLon === 'number' && !isNaN(radarLon) && isFinite(radarLon) ? radarLon : 108.12081;
   const safeGroundAlt = typeof groundElevationM === 'number' && !isNaN(groundElevationM) && isFinite(groundElevationM) ? groundElevationM : 0;
 
-  const radarCartesian = Cesium.Cartesian3.fromDegrees(safeLon, safeLat, 0);
+  const radarCartesian = Cesium.Cartesian3.fromDegrees(safeLon, safeLat, is2D ? 0 : safeGroundAlt);
 
   // 1. Render các đa giác dải màu (Contours)
   // contours: index 0 là tầng cao nhất (Đỏ 2000m), index cuối là tầng thấp nhất (Xanh 500m)
-  // ĐỂ TẦNG THẤP NHẤT (XANH 500M) NỔI BẬT LÊN TRÊN CÙNG, KHÔNG BỊ CHỒNG MÀU VỚI CÁC TẦNG DƯỚI:
   // - Tầng 2000m (idx 0): zIndex = 10 (Dưới cùng)
   // - Tầng 1000m (idx 1): zIndex = 20
   // - Tầng 800m  (idx 2): zIndex = 30
@@ -84,7 +193,7 @@ export function buildSpxCoverageEntities(
       // Loại bỏ điểm trùng lặp cuối cùng khi tạo PolygonHierarchy và lọc các toạ độ hợp lệ
       const uniquePts = rawPts.slice(0, -1).filter(
         (p) => typeof p.lat === 'number' && typeof p.lon === 'number' &&
-               !isNaN(p.lat) && !isNaN(p.lon) && isFinite(p.lat) && isFinite(p.lon)
+          !isNaN(p.lat) && !isNaN(p.lon) && isFinite(p.lat) && isFinite(p.lon)
       );
       if (uniquePts.length < 3) return;
 
@@ -113,24 +222,20 @@ export function buildSpxCoverageEntities(
       // zIndex: Tầng thấp nhất có zIndex cao nhất
       const zIndex = (idx + 1) * 10 + (isSelected ? 5 : 0);
 
-      // Độ trong suốt: Focus/Dimming mechanism
+      // Độ trong suốt mờ màng thanh lịch theo chuẩn Cambridge Pixel (lộ rõ đường sá, địa danh bên dưới)
       const configuredAlpha = typeof config.coverageTransparency === 'number' && !isNaN(config.coverageTransparency)
         ? config.coverageTransparency
-        : 0.45;
+        : 0.28;
 
       let tierAlpha: number;
       if (isDimmed) {
         // Khi một đài khác đang được chọn: Giảm mạnh độ đậm của đài này để tránh rối mắt
-        tierAlpha = 0.12;
+        tierAlpha = 0.08;
       } else if (isSelected) {
-        // Đài đang được chọn: Tăng độ đậm và tương phản để nổi bật tuyệt đối
-        tierAlpha = isLowestTier ? 0.75 : isHighestTier ? 0.45 : 0.60;
+        // Đài đang được chọn: Giữ độ trong suốt dịu nhẹ (~0.25 - 0.35) để không che khuất bản đồ
+        tierAlpha = Math.min(0.38, Math.max(0.15, configuredAlpha * (isLowestTier ? 1.15 : isHighestTier ? 0.8 : 0.95)));
       } else {
-        tierAlpha = isLowestTier
-          ? Math.min(0.85, configuredAlpha * 1.3)
-          : isHighestTier
-          ? Math.min(0.50, configuredAlpha * 0.8)
-          : Math.min(0.70, configuredAlpha * 1.0);
+        tierAlpha = Math.min(0.32, Math.max(0.12, configuredAlpha * (isLowestTier ? 1.0 : isHighestTier ? 0.75 : 0.85)));
       }
 
       const polyColor = Cesium.Color.fromCssColorString(contour.tier.color).withAlpha(tierAlpha);
@@ -148,15 +253,15 @@ export function buildSpxCoverageEntities(
         })
       );
 
-      // B. Đường viền bao ngoài sắc nét (Polyline boundary) cho từng tầng
-      const strokeAlpha = isDimmed ? 0.20 : isSelected ? 1.0 : 0.90;
+      // B. Đường viền bao ngoài sắc nét, đậm màu rực rỡ chuẩn Cambridge Pixel (100% solid outline)
+      const strokeAlpha = isDimmed ? 0.30 : 1.0;
       const strokeColor = Cesium.Color.fromCssColorString(
         contour.tier.outlineColor || contour.tier.color
       ).withAlpha(strokeAlpha);
 
       const validRawPts = rawPts.filter(
         (p) => typeof p.lat === 'number' && typeof p.lon === 'number' &&
-               !isNaN(p.lat) && !isNaN(p.lon) && isFinite(p.lat) && isFinite(p.lon)
+          !isNaN(p.lat) && !isNaN(p.lon) && isFinite(p.lat) && isFinite(p.lon)
       );
       if (validRawPts.length < 3) return;
 
@@ -178,13 +283,14 @@ export function buildSpxCoverageEntities(
         Cesium.Cartesian3.fromDegrees(p.lon, p.lat, 0)
       );
 
-      let polylineWidth = 2.0;
+      // Độ dày đường viền nổi bật (bản gốc Cambridge Pixel nét viền rất rõ)
+      let polylineWidth = 2.8;
       if (isDimmed) {
-        polylineWidth = 1.0;
+        polylineWidth = 1.5;
       } else if (isSelected) {
-        polylineWidth = isHighestTier ? 3.5 : 2.5;
+        polylineWidth = isHighestTier ? 4.0 : 3.2;
       } else {
-        polylineWidth = isHighestTier ? 3.0 : 2.0;
+        polylineWidth = isHighestTier ? 3.5 : 2.8;
       }
 
       entities.push(
@@ -204,17 +310,17 @@ export function buildSpxCoverageEntities(
 
   // 2. Render Vòng Cự Ly Đồng Tâm (Range Rings) & Trục Chữ Thập (Crosshairs)
   if (showRangeRings && config.showRangeRings && Array.isArray(rangeRings) && rangeRings.length > 0) {
-    const ringAlpha = isDimmed ? 0.20 : isSelected ? 0.90 : 0.70;
-    const defaultRingColor = Cesium.Color.fromCssColorString('#00e5ff').withAlpha(ringAlpha);
-    const maxRingColor = Cesium.Color.fromCssColorString('#38bdf8').withAlpha(Math.min(1.0, ringAlpha * 1.25));
-    const labelColor = isSelected ? Cesium.Color.fromCssColorString('#38bdf8') : Cesium.Color.fromCssColorString('#00ffff');
-    const labelBgColor = Cesium.Color.fromCssColorString('#020617').withAlpha(0.85);
+    const ringAlpha = isDimmed ? 0.20 : isSelected ? 0.85 : 0.65;
+    const defaultRingColor = Cesium.Color.fromCssColorString(RANGE_RING_THEME.ringColor).withAlpha(ringAlpha);
+    const maxRingColor = Cesium.Color.fromCssColorString(RANGE_RING_THEME.maxRingColor).withAlpha(Math.min(1.0, ringAlpha * 1.25));
+    const labelColor = Cesium.Color.fromCssColorString(RANGE_RING_THEME.labelTextColor);
+    const labelBgColor = Cesium.Color.fromCssColorString(RANGE_RING_THEME.labelBgColor).withAlpha(0.1);
 
-    // A. Vẽ các vòng cự ly
+    // A. Vẽ các vòng cự ly tròn đồng tâm
     rangeRings.forEach((ring) => {
       const validRingPositions = ring.positions.filter(
         (p) => typeof p.lat === 'number' && typeof p.lon === 'number' &&
-               !isNaN(p.lat) && !isNaN(p.lon) && isFinite(p.lat) && isFinite(p.lon)
+          !isNaN(p.lat) && !isNaN(p.lon) && isFinite(p.lat) && isFinite(p.lon)
       );
       if (validRingPositions.length < 3) return;
 
@@ -231,7 +337,7 @@ export function buildSpxCoverageEntities(
           name: `Vòng cự ly ${ring.label}`,
           polyline: {
             positions: ringCartesians,
-            width: isMaxRing ? (isSelected ? 3.0 : 2.5) : (isSelected ? 2.0 : 1.5),
+            width: isMaxRing ? (isSelected ? 2.8 : 2.2) : (isSelected ? 1.8 : 1.3),
             material: isMaxRing ? maxRingColor : defaultRingColor,
             clampToGround: true,
             zIndex: isMaxRing ? 75 : 70,
@@ -239,63 +345,48 @@ export function buildSpxCoverageEntities(
         })
       );
 
-      // B. Nhãn cự ly rõ nét với nền tối (Pill) - Chỉ render nếu KHÔNG bị dimmed và nhãn được bật
+      // B. Nhãn cự ly rõ nét với nền tối (Pill)
+      // CHỈ RENDER THEO 1 HƯỚNG DUY NHẤT VÀ TỰ ĐỘNG BIẾN MẤT KHI ZOOM NHỎ LẠI ĐỂ TRÁNH ĐỤNG/DÍNH SỐ
       if (!isDimmed && showLabels) {
-        const cardinalBearings = [0, 180];
-        cardinalBearings.forEach((bearing) => {
-          const pt = destinationPoint(safeLat, safeLon, ring.rangeM, bearing);
-          if (!isNaN(pt.lat) && !isNaN(pt.lon) && isFinite(pt.lat) && isFinite(pt.lon)) {
-            entities.push(
-              new Cesium.Entity({
-                name: `Nhãn cự ly ${ring.label} (${bearing}°)`,
-                position: Cesium.Cartesian3.fromDegrees(pt.lon, pt.lat, 0),
-                label: {
-                  text: ring.label,
-                  font: isMaxRing ? 'bold 12px "JetBrains Mono", monospace' : 'bold 11px "JetBrains Mono", monospace',
-                  style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                  fillColor: isMaxRing ? Cesium.Color.WHITE : labelColor,
-                  outlineColor: Cesium.Color.BLACK,
-                  outlineWidth: 4,
-                  showBackground: true,
-                  backgroundColor: labelBgColor,
-                  backgroundPadding: new Cesium.Cartesian2(6, 3),
-                  heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-                  disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                  verticalOrigin: Cesium.VerticalOrigin.CENTER,
-                  horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-                },
-              })
-            );
-          }
-        });
+        // Hướng đặt nhãn duy nhất (mặc định: Hướng Bắc 0°, hoặc chỉnh tại RANGE_RING_THEME.labelBearingDeg)
+        const bearing = RANGE_RING_THEME.labelBearingDeg ?? 0;
+        const pt = destinationPoint(safeLat, safeLon, ring.rangeM, bearing);
 
-        // Nhãn cự ly dọc theo trục Đông (90°) và Tây (270°)
-        [90, 270].forEach((bearing) => {
-          const pt = destinationPoint(safeLat, safeLon, ring.rangeM, bearing);
-          if (!isNaN(pt.lat) && !isNaN(pt.lon) && isFinite(pt.lat) && isFinite(pt.lon)) {
-            entities.push(
-              new Cesium.Entity({
-                name: `Nhãn cự ly ${ring.label} (${bearing}°)`,
-                position: Cesium.Cartesian3.fromDegrees(pt.lon, pt.lat, 0),
-                label: {
-                  text: ring.label,
-                  font: isMaxRing ? 'bold 12px "JetBrains Mono", monospace' : 'bold 11px "JetBrains Mono", monospace',
-                  style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                  fillColor: isMaxRing ? Cesium.Color.WHITE : labelColor,
-                  outlineColor: Cesium.Color.BLACK,
-                  outlineWidth: 4,
-                  showBackground: true,
-                  backgroundColor: labelBgColor,
-                  backgroundPadding: new Cesium.Cartesian2(6, 3),
-                  heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-                  disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                  verticalOrigin: Cesium.VerticalOrigin.CENTER,
-                  horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-                },
-              })
-            );
-          }
-        });
+        if (!isNaN(pt.lat) && !isNaN(pt.lon) && isFinite(pt.lat) && isFinite(pt.lon)) {
+          // Tính khoảng cách nhìn tối đa dựa trên bán kính vòng (LOD culling):
+          // Vòng nhỏ (< 25km) tự động ẩn sớm khi camera ở xa, chỉ vòng lớn & MAX mới hiển thị từ xa
+          const maxDisplayDist = isMaxRing
+            ? 1_800_000 // Vòng MAX hiển thị từ cự ly tới 1.800 km
+            : Math.max(80_000, ring.rangeM * 4.0); // 10km ẩn sau 80km, 25km ẩn sau 100km, 50km ẩn sau 200km...
+
+          // Định dạng chữ số khoảng cách gọn gàng (km thay vì mét dài dòng)
+          const distKm = ring.rangeM >= 1000 ? `${ring.rangeM / 1000}km` : `${ring.rangeM}m`;
+          const displayLabel = isMaxRing ? `${distKm} [MAX]` : distKm;
+
+          entities.push(
+            new Cesium.Entity({
+              name: `Nhãn cự ly ${displayLabel}`,
+              position: Cesium.Cartesian3.fromDegrees(pt.lon, pt.lat, 0),
+              label: {
+                text: displayLabel,
+                font: isMaxRing ? 'bold 15px "JetBrains Mono", monospace' : 'bold 13px "JetBrains Mono", monospace',
+                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                fillColor: isMaxRing ? Cesium.Color.fromCssColorString('#fde047') : labelColor,
+                outlineColor: Cesium.Color.BLACK,
+                outlineWidth: 4,
+                showBackground: true,
+                backgroundColor: labelBgColor,
+                backgroundPadding: new Cesium.Cartesian2(8, 4),
+                heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, maxDisplayDist),
+                verticalOrigin: Cesium.VerticalOrigin.CENTER,
+                horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+                eyeOffset: new Cesium.Cartesian3(0, 0, 0),
+              },
+            })
+          );
+        }
       }
     });
 
@@ -318,7 +409,7 @@ export function buildSpxCoverageEntities(
               polyline: {
                 positions: axisPositions,
                 width: 1.0,
-                material: Cesium.Color.fromCssColorString('#0284c7').withAlpha(0.35),
+                material: Cesium.Color.fromCssColorString(RANGE_RING_THEME.axisColor).withAlpha(0.35),
                 clampToGround: true,
                 zIndex: 55,
               },
@@ -329,62 +420,88 @@ export function buildSpxCoverageEntities(
     }
   }
 
-  // 3. Render Tâm Đài Radar & Nhãn Toạ độ DMS chuẩn Cambridge Pixel & Quân sự
-  // Điểm tâm đài
+  // 3. Render CỜ CẮM TÁC CHIẾN & TÂM ĐÀI RADAR (Tactical Flag Pin & Anchor Crosshair)
   if (showMarkers) {
-    let statusColor = Cesium.Color.fromCssColorString('#06b6d4'); // Default cyan
-    if (options?.status === 'Active' || options?.status === 'Hoạt động') {
-      statusColor = Cesium.Color.fromCssColorString('#10b981'); // Emerald
-    } else if (options?.status === 'Standby' || options?.status === 'Sẵn sàng') {
-      statusColor = Cesium.Color.fromCssColorString('#f59e0b'); // Amber
-    } else if (options?.status === 'Maintenance' || options?.status === 'Bảo dưỡng') {
-      statusColor = Cesium.Color.fromCssColorString('#f97316'); // Orange
-    } else if (options?.status === 'Offline' || options?.status === 'Tắt máy') {
-      statusColor = Cesium.Color.fromCssColorString('#f43f5e'); // Rose
-    }
+    const flagSvg = createTacticalFlagSvg(options?.shortId || 'R', options?.color || '#06b6d4', isSelected);
 
+    // A. Cờ cắm tác chiến với cán cờ kim loại cắm thẳng xuống tâm radar
+    entities.push(
+      new Cesium.Entity({
+        name: `Cờ Cắm Tâm Đài ${options?.shortId || ''}`,
+        position: radarCartesian,
+        billboard: {
+          image: flagSvg,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+          pixelOffset: new Cesium.Cartesian2(-10, 4),
+          eyeOffset: new Cesium.Cartesian3(0, 0, -400), // Nổi lên trên vòng cự ly
+          heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      })
+    );
+
+    // B. Tâm chữ thập định vị chính xác vị trí chân đài
     entities.push(
       new Cesium.Entity({
         name: `Tâm Đài Radar ${options?.shortId || ''}`,
         position: radarCartesian,
         point: {
-          pixelSize: isSelected ? 12 : 9,
-          color: isSelected ? Cesium.Color.fromCssColorString('#38bdf8') : Cesium.Color.WHITE,
-          outlineColor: statusColor,
-          outlineWidth: isSelected ? 3.5 : 2.5,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          pixelSize: isSelected ? 10 : 8,
+          color: isSelected ? Cesium.Color.fromCssColorString('#fde047') : Cesium.Color.WHITE,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       })
     );
   }
 
-  // Nhãn thông số kỹ thuật đài tại tâm
+  // 4. Render NHÃN THÔNG TIN CHI TIẾT ĐÀI RADAR (Tactical Military Info Card)
+  // eyeOffset: -500 để nhãn thông tin LUÔN LUÔN NỔI LÊN TRÊN CÁC TẦM CỰ LY VÀ ĐƯỜNG VÒNG
   if (showLabels) {
-    const latStr = toDmsString(safeLat, true);
-    const lonStr = toDmsString(safeLon, false);
-    const mslText = `${Math.round(safeGroundAlt)}m MSL`;
-    const shortPrefix = options?.shortId ? `[${options.shortId}] ` : '';
-    const displayName = instanceName ? `${shortPrefix}${instanceName}` : `${shortPrefix}Radar`;
+    const latDms = toDmsString(safeLat, true);
+    const lonDms = toDmsString(safeLon, false);
+    const latDec = safeLat.toFixed(4);
+    const lonDec = safeLon.toFixed(4);
+    const groundMslText = `${Math.round(safeGroundAlt)}m`;
+    const antennaAglText = `${Math.round(options?.antennaHeightAGL || config.radarHeightAGL || 40)}m`;
+    const rangeKmText = options?.rangeKm ? `${options.rangeKm}km` : `${Math.round(config.endRangeM / 1000)}km`;
+    const statusVi = options?.status === 'Active' ? 'Sẵn sàng CĐ' : options?.status === 'Standby' ? 'Trực ban' : options?.status || 'Hoạt động';
+
+    const infoCardText = formatRadarInfoCardText({
+      shortId: options?.shortId,
+      name: instanceName,
+      latDms,
+      lonDms,
+      latDec,
+      lonDec,
+      groundMsl: groundMslText,
+      antennaAgl: antennaAglText,
+      rangeKm: rangeKmText,
+      statusVi,
+    });
 
     entities.push(
       new Cesium.Entity({
-        name: `Nhãn Toạ Độ Tâm Đài ${options?.shortId || ''}`,
+        name: `Nhãn Thông Tin Tâm Đài ${options?.shortId || ''}`,
         position: radarCartesian,
         label: {
-          text: `${displayName}\n${latStr}  ${lonStr}\n${mslText}`,
-          font: isSelected ? 'bold 12px "JetBrains Mono", monospace' : 'bold 11px "JetBrains Mono", monospace',
+          text: infoCardText,
+          font: isSelected ? 'bold 12px "JetBrains Mono", monospace' : '11px "JetBrains Mono", monospace',
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          fillColor: isSelected ? Cesium.Color.fromCssColorString('#38bdf8') : Cesium.Color.WHITE,
+          fillColor: isSelected ? Cesium.Color.fromCssColorString('#fde047') : Cesium.Color.WHITE,
           outlineColor: Cesium.Color.BLACK,
           outlineWidth: 4,
           showBackground: true,
-          backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.85),
-          backgroundPadding: new Cesium.Cartesian2(6, 4),
+          backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.92),
+          backgroundPadding: new Cesium.Cartesian2(10, 6),
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
           horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-          pixelOffset: new Cesium.Cartesian2(12, -12),
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          pixelOffset: new Cesium.Cartesian2(46, -8),
+          eyeOffset: new Cesium.Cartesian3(0, 0, -500), // LUÔN NẰM TRÊN CÁC TẦM CỰ LY VÀ ĐƯỜNG VÒNG
+          heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       })

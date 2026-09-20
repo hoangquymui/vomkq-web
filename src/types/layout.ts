@@ -1,6 +1,7 @@
 export interface SavedEquipmentEntry {
   instanceId: string;
   templateId: string;
+  shortId?: string;
   posX: number;
   posY: number;
   posZ: number;

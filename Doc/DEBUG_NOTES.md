@@ -197,3 +197,31 @@ react-dom_client.js:2786 Uncaught Error: Maximum update depth exceeded...
 ### Verification
 - `npm run build` đạt Exit Code 0.
 - Không còn bất kỳ cảnh báo hoặc lỗi vòng lặp React nào trong console.
+
+---
+
+## [2026-09-20] Tái thiết kế toàn diện bảng Inspector (RightInspector) - Tách biệt 2D/3D, phân cấp thị giác và đóng gọn theo tiến trình tác chiến
+
+### Mục tiêu
+Tái cấu trúc và thiết kế lại toàn diện bảng Inspector (`RightInspector.tsx`) theo kế hoạch tại `Cau_hinh_lai_toan_bo_Inspector.docx`, khắc phục sự rối mắt và lộn xộn giữa 2D và 3D, áp dụng 5 tầng kiến trúc trực quan.
+
+### Files
+- `src/components/ui/RightInspector.tsx`
+- `docs/DEBUG_NOTES.md`
+- `Doc/DEBUG_NOTES.md`
+
+### Parameters
+| Name | Type | Value | Unit | Source | Meaning |
+|---|---|---|---|---|---|
+| `activeTab` | `'2d' \| '3d'` | `'2d' / '3d'` | - | `RightInspector.tsx` | Tab chuyển đổi chế độ xem 2D hoặc 3D |
+| `isProfileOpen` | `boolean` | `false` | - | `RightInspector.tsx` | Trạng thái mở accordion Giản đồ búp sóng |
+| `isAltitudeTableOpen` | `boolean` | `false` | - | `RightInspector.tsx` | Trạng thái mở accordion Bảng tra cự ly theo độ cao |
+| `coordFormat` | `'dms' \| 'decimal'` | `'dms'` | - | `RightInspector.tsx` | Định dạng hiển thị tọa độ WGS-84 |
+| `status` | `OperationalStatus` | `'Active' \| 'Standby' \| 'Maintenance' \| 'Offline'` | - | `equipment.ts` | Trạng thái sẵn sàng chiến đấu |
+| `shortId` | `string` | `R-01, SAM-01...` | - | `equipment.ts` | Mã định danh quân sự ngắn |
+
+### Verification
+- `npx tsc --noEmit` đạt Exit Code 0.
+- Dev server Vite hot reload cập nhật tức thì.
+- Thử nghiệm các thao tác: đổi trạng thái, chỉnh tọa độ DMS, chuyển tab 2D/3D, mở/đóng accordion.
+

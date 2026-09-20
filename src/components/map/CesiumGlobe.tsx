@@ -18,7 +18,14 @@ import {
 } from '../../utils/spxCoverageEngine';
 import {
   buildSpxCoverageEntities,
+  toDmsString,
 } from '../../utils/spxGeometryBuilder';
+import {
+  getAssetCapabilities,
+  createCategoryTacticalMarkerSvg,
+  formatTacticalAssetInfoCard,
+  STATUS_COLOR_MAP,
+} from '../../utils/assetVisualization';
 
 // Access token cấu hình từ dự án VomKQ (CesiumIonServer)
 Cesium.Ion.defaultAccessToken =
@@ -546,7 +553,8 @@ export const CesiumGlobe: React.FC = () => {
 
       let hasPendingCalculation = false;
       for (const inst of instances) {
-        if (inst.rangeKm > 0 && inst.showDome) {
+        const caps = getAssetCapabilities(inst.category);
+        if (caps.hasRadarCoverage && inst.rangeKm > 0 && inst.showDome) {
           const params = {
             targetHeightMeters,
             azimuthStepDeg,
@@ -569,7 +577,8 @@ export const CesiumGlobe: React.FC = () => {
 
       for (const inst of instances) {
         if (isCancelled) break;
-        if (inst.rangeKm > 0 && inst.showDome) {
+        const caps = getAssetCapabilities(inst.category);
+        if (caps.hasRadarCoverage && inst.rangeKm > 0 && inst.showDome) {
           try {
             const params = {
               targetHeightMeters,
@@ -651,8 +660,11 @@ export const CesiumGlobe: React.FC = () => {
     let isCancelled = false;
 
     const calcSpxAll = async () => {
-      // Tìm các đài có tầm quét
-      const candidateRadars = instances.filter((i) => i.rangeKm > 0);
+      // Tìm các đài radar thực thụ có capability phát sóng cảnh giới
+      const candidateRadars = instances.filter((i) => {
+        const caps = getAssetCapabilities(i.category);
+        return caps.hasRadarCoverage && i.rangeKm > 0;
+      });
       if (candidateRadars.length === 0) return;
 
       const state = useTacticalStore.getState();
@@ -747,80 +759,114 @@ export const CesiumGlobe: React.FC = () => {
         : 50;
 
       const isSelected = selectedInstanceId === inst.instanceId;
-
-      const position = Cesium.Cartesian3.fromDegrees(
-        inst.longitude,
-        inst.latitude,
-        safeAntennaAGL
-      );
-
+      const is2D = viewMode === '2D';
       const baseColor = Cesium.Color.fromCssColorString(inst.color || '#38bdf8');
-      const highlightColor = Cesium.Color.WHITE;
-
       const spxRes = spxResults[inst.instanceId];
-      const isSpxActive = (viewMode === '2D' || showSpxPanel) && !!spxRes;
 
-      // 1. Marker & Label bám địa hình thực (hoặc toạ độ phẳng trong 2D) khi không có SPx
+      const caps = getAssetCapabilities(inst.category);
+      const isSpxActive = (viewMode === '2D' || showSpxPanel) && !!spxRes && caps.hasRadarCoverage;
+
+      // 1. Cờ cắm tác chiến & Nhãn thông tin bám địa hình thực (hoặc toạ độ phẳng trong 2D) khi không có SPx
       if (!isSpxActive) {
-        const isPendingCalc = isCalculatingSpx && !spxRes;
+        const isPendingCalc = isCalculatingSpx && !spxRes && caps.hasRadarCoverage;
         const shortPrefix = inst.shortId ? `[${inst.shortId}] ` : '';
         const displayName = `${shortPrefix}${inst.name}`;
+        const radarCartesian = Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, is2D ? 0 : safeAlt);
 
-        let statusColor = Cesium.Color.fromCssColorString('#06b6d4');
-        if (inst.status === 'Active') {
-          statusColor = Cesium.Color.fromCssColorString('#10b981');
-        } else if (inst.status === 'Standby') {
-          statusColor = Cesium.Color.fromCssColorString('#f59e0b');
-        } else if (inst.status === 'Maintenance') {
-          statusColor = Cesium.Color.fromCssColorString('#f97316');
-        } else if (inst.status === 'Offline') {
-          statusColor = Cesium.Color.fromCssColorString('#f43f5e');
+        if (showMarkersLayer) {
+          const flagSvg = createCategoryTacticalMarkerSvg(
+            inst.category,
+            inst.shortId || 'EQ',
+            inst.color || '#06b6d4',
+            isSelected,
+            inst.status
+          );
+          // Cờ cắm tác chiến chuẩn chuyên ngành quân sự
+          viewer.entities.add({
+            name: `Marker ${inst.shortId || ''} (${inst.category})`,
+            position: radarCartesian,
+            properties: { instanceId: inst.instanceId },
+            billboard: {
+              image: flagSvg,
+              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+              horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+              pixelOffset: new Cesium.Cartesian2(-10, 4),
+              eyeOffset: new Cesium.Cartesian3(0, 0, -450),
+              heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          });
+          // Tâm chữ thập
+          viewer.entities.add({
+            name: `Tâm Khí Tài ${inst.shortId || ''}`,
+            position: radarCartesian,
+            properties: { instanceId: inst.instanceId },
+            point: {
+              pixelSize: isSelected ? 10 : 8,
+              color: isSelected ? Cesium.Color.fromCssColorString('#fde047') : Cesium.Color.WHITE,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 2,
+              heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          });
         }
 
-        const pointConfig = showMarkersLayer
-          ? {
-              pixelSize: isSelected ? 14 : 10,
-              color: isSelected ? highlightColor : baseColor,
-              outlineColor: statusColor,
-              outlineWidth: isSelected ? 3.5 : 2,
-              heightReference: viewMode === '2D' ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            }
-          : undefined;
+        if (showLabelsLayer) {
+          const latDms = toDmsString(inst.latitude, true);
+          const lonDms = toDmsString(inst.longitude, false);
+          const groundMslText = `${Math.round(safeAlt)}m`;
+          const antennaAglText = `${Math.round(safeAntennaAGL)}m`;
+          const rangeKmText = `${safeRangeKm}km`;
+          const statusVi = STATUS_COLOR_MAP[inst.status]?.vi || inst.status || 'Hoạt động';
 
-        const labelConfig = showLabelsLayer
-          ? {
-              text: isPendingCalc ? `${displayName} [Đang quét SPx...]` : `${displayName} [${safeAlt}m]`,
-              font: isSelected ? 'bold 12px "JetBrains Mono", sans-serif' : '11px "JetBrains Mono", sans-serif',
-              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              fillColor: isPendingCalc ? Cesium.Color.CYAN : (isSelected ? Cesium.Color.YELLOW : Cesium.Color.WHITE),
-              outlineColor: Cesium.Color.BLACK,
-              outlineWidth: 3,
-              showBackground: true,
-              backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.85),
-              backgroundPadding: new Cesium.Cartesian2(6, 4),
-              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-              pixelOffset: new Cesium.Cartesian2(0, -18),
-              heightReference: viewMode === '2D' ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            }
-          : undefined;
+          const parentInst = inst.commandedByInstanceId ? instanceMap.get(inst.commandedByInstanceId) : null;
+          const commandedByName = parentInst ? `${parentInst.shortId ? `[${parentInst.shortId}] ` : ''}${parentInst.name}` : undefined;
 
-        if (pointConfig || labelConfig) {
+          const infoCardText = isPendingCalc
+            ? `▶ ${displayName} [Đang tính SPx...]\n  Tọa độ : ${latDms}, ${lonDms}\n  Cao độ : ${groundMslText} (MSL)  |  Anten: ${antennaAglText} (AGL)`
+            : formatTacticalAssetInfoCard({
+                category: inst.category,
+                shortId: inst.shortId,
+                name: inst.name,
+                latDms,
+                lonDms,
+                groundMsl: groundMslText,
+                antennaAgl: antennaAglText,
+                rangeKm: rangeKmText,
+                statusVi,
+                commandedByName,
+              });
+
           viewer.entities.add({
-            position: position,
+            name: `Nhãn Thông Tin ${inst.shortId || ''}`,
+            position: radarCartesian,
             properties: { instanceId: inst.instanceId },
-            point: pointConfig,
-            label: labelConfig,
+            label: {
+              text: infoCardText,
+              font: isSelected ? 'bold 12px "JetBrains Mono", monospace' : '11px "JetBrains Mono", monospace',
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              fillColor: isPendingCalc ? Cesium.Color.CYAN : (isSelected ? Cesium.Color.fromCssColorString('#fde047') : Cesium.Color.WHITE),
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 4,
+              showBackground: true,
+              backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.92),
+              backgroundPadding: new Cesium.Cartesian2(10, 6),
+              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+              horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+              pixelOffset: new Cesium.Cartesian2(46, -8),
+              eyeOffset: new Cesium.Cartesian3(0, 0, -500),
+              distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, isSelected ? 800000 : 350000),
+              heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
           });
         }
       }
 
-      // 2. Vòng chân vòm / Vòng định hướng 2D (chỉ vẽ khi SPx không kích hoạt và được bật)
-      if (!isSpxActive && safeRangeKm > 0 && showRangeRingsLayer) {
+      // 2. Vòng cự ly Radar (CHỈ vẽ cho khí tài có capability hasRangeRings và khi SPx không kích hoạt)
+      if (caps.hasRangeRings && !isSpxActive && safeRangeKm > 0 && showRangeRingsLayer) {
         if (viewMode === '2D') {
-          // CHẾ ĐỘ 2D: Vẽ vòng ellipse phẳng 2D nhẹ nhàng, TUYỆT ĐỐI KHÔNG dùng CLAMP_TO_GROUND / TERRAIN
-          // để tránh lỗi DeveloperError: cartesian has a NaN component trong SCENE2D
           viewer.entities.add({
             position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
             properties: { instanceId: inst.instanceId },
@@ -835,13 +881,13 @@ export const CesiumGlobe: React.FC = () => {
             },
           });
         } else {
-          // CHẾ ĐỘ 3D: Vòng chân vòm ôm theo nếp lồi lõm sườn núi
           viewer.entities.add({
             position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
             properties: { instanceId: inst.instanceId },
             ellipse: {
               semiMajorAxis: safeRangeKm * 1000,
               semiMinorAxis: safeRangeKm * 1000,
+              height: 0,
               heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
               classificationType: Cesium.ClassificationType.TERRAIN,
               material: baseColor.withAlpha(isSelected ? 0.15 : 0.06),
@@ -853,8 +899,95 @@ export const CesiumGlobe: React.FC = () => {
         }
       }
 
-      // 3. Vùng Phủ SPx 2D Cambridge Pixel HOẶC Vòm Radar 3D Dựng Từ Coverage Field
-      if (isSpxActive) {
+      // 3. Vùng Hỏa Lực Tiêu Diệt Mục Tiêu (Engagement Envelope cho Tên Lửa Phòng Không SAM và Pháo PK AAA)
+      if (caps.hasEngagementEnvelope && safeRangeKm > 0 && showCoverageLayer) {
+        const isSAM = inst.category === 'TenLuaPhongKhong';
+        const envColorHex = isSAM ? '#ef4444' : '#10b981';
+        const envColor = Cesium.Color.fromCssColorString(envColorHex);
+        const envLabelText = isSAM
+          ? `VÙNG HỎA LỰC TÊN LỬA [${inst.shortId || 'SAM'}: ${safeRangeKm}km]`
+          : `HỎA LỰC PHÁO PK [${inst.shortId || 'AAA'}: ${safeRangeKm}km]`;
+
+        if (viewMode === '2D') {
+          viewer.entities.add({
+            name: `Vùng Hỏa Lực ${inst.shortId || ''}`,
+            position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+            properties: { instanceId: inst.instanceId },
+            ellipse: {
+              semiMajorAxis: safeRangeKm * 1000,
+              semiMinorAxis: safeRangeKm * 1000,
+              height: 0,
+              material: envColor.withAlpha(isSelected ? (isSAM ? 0.14 : 0.16) : 0.05),
+              outline: true,
+              outlineColor: envColor.withAlpha(isSelected ? 0.95 : 0.6),
+              outlineWidth: isSelected ? 3 : 1.5,
+            },
+          });
+        } else {
+          viewer.entities.add({
+            name: `Vùng Hỏa Lực ${inst.shortId || ''}`,
+            position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+            properties: { instanceId: inst.instanceId },
+            ellipse: {
+              semiMajorAxis: safeRangeKm * 1000,
+              semiMinorAxis: safeRangeKm * 1000,
+              height: 0,
+              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+              classificationType: Cesium.ClassificationType.TERRAIN,
+              material: envColor.withAlpha(isSelected ? (isSAM ? 0.14 : 0.16) : 0.05),
+              outline: true,
+              outlineColor: envColor.withAlpha(isSelected ? 0.95 : 0.6),
+              outlineWidth: isSelected ? 3 : 1.5,
+            },
+          });
+        }
+
+        // Nhãn biên giới cự ly hỏa lực (Hướng Bắc 0°)
+        const boundaryPoint = destinationPoint(inst.latitude, inst.longitude, safeRangeKm * 1000, 0);
+        viewer.entities.add({
+          name: `Nhãn Hỏa Lực ${inst.shortId || ''}`,
+          position: Cesium.Cartesian3.fromDegrees(boundaryPoint.lon, boundaryPoint.lat, is2D ? 0 : safeAlt),
+          properties: { instanceId: inst.instanceId },
+          label: {
+            text: envLabelText,
+            font: isSelected ? 'bold 11px "JetBrains Mono", monospace' : '10px "JetBrains Mono", monospace',
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            fillColor: isSelected ? Cesium.Color.fromCssColorString('#fde047') : envColor,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            showBackground: true,
+            backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.85),
+            backgroundPadding: new Cesium.Cartesian2(6, 3),
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, isSelected ? 600000 : 300000),
+            heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        });
+      }
+
+      // 4. Cung Quan Sát Trinh Sát Thụ Động (Trạm Quan Sát OP)
+      if (caps.hasObservationSector && safeRangeKm > 0 && showCoverageLayer) {
+        const opColor = Cesium.Color.fromCssColorString('#8b5cf6');
+        viewer.entities.add({
+          name: `Cung Quan Sát ${inst.shortId || ''}`,
+          position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+          properties: { instanceId: inst.instanceId },
+          ellipse: {
+            semiMajorAxis: safeRangeKm * 1000,
+            semiMinorAxis: safeRangeKm * 1000,
+            height: 0,
+            material: opColor.withAlpha(isSelected ? 0.12 : 0.04),
+            outline: true,
+            outlineColor: opColor.withAlpha(isSelected ? 0.9 : 0.5),
+            outlineWidth: isSelected ? 2.5 : 1.2,
+          },
+        });
+      }
+
+      // 5. Vùng Phủ SPx 2D Cambridge Pixel HOẶC Vòm Radar 3D Dựng Từ Coverage Field (CHỈ DÀNH CHO RADAR)
+      if (isSpxActive && caps.hasRadarCoverage) {
         const instConfig = {
           ...spxConfig,
           radarHeightAGL: safeAntennaAGL,
@@ -863,7 +996,7 @@ export const CesiumGlobe: React.FC = () => {
           maxElevationDeg: inst.maxElevationDeg !== undefined ? inst.maxElevationDeg : spxConfig.maxElevationDeg,
           ...(inst.spxConfig || {}),
         };
-        // Render vùng phủ đa tầng màu SPx + vòng cự ly đồng tâm + tâm đài kỹ thuật với đầy đủ tuỳ chọn lớp và Focus/Dimming
+        // Render vùng phủ đa tầng màu SPx + vòng cự ly đồng tâm + cờ cắm tác chiến & nhãn thông số với Focus/Dimming
         const spxEntities = buildSpxCoverageEntities(spxRes, instConfig, inst.name, {
           isSelected,
           hasAnySelected,
@@ -873,12 +1006,17 @@ export const CesiumGlobe: React.FC = () => {
           showMarkers: showMarkersLayer,
           shortId: inst.shortId,
           status: inst.status,
+          category: inst.category,
+          is2D: viewMode === '2D',
+          antennaHeightAGL: safeAntennaAGL,
+          rangeKm: safeRangeKm,
+          color: inst.color,
         });
         spxEntities.forEach((e) => {
           e.properties = new Cesium.PropertyBag({ instanceId: inst.instanceId });
           viewer.entities.add(e);
         });
-      } else if (viewMode === '3D' && showAllDomes && inst.showDome && safeRangeKm > 0 && showCoverageLayer) {
+      } else if (viewMode === '3D' && showAllDomes && inst.showDome && safeRangeKm > 0 && showCoverageLayer && caps.hasRadarCoverage) {
         const field = coverageFields[inst.instanceId];
         if (field && field.rays && field.rays.length > 0) {
           const { visibleEntities, blindEntities, coneOfSilenceEntities } =
@@ -958,6 +1096,7 @@ export const CesiumGlobe: React.FC = () => {
 
     // B. Render đường liên kết chỉ huy (Command Links)
     if (showCommandLinks) {
+      const is2D = viewMode === '2D';
       instances.forEach((sub) => {
         if (sub.commandedByInstanceId) {
           const parent = instanceMap.get(sub.commandedByInstanceId);
@@ -968,6 +1107,8 @@ export const CesiumGlobe: React.FC = () => {
             typeof sub.latitude === 'number' && !isNaN(sub.latitude) && isFinite(sub.latitude) &&
             typeof sub.longitude === 'number' && !isNaN(sub.longitude) && isFinite(sub.longitude)
           ) {
+            const isLinkHighlighted = selectedInstanceId === parent.instanceId || selectedInstanceId === sub.instanceId;
+
             const parentAlt = typeof parent.altitude === 'number' && !isNaN(parent.altitude) && isFinite(parent.altitude) ? parent.altitude : 0;
             const parentAGL = typeof parent.antennaHeightAGL === 'number' && !isNaN(parent.antennaHeightAGL) && isFinite(parent.antennaHeightAGL) ? parent.antennaHeightAGL : 15;
             const subAlt = typeof sub.altitude === 'number' && !isNaN(sub.altitude) && isFinite(sub.altitude) ? sub.altitude : 0;
@@ -976,22 +1117,28 @@ export const CesiumGlobe: React.FC = () => {
             const parentPos = Cesium.Cartesian3.fromDegrees(
               parent.longitude,
               parent.latitude,
-              parentAlt + parentAGL + 60
+              is2D ? 0 : parentAlt + parentAGL + 60
             );
             const subPos = Cesium.Cartesian3.fromDegrees(
               sub.longitude,
               sub.latitude,
-              subAlt + subAGL + 30
+              is2D ? 0 : subAlt + subAGL + 30
             );
 
             viewer.entities.add({
+              name: `Liên kết chỉ huy: ${parent.shortId || 'C2'} ➜ ${sub.shortId || 'Sub'}`,
               polyline: {
                 positions: [parentPos, subPos],
-                width: 3,
-                material: new Cesium.PolylineGlowMaterialProperty({
-                  color: Cesium.Color.fromCssColorString('#06b6d4'),
-                  glowPower: 0.25,
-                }),
+                width: isLinkHighlighted ? 4 : 2,
+                material: isLinkHighlighted
+                  ? new Cesium.PolylineGlowMaterialProperty({
+                      color: Cesium.Color.fromCssColorString('#fde047'),
+                      glowPower: 0.45,
+                    })
+                  : new Cesium.PolylineGlowMaterialProperty({
+                      color: Cesium.Color.fromCssColorString('#06b6d4'),
+                      glowPower: 0.20,
+                    }),
               },
             });
           }

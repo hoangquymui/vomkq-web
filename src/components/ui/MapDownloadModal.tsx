@@ -18,6 +18,7 @@ interface PackInfo {
     zoomLevels: string;
     downloadedAt: string;
     tileCount: number;
+  }>;
   googleTerrain?: Array<{
     name: string;
     bounds: { minLat: number; maxLat: number; minLon: number; maxLon: number };

@@ -9,6 +9,17 @@ export type EquipmentCategory =
 
 export type OperationalStatus = 'Active' | 'Standby' | 'Maintenance' | 'Offline';
 
+export interface AltitudeDetectionRow {
+  altitudeM: number; // Độ cao mục tiêu (m)
+  val1: number | string; // Cự ly phát hiện cột 1 (km)
+  val2?: number | string; // Cự ly phát hiện cột 2 (km) nếu có
+}
+
+export interface AltitudeDetectionTable {
+  headers: string[]; // Tên các cột (ví dụ: ["Độ cao (m)", "S_mt > 1m² (km)"])
+  rows: AltitudeDetectionRow[];
+}
+
 export interface EquipmentTemplate {
   id: string;
   name: string;
@@ -25,6 +36,7 @@ export interface EquipmentTemplate {
   iconName: string;
   wavelengthM?: number; // Bước sóng của đài (m): sóng mét ~2m, sóng cm ~0.05m
   coverageProfile?: CoverageProfile;
+  altitudeDetectionTable?: AltitudeDetectionTable;
 }
 
 export interface EquipmentInstance {
@@ -50,6 +62,7 @@ export interface EquipmentInstance {
   shortId?: string; // Mã định danh quân sự ngắn: R-01, SAM-01, CP-01...
   wavelengthM?: number;
   coverageProfile?: CoverageProfile;
+  altitudeDetectionTable?: AltitudeDetectionTable;
   spxConfig?: Partial<import('./spxRadarCoverage').SpxRadarCoverageConfig>;
 }
 

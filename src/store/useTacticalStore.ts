@@ -64,6 +64,11 @@ interface TacticalState {
   setSpxResult: (instanceId: string, result: import('../types/spxRadarCoverage').SpxCoverageResult) => void;
   setIsCalculatingSpx: (calculating: boolean) => void;
 
+  // Quản lý Bố Cục (Save/Load Layout Modal)
+  showLayoutModal: boolean;
+  setShowLayoutModal: (show: boolean) => void;
+  toggleLayoutModal: () => void;
+
   // Actions
   addEquipment: (instance: EquipmentInstance) => void;
   updateEquipment: (instanceId: string, updates: Partial<EquipmentInstance>) => void;
@@ -171,6 +176,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         category,
         shortId: instance.shortId || autoShortId,
         coverageProfile: instance.coverageProfile || tmpl?.coverageProfile,
+        altitudeDetectionTable: instance.altitudeDetectionTable || tmpl?.altitudeDetectionTable,
       };
       return {
         instances: [...state.instances, instanceWithProfile],
@@ -288,6 +294,11 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       state.isCalculatingSpx === calculating ? state : { isCalculatingSpx: calculating }
     ),
 
+  // Quản lý Bố Cục Modal
+  showLayoutModal: false,
+  setShowLayoutModal: (show) => set({ showLayoutModal: show }),
+  toggleLayoutModal: () => set((state) => ({ showLayoutModal: !state.showLayoutModal })),
+
   setTargetHeightMeters: (heightMeters) =>
     set({ targetHeightMeters: Math.max(10, heightMeters) }),
   toggleBlindZones: () =>
@@ -350,17 +361,20 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     }),
 
   importFromLayout: (layout) => {
-    const importedInstances: EquipmentInstance[] = layout.equipments.map((saved) => {
+    const importedInstances: EquipmentInstance[] = layout.equipments.map((saved, index) => {
       const template =
         EQUIPMENT_TEMPLATES.find((t) => t.id === saved.templateId) ||
         EQUIPMENT_TEMPLATES[0];
 
       const statusMap = ['Active', 'Standby', 'Maintenance', 'Offline'] as const;
       const status = statusMap[saved.status] || 'Active';
+      const prefix = CATEGORY_META[template.category]?.prefix || 'EQ';
+      const autoShortId = `${prefix}-${(index + 1).toString().padStart(2, '0')}`;
 
       return {
         instanceId: saved.instanceId || `eq_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         templateId: saved.templateId,
+        shortId: saved.shortId || autoShortId,
         name: template.name,
         category: template.category,
         latitude: saved.latitude,
@@ -378,6 +392,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         showDome: true,
         showSweep: true,
         coverageProfile: template.coverageProfile,
+        altitudeDetectionTable: template.altitudeDetectionTable,
       };
     });
 
@@ -394,6 +409,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     const entries: SavedEquipmentEntry[] = state.instances.map((item) => ({
       instanceId: item.instanceId,
       templateId: item.templateId,
+      shortId: item.shortId,
       posX: 0,
       posY: 0,
       posZ: 0,

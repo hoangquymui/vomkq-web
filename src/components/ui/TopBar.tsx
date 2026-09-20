@@ -1,21 +1,16 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import {
   Globe2,
   Ruler,
   Layers,
-  FileDown,
-  FileUp,
   Trash2,
-  FolderOpen,
   MapPin,
-  Share2,
   BarChart3,
   HardDriveDownload,
-  Radio,
+  FolderKanban,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { PRESET_LOCATIONS } from '../../data/equipmentTemplates';
-import type { LayoutSaveData } from '../../types/layout';
 
 export const TopBar: React.FC = () => {
   const {
@@ -31,57 +26,12 @@ export const TopBar: React.FC = () => {
     toggleVietnamOnly,
     showAllDomes,
     toggleDomes,
-    showCommandLinks,
-    toggleCommandLinks,
     triggerFlyTo,
     clearAll,
-    exportToLayout,
-    importFromLayout,
-    loadSampleScenario,
     setShowRadarFieldModal,
     setShowMapDownloadModal,
-    showSpxPanel,
-    toggleSpxPanel,
+    setShowLayoutModal,
   } = useTacticalStore();
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Xuất file JSON bố cục
-  const handleExport = () => {
-    const layout = exportToLayout('Bo_Cuc_Phong_Khong_VomKQ');
-    const blob = new Blob([JSON.stringify(layout, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `VomKQ_Layout_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Nạp file JSON bố cục
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const layout = JSON.parse(event.target?.result as string) as LayoutSaveData;
-        if (layout && Array.isArray(layout.equipments)) {
-          importFromLayout(layout);
-        } else {
-          alert('Tệp bố cục không hợp lệ!');
-        }
-      } catch (err) {
-        console.error(err);
-        alert('Lỗi đọc file JSON bố cục');
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
 
   return (
     <header className="absolute top-0 left-0 right-0 h-14 bg-slate-950/90 backdrop-blur-md border-b border-cyan-900/40 z-30 px-3 flex items-center justify-between select-none">
@@ -149,23 +99,6 @@ export const TopBar: React.FC = () => {
             2D
           </button>
         </div>
-
-        {/* Nút bật SPx Radar Coverage 2D (Cambridge Pixel) */}
-        <button
-          onClick={() => {
-            if (viewMode !== '2D') setViewMode('2D');
-            toggleSpxPanel();
-          }}
-          className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded border transition-all ${
-            showSpxPanel
-              ? 'bg-amber-950/85 text-amber-300 border-amber-500/70 shadow-[0_0_10px_rgba(245,158,11,0.35)]'
-              : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-amber-500/50 hover:text-amber-200'
-          }`}
-          title="Bật/Tắt: Bảng điều khiển mô phỏng vùng phủ radar SPx đa tầng độ cao (Cambridge Pixel)"
-        >
-          <Radio className={`w-3.5 h-3.5 ${showSpxPanel ? 'text-amber-400' : 'text-cyan-400'}`} />
-          <span>SPx Vùng Phủ 2D</span>
-        </button>
 
         {/* Nút Chỉ Vùng Việt Nam / Toàn Cầu */}
         <button
@@ -253,20 +186,6 @@ export const TopBar: React.FC = () => {
           <span className="hidden lg:inline">Vòm 3D</span>
         </button>
 
-        {/* Bật/Tắt Tuyến Chỉ Huy */}
-        <button
-          onClick={toggleCommandLinks}
-          title="Bật/Tắt Tuyến chỉ huy"
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-all ${
-            showCommandLinks
-              ? 'bg-amber-950/80 text-amber-300 border-amber-500/50'
-              : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <Share2 className="w-3.5 h-3.5 text-amber-400" />
-          <span className="hidden lg:inline">Chỉ Huy</span>
-        </button>
-
         {/* Thước đo khoảng cách */}
         <button
           onClick={() =>
@@ -293,43 +212,16 @@ export const TopBar: React.FC = () => {
         </button>
       </div>
 
-      {/* 3. Tác vụ Kịch bản, Lưu/Tải Layout */}
-      <div className="flex items-center gap-1.5">
-        {/* Nạp kịch bản mẫu */}
+      {/* 3. Tác vụ Quản Lý Bố Cục & Xóa */}
+      <div className="flex items-center gap-2">
+        {/* Nút mở Quản Lý Bố Cục (Tải & Lưu) */}
         <button
-          onClick={loadSampleScenario}
-          className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded transition-colors"
-          title="Nạp kịch bản bố trí bảo vệ phòng không Bắc Bộ"
+          onClick={() => setShowLayoutModal(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-cyan-500/50 bg-cyan-950/70 hover:bg-cyan-900/90 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.3)] transition-all cursor-pointer"
+          title="Mở bảng Quản Lý Bố Cục Trận Địa (Lưu / Tải / Xóa file JSON)"
         >
-          <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
-          <span className="hidden xl:inline">Kịch bản mẫu</span>
-        </button>
-
-        {/* Nạp File JSON */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json"
-          onChange={handleImport}
-          className="hidden"
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded transition-colors"
-          title="Tải kế hoạch từ file JSON"
-        >
-          <FileUp className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="hidden xl:inline">Tải Bố Cục</span>
-        </button>
-
-        {/* Lưu File JSON */}
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded transition-colors"
-          title="Lưu kế hoạch hiện tại ra file JSON"
-        >
-          <FileDown className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="hidden xl:inline">Lưu Bố Cục</span>
+          <FolderKanban className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Bố Cục</span>
         </button>
 
         {/* Xóa sạch */}
@@ -339,7 +231,7 @@ export const TopBar: React.FC = () => {
               clearAll();
             }
           }}
-          className="p-1.5 text-xs text-rose-400 hover:bg-rose-950/40 border border-transparent hover:border-rose-900/60 rounded transition-colors"
+          className="p-1.5 text-xs text-rose-400 hover:bg-rose-950/40 border border-transparent hover:border-rose-900/60 rounded transition-colors cursor-pointer"
           title="Xóa toàn bộ khí tài"
         >
           <Trash2 className="w-4 h-4" />

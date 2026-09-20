@@ -86,28 +86,28 @@ export const DEFAULT_SPX_TARGET_HEIGHTS: SpxTargetHeightTier[] = [
     heightMeters: 500,
     color: '#00e676', // Xanh lục tươi
     label: '500m',
-    outlineColor: '#00c853',
+    outlineColor: '#00ff66', // Đường viền xanh dạ quang rực rỡ
   },
   {
     id: 'tier_800',
     heightMeters: 800,
     color: '#ffd600', // Vàng
     label: '800m',
-    outlineColor: '#ffab00',
+    outlineColor: '#ffff00', // Đường viền vàng chanh rực rỡ
   },
   {
     id: 'tier_1000',
     heightMeters: 1000,
     color: '#ff9100', // Cam
     label: '1000m',
-    outlineColor: '#ff6d00',
+    outlineColor: '#ff8800', // Đường viền cam đậm nét
   },
   {
     id: 'tier_2000',
     heightMeters: 2000,
     color: '#ff1744', // Đỏ
     label: '2000m',
-    outlineColor: '#d50000',
+    outlineColor: '#ff0033', // Đường viền đỏ thắm sắc sảo
   },
 ];
 
@@ -126,9 +126,9 @@ export const DEFAULT_SPX_CONFIG: SpxRadarCoverageConfig = {
   kFactor: 4 / 3, // Mô hình 4/3 chuẩn
   altitudeReference: 'sea_level',
   targetHeights: DEFAULT_SPX_TARGET_HEIGHTS,
-  coverageTransparency: 0.45,
+  coverageTransparency: 0.28, // Độ trong suốt dải màu mờ nhẹ chuẩn Cambridge Pixel
   showRangeRings: true,
   rangeRingIntervalM: 5000.0, // Vòng cự ly mỗi 5km
   showBoundaryLine: true,
-  boundaryColor: '#ef4444',
+  boundaryColor: '#ff0033',
 };
