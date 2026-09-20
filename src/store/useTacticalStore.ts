@@ -23,7 +23,7 @@ interface TacticalState {
   // 3D Terrain & Basemap Options
   terrainEnabled: boolean;
   terrainExaggeration: number; // 1.0 -> 3.0
-  basemap: 'satellite' | 'offline' | 'topo' | 'dark' | 'osm';
+  basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'dark' | 'osm';
   vietnamOnly: boolean;
   showMapDownloadModal: boolean;
 
@@ -79,7 +79,7 @@ interface TacticalState {
 
   setTerrainEnabled: (enabled: boolean) => void;
   setTerrainExaggeration: (exaggeration: number) => void;
-  setBasemap: (basemap: 'satellite' | 'offline' | 'topo' | 'dark' | 'osm') => void;
+  setBasemap: (basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'dark' | 'osm') => void;
   setShowMapDownloadModal: (show: boolean) => void;
   setVietnamOnly: (vietnamOnly: boolean) => void;
   toggleVietnamOnly: () => void;
@@ -139,7 +139,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 
   terrainEnabled: true,
   terrainExaggeration: 1.8,
-  basemap: 'satellite',
+  basemap: 'google-terrain',
   vietnamOnly: true,
   showMapDownloadModal: false,
 

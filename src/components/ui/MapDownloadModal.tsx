@@ -18,9 +18,8 @@ interface PackInfo {
     zoomLevels: string;
     downloadedAt: string;
     tileCount: number;
-  }>;
-  topo?: Array<{
-    region: string;
+  googleTerrain?: Array<{
+    name: string;
     bounds: { minLat: number; maxLat: number; minLon: number; maxLon: number };
     zoomLevels: string;
     downloadedAt: string;
@@ -56,7 +55,7 @@ export const MapDownloadModal: React.FC = () => {
   const cliAllCommand = `node download-tactical-all.js --region=${selectedRegion}`;
   const cliSatCommand = `node download-tactical-map.js --region=${selectedRegion} --minZoom=${minZoom} --maxZoom=${maxZoom}`;
   const cliTerrainCommand = `node download-tactical-terrain.js --region=${selectedRegion} --minZoom=8 --maxZoom=13`;
-  const cliTopoCommand = `node download-tactical-topo.js --region=${selectedRegion} --minZoom=8 --maxZoom=13`;
+  const cliGoogleTerrainCommand = `node download-tactical-google-terrain.js --region=${selectedRegion} --minZoom=8 --maxZoom=13`;
 
   const [copiedType, setCopiedType] = useState<string | null>(null);
 
@@ -103,12 +102,16 @@ export const MapDownloadModal: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="text-xs font-bold text-slate-200">
-                  {basemap === 'satellite'
+                  {basemap === 'google-terrain'
+                    ? 'Google Terrain VN (Địa Hình, Ranh Giới & Đường Xá)'
+                    : basemap === 'google-hybrid'
+                    ? 'Google Hybrid VN (Vệ Tinh Kèm Đường & Nhãn)'
+                    : basemap === 'satellite'
                     ? 'Vệ Tinh Trực Tuyến HD (Zoom 0-19)'
                     : basemap === 'offline'
                     ? 'Vệ Tinh Ngoại Tuyến (Local Tiles)'
                     : basemap === 'topo'
-                    ? 'Bản Đồ Địa Hình (OpenTopoMap)'
+                    ? 'Bản Đồ Địa Hình (Google Terrain)'
                     : 'Bản Đồ Tối (Dark Tactical)'}
                 </span>
               </div>
@@ -135,18 +138,18 @@ export const MapDownloadModal: React.FC = () => {
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {/* Thẻ Bản Đồ Topo Toàn Bộ Miền Trung */}
+              {/* Thẻ Bản Đồ Google Terrain 2D Toàn Bộ Miền Trung */}
               <div className="p-3 rounded-lg bg-cyan-950/40 border border-cyan-500/50 col-span-1 sm:col-span-2 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-bold text-cyan-300">
-                    🗺️ Toàn Bộ Miền Trung & Tây Nguyên (Bản Đồ Topo Độ Cao 2D)
+                    🗺️ Toàn Bộ Miền Trung & Tây Nguyên (Bản Đồ Google Terrain 2D VN)
                   </span>
                   <span className="text-[10px] bg-cyan-950 text-cyan-400 px-2 py-0.5 rounded border border-cyan-500/50 font-mono font-bold">
-                    Đã Tải 100% (31.076 Files • 795 MB)
+                    Đã Tải 100% (31.076 Files • 245 MB)
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-300">
-                  Phạm vi từ Thanh Hóa đến Bình Thuận & 5 tỉnh Tây Nguyên (Level 8 - 13). Tự động kích hoạt khi ở chế độ 2D, hiển thị đầy đủ đường đồng mức, độ cao từng đỉnh núi, đèo dốc và địa danh tác chiến không cần Internet.
+                  Phạm vi từ Thanh Hóa đến Bình Thuận & 5 tỉnh Tây Nguyên (Level 8 - 13). Tự động kích hoạt khi ở chế độ 2D hoặc Ngoại tuyến, hiển thị đầy đủ địa giới hành chính, hệ thống cao tốc/quốc lộ, tên đèo núi sông vịnh tiếng Việt và sạch bóng quán xá.
                 </p>
               </div>
 
@@ -278,14 +281,14 @@ export const MapDownloadModal: React.FC = () => {
             <div className="space-y-2 pt-1 border-t border-slate-800/80">
               <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Hoặc tải riêng từng phần:</span>
               
-              {/* Bản đồ Topo độ cao 2D */}
+              {/* Bản đồ Google Terrain 2D */}
               <div className="flex items-center gap-2 p-2 bg-slate-900 rounded border border-slate-800 font-mono text-[11px]">
-                <span className="text-amber-400 flex-1 truncate">{cliTopoCommand}</span>
+                <span className="text-cyan-300 flex-1 truncate">{cliGoogleTerrainCommand}</span>
                 <button
-                  onClick={() => handleCopy(cliTopoCommand, 'topo')}
-                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs transition-colors shrink-0"
+                  onClick={() => handleCopy(cliGoogleTerrainCommand, 'google-terrain')}
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs transition-colors shrink-0"
                 >
-                  {copiedType === 'topo' ? '✓ Đã Sao Chép' : 'Tải Riêng Topo'}
+                  {copiedType === 'google-terrain' ? '✓ Đã Sao Chép' : 'Tải Riêng Terrain VN'}
                 </button>
               </div>
 

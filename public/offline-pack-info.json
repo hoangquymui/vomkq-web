@@ -21,7 +21,7 @@
     "format": "Quantized Mesh 1.0 (uncompressed binary)",
     "localPath": "/offline-terrain"
   },
-  "lastUpdated": "2026-09-18T09:54:46.557Z",
+  "lastUpdated": "2026-09-20T03:05:27.308Z",
   "highResRegions": [
     {
       "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
@@ -149,9 +149,9 @@
       "localPath": "/offline-terrain/13/{x}/{y}.terrain"
     }
   ],
-  "topo": [
+  "googleTerrain": [
     {
-      "region": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
+      "name": "Toàn Bộ Duyên Hải Miền Trung & Tây Nguyên",
       "bounds": {
         "minLat": 10.5,
         "maxLat": 20,
@@ -159,9 +159,9 @@
         "maxLon": 109.5
       },
       "zoomLevels": "8-13",
-      "downloadedAt": "2026-09-18T08:32:33.951Z",
+      "downloadedAt": "2026-09-20T03:05:29.753Z",
       "tileCount": 31076,
-      "localPath": "/offline-topo/{z}/{x}/{y}.png"
+      "localPath": "/offline-terrain-map/{z}/{x}/{y}.png"
     }
   ]
 }

@@ -272,3 +272,62 @@ $$\tan \theta_{target}(d) \ge \tan \theta_{mask}(d) \quad \text{và} \quad \tan 
 - **Xác minh**:
   - `npx tsc -b`: 0 lỗi (Exit code 0).
   - Đảm bảo toàn vẹn dữ liệu và cấu trúc dự án.
+
+### Vấn đề 12: Thay thế bản đồ 2D OpenTopoMap bằng Google Terrain & Hybrid chuẩn địa danh Việt Nam, loại bỏ POI thương mại, khẳng định chủ quyền Hoàng Sa - Trường Sa
+- **Ngày**: 20/09/2026
+- **Tính năng / Module**: Bản đồ nền 2D & 3D (Basemap System), Lớp chủ quyền biển đảo (Sovereignty Layer), Công cụ tải ngoại tuyến.
+- **Vấn đề & Mục tiêu**:
+  1. Bản đồ 2D cũ OpenTopoMap sử dụng dải màu hypsometric quá rực rỡ (xanh lá, vàng, cam, nâu) làm chìm và trùng lẫn màu quạt quét radar; đồng thời nguồn dữ liệu OSM quốc tế chứa nhãn phi lý của Trung Quốc ("Sansha / Xisha / 三沙市") và đường ranh giới khoanh vùng Hoàng Sa về Hải Nam, vi phạm nghiêm trọng chủ quyền Việt Nam.
+  2. Thay thế bằng Google Terrain (`lyrs=p&hl=vi&gl=VN`) và Google Hybrid (`lyrs=y`): Hiển thị đầy đủ địa giới hành chính, hệ thống giao thông (cao tốc CT, quốc lộ QL, tỉnh lộ), địa danh tự nhiên (núi, đèo dốc, sông, vịnh biển) bằng tiếng Việt.
+  3. Hoàn toàn sạch bóng các biển hiệu cửa hàng, quán xá thương mại (No Commercial POIs).
+  4. Màu sắc êm dịu, đổ bóng địa hình (hillshade) trung tính, làm nổi bật 100% các dải màu quạt radar.
+  5. Khẳng định chủ quyền biển đảo: Hiển thị chuẩn tiếng Việt "Hoàng Sa", "quần đảo Trường Sa", "East Sea" (Biển Đông); bổ sung 2 ghim nhãn chủ quyền vàng cờ đỏ trang trọng, vĩnh viễn trên bản đồ.
+  6. Mở khóa bộ chọn Basemap trong chế độ 2D, cho phép chuyển đổi linh hoạt.
+  7. Cung cấp script `download-tactical-google-terrain.js` tải offline cho các vùng tác chiến trọng điểm.
+- **File đã thay đổi**:
+  - `src/store/useTacticalStore.ts`
+  - `src/components/map/CesiumGlobe.tsx`
+  - `src/components/ui/TopBar.tsx`
+  - `src/components/ui/MapDownloadModal.tsx`
+  - `download-tactical-google-terrain.js` [NEW]
+  - `docs/DEBUG_NOTES.md`
+- **Tên thông số / Biến quan trọng**:
+  - `basemap`: Kiểu `'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'dark' | 'osm'`. Giá trị mặc định mới: `'google-terrain'`.
+  - `googleTerrainUrl`: `https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}&hl=vi&gl=VN` (với `s` thuộc `['0','1','2','3']`, zoom level từ 0 đến 20).
+  - `googleHybridUrl`: `https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi&gl=VN`.
+  - `hoangSaPosition`: Tọa độ Cartesian từ `(112.0°E, 16.5°N, 100m)`.
+  - `truongSaPosition`: Tọa độ Cartesian từ `(114.0°E, 10.0°N, 100m)`.
+  - `distanceDisplayCondition`: `Cesium.DistanceDisplayCondition(0, 5000000)` (mét).
+  - `disableDepthTestDistance`: `Number.POSITIVE_INFINITY` (đảm bảo nhãn không bị chìm dưới quả địa cầu hay tầng khí quyển).
+- **Kỳ vọng**:
+  - Chế độ 2D hiển thị bản đồ địa hình Google Terrain sắc nét, đầy đủ địa danh, giao thông tiếng Việt, sạch bóng quán xá.
+  - Vùng phủ quạt radar (đỏ, cam, vàng, xanh) nổi bật rõ ràng, không bị trùng màu.
+  - Quần đảo Hoàng Sa và Trường Sa hiển thị tên chuẩn tiếng Việt, có cờ đỏ sao vàng và nhãn chủ quyền `(VIỆT NAM)`.
+  - Không còn bất kỳ tile nào tải từ OpenTopoMap hay mang nhãn Tam Sa / Sansha.
+  - Bộ chọn Basemap ở thanh TopBar hoạt động thông suốt ở cả 2D và 3D.
+- **Kết quả thực tế**:
+  - `npx tsc --noEmit`: 0 lỗi.
+  - `npm run build`: Đóng gói thành công trong 19.34s, không phát sinh lỗi.
+  - Cấu trúc thư mục sạch sẽ, sẵn sàng cho người dùng kiểm tra trên trình duyệt.
+- **Kết luận**: Hoàn thành 100% mục tiêu theo quy trình `/dev-feature`, bảo đảm tính pháp lý chủ quyền quốc gia và nâng cao trải nghiệm tác chiến phòng không.
+
+### Vấn đề 13: Hoàn thành tải 100% dữ liệu ngoại tuyến Google Terrain Toàn bộ Miền Trung & Tây Nguyên (31.076 tiles, Level 8-13)
+- **Ngày**: 20/09/2026
+- **Tính năng / Module**: Bản đồ ngoại tuyến Google Terrain (Offline Map Pack), Công cụ tải `download-tactical-google-terrain.js`.
+- **Mục tiêu**:
+  - Tải toàn bộ các mảnh gạch bản đồ địa hình Google Terrain chuẩn tiếng Việt cho dải Miền Trung và 5 tỉnh Tây Nguyên (từ Thanh Hóa đến Bình Thuận) từ Zoom Level 8 đến Zoom Level 13.
+  - Khắc phục hiện tượng race condition trong hàng đợi tải đa luồng khi dùng `array.shift()`.
+- **Thông số kỹ thuật**:
+  - Tên gói dữ liệu: `Toàn Bộ Duyên Hải Miền Trung & Tây Nguyên`.
+  - Tọa độ Bounding Box: `minLat: 10.5, maxLat: 20.0, minLon: 105.0, maxLon: 109.5`.
+  - Phạm vi Zoom: Level 8 -> Level 13 (chi tiết từng đèo dốc, núi cao, cao tốc, quốc lộ, tỉnh lộ, xã bản).
+  - Tổng số mảnh gạch: **31.076 tiles** (Level 8: 32, Level 9: 105, Level 10: 406, Level 11: 1.482, Level 12: 5.876, Level 13: 23.175).
+  - Dung lượng lưu trữ: **245.19 MB** (nhẹ hơn 3 lần so với bản OpenTopoMap cũ ~795 MB).
+  - Vị trí lưu cục bộ: `public/offline-terrain-map/{z}/{x}/{y}.png`.
+  - Metadata: Đã cập nhật vào `public/offline-pack-info.json` dưới mục `googleTerrain`.
+- **Xác minh**:
+  - Toàn bộ 31.076 mảnh gạch đã được ghi thành công vào đĩa cứng với 0 lỗi HTTP.
+  - Kiểm tra tính toàn vẹn file ảnh: 100% file PNG hợp lệ.
+  - Modal Quản lý bản đồ ngoại tuyến hiển thị thẻ gói dữ liệu Google Terrain đã tải 100%.
+
+

@@ -25,8 +25,26 @@ Cesium.Ion.defaultAccessToken =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzYmIyMWFkMS1lYjc5LTQ0NzMtYThlNS1iNTEzMTA1NTY4MjQiLCJpZCI6NDYwODUzLCJpc3MiOiJodHRwczovL2FwaS5jZXNpdW0uY29tIiwiYXVkIjoidW5kZWZpbmVkX2RlZmF1bHQiLCJpYXQiOjE3ODUxMjM1ODN9.gyB0vWTm1yJXS2pCkaVqyLdbg1RxFzjReo7jeDEMmQU';
 
 // Helper tạo ImageryProvider linh hoạt cho Basemap
-function createImageryProvider(basemap: 'satellite' | 'offline' | 'topo' | 'dark' | 'osm') {
+function createImageryProvider(basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'dark' | 'osm') {
   switch (basemap) {
+    case 'google-terrain':
+      // Bản đồ Địa Hình Google Terrain (kèm ranh giới, địa danh & tuyến đường VN, không có POI cửa hàng)
+      return new Cesium.UrlTemplateImageryProvider({
+        url: 'https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}&hl=vi&gl=VN',
+        subdomains: ['0', '1', '2', '3'],
+        minimumLevel: 0,
+        maximumLevel: 20,
+        credit: new Cesium.Credit('© Google Maps (Terrain VN)'),
+      });
+    case 'google-hybrid':
+      // Bản đồ Vệ Tinh Google Hybrid (kèm ranh giới, địa danh & đường sá VN)
+      return new Cesium.UrlTemplateImageryProvider({
+        url: 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=vi&gl=VN',
+        subdomains: ['0', '1', '2', '3'],
+        minimumLevel: 0,
+        maximumLevel: 20,
+        credit: new Cesium.Credit('© Google Maps (Hybrid VN)'),
+      });
     case 'satellite':
       // Ảnh vệ tinh trực tuyến độ nét cao (zoom tới level 19 ~0.3m/pixel)
       return new Cesium.UrlTemplateImageryProvider({
@@ -42,11 +60,13 @@ function createImageryProvider(basemap: 'satellite' | 'offline' | 'topo' | 'dark
         maximumLevel: 16,
       });
     case 'topo':
-      // Bản đồ địa hình đường đồng mức OpenTopoMap
+      // Chuyển hướng topo an toàn sang Google Terrain (loại bỏ hoàn toàn OpenTopoMap với nhãn sai lệch)
       return new Cesium.UrlTemplateImageryProvider({
-        url: 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
-        maximumLevel: 17,
-        credit: new Cesium.Credit('© OpenTopoMap contributors'),
+        url: 'https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}&hl=vi&gl=VN',
+        subdomains: ['0', '1', '2', '3'],
+        minimumLevel: 0,
+        maximumLevel: 20,
+        credit: new Cesium.Credit('© Google Maps (Terrain VN)'),
       });
     case 'dark':
       // Bản đồ tác chiến tối giản Dark Matter
@@ -61,8 +81,9 @@ function createImageryProvider(basemap: 'satellite' | 'offline' | 'topo' | 'dark
       });
     default:
       return new Cesium.UrlTemplateImageryProvider({
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        maximumLevel: 19,
+        url: 'https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}&hl=vi&gl=VN',
+        subdomains: ['0', '1', '2', '3'],
+        maximumLevel: 20,
       });
   }
 }
@@ -265,44 +286,33 @@ export const CesiumGlobe: React.FC = () => {
 
     viewer.imageryLayers.removeAll();
 
-    if (viewMode === '2D') {
-      // CHẾ ĐỘ 2D: CHỈ LOAD DUY NHẤT BẢN ĐỒ TOPO ĐỘ CAO
-      // Lớp nền dự phòng trực tuyến OpenTopoMap
-      const onlineTopoLayer = new Cesium.ImageryLayer(
-        new Cesium.UrlTemplateImageryProvider({
-          url: 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
-          maximumLevel: 17,
-          credit: new Cesium.Credit('© OpenTopoMap contributors'),
-        })
-      );
-      viewer.imageryLayers.add(onlineTopoLayer);
+    try {
+      // Nạp ImageryProvider theo basemap được chọn (mặc định Google Terrain cho 2D)
+      const provider = createImageryProvider(basemap);
+      const layer = new Cesium.ImageryLayer(provider);
+      viewer.imageryLayers.add(layer);
 
-      // Lớp ngoại tuyến ưu tiên tải từ public/offline-topo/
-      const offlineTopoLayer = new Cesium.ImageryLayer(
-        new Cesium.UrlTemplateImageryProvider({
-          url: './offline-topo/{z}/{x}/{y}.png',
-          minimumLevel: 0,
-          maximumLevel: 16,
-        })
-      );
-      viewer.imageryLayers.add(offlineTopoLayer);
-    } else {
-      // CHẾ ĐỘ 3D: Nạp lớp bản đồ nền theo lựa chọn của người dùng (Vệ tinh, Ngoại tuyến, v.v.)
-      try {
-        const provider = createImageryProvider(basemap);
-        const layer = new Cesium.ImageryLayer(provider);
-        viewer.imageryLayers.add(layer);
-      } catch (err) {
-        console.error('Lỗi nạp Basemap:', err);
-        const fallbackLayer = new Cesium.ImageryLayer(
+      // Nếu người dùng chọn google-terrain hoặc topo và có sẵn thư mục gạch offline cục bộ
+      if (basemap === 'google-terrain' || basemap === 'topo') {
+        const localTerrainLayer = new Cesium.ImageryLayer(
           new Cesium.UrlTemplateImageryProvider({
-            url: './offline-satellite/{z}/{x}/{y}.jpg',
+            url: './offline-terrain-map/{z}/{x}/{y}.png',
             minimumLevel: 0,
             maximumLevel: 16,
           })
         );
-        viewer.imageryLayers.add(fallbackLayer);
+        viewer.imageryLayers.add(localTerrainLayer);
       }
+    } catch (err) {
+      console.error('Lỗi nạp Basemap:', err);
+      const fallbackLayer = new Cesium.ImageryLayer(
+        new Cesium.UrlTemplateImageryProvider({
+          url: './offline-satellite/{z}/{x}/{y}.jpg',
+          minimumLevel: 0,
+          maximumLevel: 16,
+        })
+      );
+      viewer.imageryLayers.add(fallbackLayer);
     }
   }, [basemap, viewMode]);
 
@@ -1065,6 +1075,58 @@ export const CesiumGlobe: React.FC = () => {
         },
       });
     }
+
+    // E. Khẳng định chủ quyền biển đảo thiêng liêng của Việt Nam: Hoàng Sa & Trường Sa
+    // Hiển thị nhãn vàng cờ đỏ trang trọng, sắc nét ở mọi chế độ 2D/3D
+    viewer.entities.add({
+      name: 'Quần đảo Hoàng Sa (Việt Nam)',
+      position: Cesium.Cartesian3.fromDegrees(112.0, 16.5, 100),
+      label: {
+        text: '🇻🇳 QUẦN ĐẢO HOÀNG SA\n(VIỆT NAM)',
+        font: 'bold 15px "Roboto", "Segoe UI", sans-serif',
+        fillColor: Cesium.Color.fromCssColorString('#fde047'),
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 3,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 5000000),
+      },
+      point: {
+        pixelSize: 8,
+        color: Cesium.Color.fromCssColorString('#ef4444'),
+        outlineColor: Cesium.Color.fromCssColorString('#fde047'),
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 5000000),
+      },
+    });
+
+    viewer.entities.add({
+      name: 'Quần đảo Trường Sa (Việt Nam)',
+      position: Cesium.Cartesian3.fromDegrees(114.0, 10.0, 100),
+      label: {
+        text: '🇻🇳 QUẦN ĐẢO TRƯỜNG SA\n(VIỆT NAM)',
+        font: 'bold 15px "Roboto", "Segoe UI", sans-serif',
+        fillColor: Cesium.Color.fromCssColorString('#fde047'),
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 3,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 5000000),
+      },
+      point: {
+        pixelSize: 8,
+        color: Cesium.Color.fromCssColorString('#ef4444'),
+        outlineColor: Cesium.Color.fromCssColorString('#fde047'),
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 5000000),
+      },
+    });
   }, [
     instances,
     selectedInstanceId,

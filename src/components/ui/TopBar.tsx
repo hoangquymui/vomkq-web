@@ -182,41 +182,33 @@ export const TopBar: React.FC = () => {
         </button>
 
         {/* Bộ chọn Lớp Bản Đồ Nền (Basemap) */}
-        <div className={`flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border text-xs transition-colors ${
-          viewMode === '2D' ? 'border-amber-500/60 bg-amber-950/40 text-amber-300' : 'border-slate-700'
-        }`}>
-          <Globe2 className={`w-3.5 h-3.5 ${viewMode === '2D' ? 'text-amber-400' : 'text-cyan-400'}`} />
-          {viewMode === '2D' ? (
-            <span
-              className="text-amber-300 font-mono font-bold text-xs px-1 cursor-default"
-              title="Chế độ 2D chuyên biệt: Cố định hiển thị bản đồ Topo độ cao đường đồng mức"
-            >
-              🗺️ Topo Độ Cao (Cố định 2D)
-            </span>
-          ) : (
-            <select
-              value={basemap}
-              onChange={(e) => setBasemap(e.target.value as any)}
-              className="bg-transparent text-cyan-300 font-mono font-bold focus:outline-none cursor-pointer"
-              title="Chọn Lớp Bản Đồ Nền (Basemap 3D)"
-            >
-              <option value="satellite" className="bg-slate-900 text-slate-200">
-                🌐 Vệ Tinh Trực Tuyến HD (Nét 0-19)
-              </option>
-              <option value="offline" className="bg-slate-900 text-slate-200">
-                💾 Vệ Tinh Ngoại Tuyến (Offline)
-              </option>
-              <option value="topo" className="bg-slate-900 text-slate-200">
-                🗺️ Bản Đồ Địa Hình (Topo)
-              </option>
-              <option value="dark" className="bg-slate-900 text-slate-200">
-                🌑 Tác Chiến Tối (Dark)
-              </option>
-              <option value="osm" className="bg-slate-900 text-slate-200">
-                🧭 Bản Đồ Đường Xá (OSM)
-              </option>
-            </select>
-          )}
+        <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border border-slate-700 text-xs transition-colors">
+          <Globe2 className="w-3.5 h-3.5 text-cyan-400" />
+          <select
+            value={basemap}
+            onChange={(e) => setBasemap(e.target.value as any)}
+            className="bg-transparent text-cyan-300 font-mono font-bold focus:outline-none cursor-pointer"
+            title="Chọn Lớp Bản Đồ Nền (Basemap)"
+          >
+            <option value="google-terrain" className="bg-slate-900 text-slate-200">
+              🗺️ Google Terrain (Địa Hình & Địa Danh VN)
+            </option>
+            <option value="google-hybrid" className="bg-slate-900 text-slate-200">
+              🛰️ Google Hybrid (Vệ Tinh Kèm Nhãn VN)
+            </option>
+            <option value="satellite" className="bg-slate-900 text-slate-200">
+              🌐 Vệ Tinh Trực Tuyến ESRI (HD 0-19)
+            </option>
+            <option value="offline" className="bg-slate-900 text-slate-200">
+              💾 Vệ Tinh Ngoại Tuyến (Offline)
+            </option>
+            <option value="dark" className="bg-slate-900 text-slate-200">
+              🌑 Tác Chiến Tối (Dark Tactical)
+            </option>
+            <option value="osm" className="bg-slate-900 text-slate-200">
+              🧭 Bản Đồ Đường Xá (OSM)
+            </option>
+          </select>
         </div>
 
         {/* Nút Mở Quản Lý & Tải Bản Đồ Ngoại Tuyến */}
