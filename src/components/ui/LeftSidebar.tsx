@@ -6,6 +6,7 @@ import {
   Shield,
   Antenna,
   Zap,
+  RadioTower,
   PlusCircle,
   Pin,
   Trash2,
@@ -42,6 +43,8 @@ export const LeftSidebar: React.FC = () => {
         return <Radar {...props} />;
       case 'Radio':
         return <Radio {...props} />;
+      case 'RadioTower':
+        return <RadioTower {...props} />;
       case 'Crosshair':
         return <Crosshair {...props} />;
       case 'Shield':

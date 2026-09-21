@@ -130,6 +130,23 @@ function pickGroundCartesian(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2
   return undefined;
 }
 
+/**
+ * Tính khoảng cách đại vòng tròn (Haversine distance) giữa 2 toạ độ địa lý (km)
+ */
+function computeDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Bán kính Trái Đất (km)
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export const CesiumGlobe: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
@@ -148,6 +165,7 @@ export const CesiumGlobe: React.FC = () => {
     vietnamOnly,
     showAllDomes,
     showCommandLinks,
+    showSensorNetwork,
     measurePoints,
     flyToTarget,
     selectEquipment,
@@ -915,42 +933,53 @@ export const CesiumGlobe: React.FC = () => {
       // 3. Vùng Hỏa Lực Tiêu Diệt Mục Tiêu (Engagement Envelope cho Tên Lửa Phòng Không SAM và Pháo PK AAA)
       if (caps.hasEngagementEnvelope && safeRangeKm > 0 && showCoverageLayer) {
         const isSAM = inst.category === 'TenLuaPhongKhong';
-        const envColorHex = isSAM ? '#ef4444' : '#10b981';
+        const envColorHex = isSAM ? (inst.color || '#ef4444') : '#10b981';
         const envColor = Cesium.Color.fromCssColorString(envColorHex);
+        const minRangeKm = typeof inst.minEngagementRangeKm === 'number' && inst.minEngagementRangeKm > 0
+          ? inst.minEngagementRangeKm
+          : (isSAM ? (safeRangeKm > 100 ? 3 : 1) : 0.2);
+        const maxAltM = typeof inst.maxEngagementAltitudeM === 'number' && inst.maxEngagementAltitudeM > 0
+          ? inst.maxEngagementAltitudeM
+          : (inst.coverageHeightKm ? inst.coverageHeightKm * 1000 : (isSAM ? 25000 : 3000));
+        const reactionTimeText = inst.reactionTimeSeconds ? ` | T_pư: ${inst.reactionTimeSeconds}s` : '';
         const envLabelText = isSAM
-          ? `VÙNG HỎA LỰC TÊN LỬA [${inst.shortId || 'SAM'}: ${safeRangeKm}km]`
-          : `HỎA LỰC PHÁO PK [${inst.shortId || 'AAA'}: ${safeRangeKm}km]`;
+          ? `VÙNG HỎA LỰC [${inst.shortId || 'SAM'}: ${minRangeKm}-${safeRangeKm}km | H_max: ${(maxAltM / 1000).toFixed(0)}km${reactionTimeText}]`
+          : `HỎA LỰC PHÁO PK [${inst.shortId || 'AAA'}: ${minRangeKm}-${safeRangeKm}km | H_max: ${(maxAltM / 1000).toFixed(1)}km]`;
 
-        if (viewMode === '2D') {
+        // Vùng hỏa lực tiêu diệt ngoại vi (R_kill)
+        viewer.entities.add({
+          name: `Vùng Hỏa Lực ${inst.shortId || ''}`,
+          position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+          properties: { instanceId: inst.instanceId },
+          ellipse: {
+            semiMajorAxis: safeRangeKm * 1000,
+            semiMinorAxis: safeRangeKm * 1000,
+            height: 0,
+            heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+            classificationType: is2D ? undefined : Cesium.ClassificationType.TERRAIN,
+            material: envColor.withAlpha(isSelected ? (isSAM ? 0.15 : 0.16) : 0.05),
+            outline: true,
+            outlineColor: envColor.withAlpha(isSelected ? 0.95 : 0.6),
+            outlineWidth: isSelected ? 3 : 1.5,
+          },
+        });
+
+        // Nón chết cự ly cực cận (R_min)
+        if (minRangeKm > 0 && minRangeKm < safeRangeKm) {
           viewer.entities.add({
-            name: `Vùng Hỏa Lực ${inst.shortId || ''}`,
+            name: `Nón Mù Cực Cận R_min ${inst.shortId || ''}`,
             position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
             properties: { instanceId: inst.instanceId },
             ellipse: {
-              semiMajorAxis: safeRangeKm * 1000,
-              semiMinorAxis: safeRangeKm * 1000,
+              semiMajorAxis: minRangeKm * 1000,
+              semiMinorAxis: minRangeKm * 1000,
               height: 0,
-              material: envColor.withAlpha(isSelected ? (isSAM ? 0.14 : 0.16) : 0.05),
+              heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+              classificationType: is2D ? undefined : Cesium.ClassificationType.TERRAIN,
+              material: Cesium.Color.BLACK.withAlpha(0.3),
               outline: true,
-              outlineColor: envColor.withAlpha(isSelected ? 0.95 : 0.6),
-              outlineWidth: isSelected ? 3 : 1.5,
-            },
-          });
-        } else {
-          viewer.entities.add({
-            name: `Vùng Hỏa Lực ${inst.shortId || ''}`,
-            position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
-            properties: { instanceId: inst.instanceId },
-            ellipse: {
-              semiMajorAxis: safeRangeKm * 1000,
-              semiMinorAxis: safeRangeKm * 1000,
-              height: 0,
-              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-              classificationType: Cesium.ClassificationType.TERRAIN,
-              material: envColor.withAlpha(isSelected ? (isSAM ? 0.14 : 0.16) : 0.05),
-              outline: true,
-              outlineColor: envColor.withAlpha(isSelected ? 0.95 : 0.6),
-              outlineWidth: isSelected ? 3 : 1.5,
+              outlineColor: Cesium.Color.fromCssColorString('#f43f5e').withAlpha(0.85),
+              outlineWidth: 1.8,
             },
           });
         }
@@ -978,9 +1007,162 @@ export const CesiumGlobe: React.FC = () => {
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
         });
+
+        // 3D Vòm Hỏa Lực Tiêu Diệt (3D Firing Dome Envelope)
+        if (viewMode === '3D' && showAllDomes && inst.showDome) {
+          const radiusMeters = safeRangeKm * 1000;
+          const domeColor = envColor.withAlpha(isSelected ? 0.45 : 0.22);
+          const ribCount = 8;
+          const centerPos = Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, safeAlt + safeAntennaAGL);
+
+          // Vòng cung chân vòm cự ly tối đa
+          const ringPositions: Cesium.Cartesian3[] = [];
+          for (let deg = 0; deg <= 360; deg += 10) {
+            const dest = destinationPoint(inst.latitude, inst.longitude, radiusMeters, deg);
+            ringPositions.push(Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 15));
+          }
+          viewer.entities.add({
+            name: `Vòng Giới Hạn Hỏa Lực 3D ${inst.shortId || ''}`,
+            properties: { instanceId: inst.instanceId },
+            polyline: {
+              positions: ringPositions,
+              width: isSelected ? 3 : 2,
+              material: new Cesium.PolylineGlowMaterialProperty({
+                color: envColor,
+                glowPower: isSelected ? 0.35 : 0.15,
+              }),
+            },
+          });
+
+          // Các nan quạt khung vòm hỏa lực cong theo trần hỏa lực H_max
+          for (let r = 0; r < ribCount; r++) {
+            const az = (r * 360) / ribCount;
+            const dest = destinationPoint(inst.latitude, inst.longitude, radiusMeters, az);
+            const midDist = radiusMeters * 0.65;
+            const midDest = destinationPoint(inst.latitude, inst.longitude, midDist, az);
+
+            const ribPositions = [
+              centerPos,
+              Cesium.Cartesian3.fromDegrees(midDest.lon, midDest.lat, safeAlt + maxAltM * 0.85),
+              Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 15),
+            ];
+
+            viewer.entities.add({
+              name: `Nan Vòm Hỏa Lực 3D ${az}° ${inst.shortId || ''}`,
+              properties: { instanceId: inst.instanceId },
+              polyline: {
+                positions: ribPositions,
+                width: isSelected ? 1.8 : 1.2,
+                material: domeColor,
+              },
+            });
+          }
+        }
       }
 
-      // 4. Cung Quan Sát Trinh Sát Thụ Động (Trạm Quan Sát OP)
+      // 4. Vùng Trinh Sát Thụ Động (Passive Sensor ESM cho Kolchuga-M)
+      if (caps.hasSensorNetwork && safeRangeKm > 0 && showCoverageLayer) {
+        const esmColorHex = inst.color || '#a855f7';
+        const esmColor = Cesium.Color.fromCssColorString(esmColorHex);
+        const freqInfo = inst.frequencyRangeGhz ? ` | ${inst.frequencyRangeGhz}` : '';
+        const esmLabelText = `VÙNG THU ĐỘNG [${inst.shortId || 'ESM'}: ${safeRangeKm}km${freqInfo}]`;
+
+        // Vùng phủ thụ động 2D/3D (Màu tím ESM)
+        viewer.entities.add({
+          name: `Vùng Trinh Sát Thụ Động ${inst.shortId || ''}`,
+          position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+          properties: { instanceId: inst.instanceId },
+          ellipse: {
+            semiMajorAxis: safeRangeKm * 1000,
+            semiMinorAxis: safeRangeKm * 1000,
+            height: 0,
+            heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+            classificationType: is2D ? undefined : Cesium.ClassificationType.TERRAIN,
+            material: esmColor.withAlpha(isSelected ? 0.12 : 0.04),
+            outline: true,
+            outlineColor: esmColor.withAlpha(isSelected ? 0.9 : 0.5),
+            outlineWidth: isSelected ? 2.5 : 1.2,
+          },
+        });
+
+        // Nhãn biên giới cự ly thụ động (Hướng Đông Bắc 45°)
+        const boundaryPoint = destinationPoint(inst.latitude, inst.longitude, safeRangeKm * 1000, 45);
+        viewer.entities.add({
+          name: `Nhãn Vùng Thụ Động ${inst.shortId || ''}`,
+          position: Cesium.Cartesian3.fromDegrees(boundaryPoint.lon, boundaryPoint.lat, is2D ? 0 : safeAlt),
+          properties: { instanceId: inst.instanceId },
+          label: {
+            text: esmLabelText,
+            font: isSelected ? 'bold 11px "JetBrains Mono", monospace' : '10px "JetBrains Mono", monospace',
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            fillColor: isSelected ? Cesium.Color.fromCssColorString('#fde047') : esmColor,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            showBackground: true,
+            backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.85),
+            backgroundPadding: new Cesium.Cartesian2(6, 3),
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, isSelected ? 700000 : 400000),
+            heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        });
+
+        // 3D Vòm Trinh Sát Thụ Động (3D Passive ESM Listening Sphere)
+        if (viewMode === '3D' && showAllDomes && inst.showDome) {
+          const radiusMeters = safeRangeKm * 1000;
+          const domeColor = esmColor.withAlpha(isSelected ? 0.35 : 0.18);
+          const ribCount = 8;
+          const centerPos = Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, safeAlt + safeAntennaAGL);
+          const maxAltM = (inst.coverageHeightKm || 40) * 1000;
+
+          // Vòng biên giới hạn cự ly thụ động
+          const ringPositions: Cesium.Cartesian3[] = [];
+          for (let deg = 0; deg <= 360; deg += 10) {
+            const dest = destinationPoint(inst.latitude, inst.longitude, radiusMeters, deg);
+            ringPositions.push(Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 15));
+          }
+          viewer.entities.add({
+            name: `Vòng Thu Động 3D ${inst.shortId || ''}`,
+            properties: { instanceId: inst.instanceId },
+            polyline: {
+              positions: ringPositions,
+              width: isSelected ? 2.5 : 1.5,
+              material: new Cesium.PolylineDashMaterialProperty({
+                color: domeColor,
+                dashLength: 16,
+              }),
+            },
+          });
+
+          // Các nan quạt tiếp nhận bức xạ vô tuyến 3D
+          for (let r = 0; r < ribCount; r++) {
+            const az = (r * 360) / ribCount;
+            const dest = destinationPoint(inst.latitude, inst.longitude, radiusMeters, az);
+            const midDist = radiusMeters * 0.7;
+            const midDest = destinationPoint(inst.latitude, inst.longitude, midDist, az);
+
+            const ribPositions = [
+              centerPos,
+              Cesium.Cartesian3.fromDegrees(midDest.lon, midDest.lat, safeAlt + Math.min(radiusMeters * 0.25, maxAltM * 0.8)),
+              Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 15),
+            ];
+
+            viewer.entities.add({
+              name: `Nan Khung Thụ Động 3D ${az}° ${inst.shortId || ''}`,
+              properties: { instanceId: inst.instanceId },
+              polyline: {
+                positions: ribPositions,
+                width: 1,
+                material: domeColor,
+              },
+            });
+          }
+        }
+      }
+
+      // 5. Cung Quan Sát Trinh Sát Thụ Động (Trạm Quan Sát OP)
       if (caps.hasObservationSector && safeRangeKm > 0 && showCoverageLayer) {
         const opColor = Cesium.Color.fromCssColorString('#8b5cf6');
         viewer.entities.add({
@@ -1193,6 +1375,84 @@ export const CesiumGlobe: React.FC = () => {
       });
     }
 
+    // B2. Render mạng lưới đường cơ sở trinh sát thụ động TDoA (Passive ESM Sensor Network Baselines)
+    if (showSensorNetwork) {
+      const is2D = viewMode === '2D';
+      const esmNodes = instances.filter(
+        (it) => it.category === 'CamBienThuDong' || getAssetCapabilities(it.category).hasSensorNetwork
+      );
+
+      if (esmNodes.length >= 2) {
+        for (let i = 0; i < esmNodes.length; i++) {
+          for (let j = i + 1; j < esmNodes.length; j++) {
+            const n1 = esmNodes[i];
+            const n2 = esmNodes[j];
+            if (
+              typeof n1.latitude === 'number' && !isNaN(n1.latitude) && isFinite(n1.latitude) &&
+              typeof n1.longitude === 'number' && !isNaN(n1.longitude) && isFinite(n1.longitude) &&
+              typeof n2.latitude === 'number' && !isNaN(n2.latitude) && isFinite(n2.latitude) &&
+              typeof n2.longitude === 'number' && !isNaN(n2.longitude) && isFinite(n2.longitude)
+            ) {
+              const isBaselineHighlighted =
+                selectedInstanceId === n1.instanceId || selectedInstanceId === n2.instanceId;
+
+              const n1Alt = typeof n1.altitude === 'number' && !isNaN(n1.altitude) && isFinite(n1.altitude) ? n1.altitude : 0;
+              const n1AGL = typeof n1.antennaHeightAGL === 'number' && !isNaN(n1.antennaHeightAGL) && isFinite(n1.antennaHeightAGL) ? n1.antennaHeightAGL : 20;
+              const n2Alt = typeof n2.altitude === 'number' && !isNaN(n2.altitude) && isFinite(n2.altitude) ? n2.altitude : 0;
+              const n2AGL = typeof n2.antennaHeightAGL === 'number' && !isNaN(n2.antennaHeightAGL) && isFinite(n2.antennaHeightAGL) ? n2.antennaHeightAGL : 20;
+
+              const pos1 = Cesium.Cartesian3.fromDegrees(n1.longitude, n1.latitude, is2D ? 0 : n1Alt + n1AGL + 35);
+              const pos2 = Cesium.Cartesian3.fromDegrees(n2.longitude, n2.latitude, is2D ? 0 : n2Alt + n2AGL + 35);
+
+              // Tính khoảng cách đường cơ sở giữa 2 đài Kolchuga
+              const baseDistKm = computeDistanceKm(n1.latitude, n1.longitude, n2.latitude, n2.longitude);
+
+              // Đường liên kết đường cơ sở TDoA (nét đứt tím/vàng neon)
+              viewer.entities.add({
+                name: `Đường Cơ Sở TDoA: ${n1.shortId || 'ESM'} ⟷ ${n2.shortId || 'ESM'} (${baseDistKm.toFixed(1)} km)`,
+                polyline: {
+                  positions: [pos1, pos2],
+                  width: isBaselineHighlighted ? 3.5 : 2,
+                  material: new Cesium.PolylineDashMaterialProperty({
+                    color: isBaselineHighlighted
+                      ? Cesium.Color.fromCssColorString('#fde047')
+                      : Cesium.Color.fromCssColorString('#c084fc'),
+                    dashLength: 14,
+                  }),
+                },
+              });
+
+              // Nhãn cự ly đường cơ sở tại trung điểm
+              const midLat = (n1.latitude + n2.latitude) / 2;
+              const midLon = (n1.longitude + n2.longitude) / 2;
+              const midAlt = is2D ? 0 : ((n1Alt + n2Alt) / 2) + 120;
+              viewer.entities.add({
+                name: `Nhãn Đường Cơ Sở ${n1.shortId}-${n2.shortId}`,
+                position: Cesium.Cartesian3.fromDegrees(midLon, midLat, midAlt),
+                label: {
+                  text: `⚡ ĐƯỜNG CƠ SỞ TDoA: ${baseDistKm.toFixed(1)} km`,
+                  font: 'bold 10px "JetBrains Mono", monospace',
+                  style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                  fillColor: isBaselineHighlighted
+                    ? Cesium.Color.fromCssColorString('#fde047')
+                    : Cesium.Color.fromCssColorString('#e879f9'),
+                  outlineColor: Cesium.Color.BLACK,
+                  outlineWidth: 3,
+                  showBackground: true,
+                  backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.92),
+                  backgroundPadding: new Cesium.Cartesian2(6, 3),
+                  verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                  horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+                  distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 750000),
+                  disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                },
+              });
+            }
+          }
+        }
+      }
+    }
+
     // C. Render công cụ đo khoảng cách
     const validMeasurePoints = measurePoints.filter(
       (p) =>
@@ -1326,6 +1586,7 @@ export const CesiumGlobe: React.FC = () => {
     selectedInstanceId,
     showAllDomes,
     showCommandLinks,
+    showSensorNetwork,
     measurePoints,
     vietnamOnly,
     coverageResults,

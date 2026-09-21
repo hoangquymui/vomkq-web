@@ -31,6 +31,7 @@ interface TacticalState {
   showAllDomes: boolean;
   showCommandLinks: boolean;
   showSweeps: boolean;
+  showSensorNetwork: boolean;
 
   // Measurement
   measurePoints: Array<{ lat: number; lon: number; height: number }>;
@@ -92,6 +93,7 @@ interface TacticalState {
   toggleDomes: () => void;
   toggleCommandLinks: () => void;
   toggleSweeps: () => void;
+  toggleSensorNetwork: () => void;
 
   // 2D Tactical Layer Controls & Filters
   showCoverageLayer: boolean;
@@ -151,6 +153,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   showAllDomes: true,
   showCommandLinks: true,
   showSweeps: true,
+  showSensorNetwork: true,
 
   // 2D Tactical Layer Controls & Filters
   showCoverageLayer: true,
@@ -177,6 +180,12 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         shortId: instance.shortId || autoShortId,
         coverageProfile: instance.coverageProfile || tmpl?.coverageProfile,
         altitudeDetectionTable: instance.altitudeDetectionTable || tmpl?.altitudeDetectionTable,
+        minEngagementRangeKm: instance.minEngagementRangeKm ?? tmpl?.minEngagementRangeKm,
+        maxEngagementAltitudeM: instance.maxEngagementAltitudeM ?? tmpl?.maxEngagementAltitudeM,
+        reactionTimeSeconds: instance.reactionTimeSeconds ?? tmpl?.reactionTimeSeconds,
+        guidanceMethodVi: instance.guidanceMethodVi ?? tmpl?.guidanceMethodVi,
+        frequencyRangeGhz: instance.frequencyRangeGhz ?? tmpl?.frequencyRangeGhz,
+        networkGroupId: instance.networkGroupId ?? tmpl?.networkGroupId,
       };
       return {
         instances: [...state.instances, instanceWithProfile],
@@ -249,6 +258,8 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   toggleCommandLinks: () =>
     set((state) => ({ showCommandLinks: !state.showCommandLinks })),
   toggleSweeps: () => set((state) => ({ showSweeps: !state.showSweeps })),
+  toggleSensorNetwork: () =>
+    set((state) => ({ showSensorNetwork: !state.showSensorNetwork })),
 
   toggleCoverageLayer: () =>
     set((state) => ({ showCoverageLayer: !state.showCoverageLayer })),
@@ -483,22 +494,46 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       },
       {
         instanceId: 'eq_radar_fansipan',
-        shortId: 'OP-01',
+        shortId: 'ESM-01',
         templateId: 'radar_kolchuga',
-        name: 'Trạm Trinh Sát Fansipan - Hoàng Liên Sơn (Cao độ ~3.140m)',
-        category: 'TramQuanSat',
+        name: 'Trạm Trinh Sát Thụ Động Kolchuga-M Fansipan (3.143m)',
+        category: 'CamBienThuDong',
         latitude: 22.303,
         longitude: 103.775,
         altitude: 3140,
         antennaHeightAGL: 20,
-        rangeKm: 400,
+        rangeKm: 600,
         scanSpeed: 0,
         minElevationDeg: 0,
         maxElevationDeg: 45,
         coverageHeightKm: 40,
+        frequencyRangeGhz: '0.1 - 18.0 GHz (VHF/UHF/SHF)',
         status: 'Active',
         commandedByInstanceId: c2Id,
-        color: '#8b5cf6',
+        color: '#a855f7',
+        showDome: true,
+        showSweep: false,
+        coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'radar_kolchuga')?.coverageProfile,
+      },
+      {
+        instanceId: 'eq_radar_bavi_esm',
+        shortId: 'ESM-02',
+        templateId: 'radar_kolchuga',
+        name: 'Trạm Trinh Sát Thụ Động Kolchuga-M Ba Vì (1.200m)',
+        category: 'CamBienThuDong',
+        latitude: 21.08,
+        longitude: 105.36,
+        altitude: 1200,
+        antennaHeightAGL: 20,
+        rangeKm: 600,
+        scanSpeed: 0,
+        minElevationDeg: 0,
+        maxElevationDeg: 45,
+        coverageHeightKm: 40,
+        frequencyRangeGhz: '0.1 - 18.0 GHz (VHF/UHF/SHF)',
+        status: 'Active',
+        commandedByInstanceId: c2Id,
+        color: '#a855f7',
         showDome: true,
         showSweep: false,
         coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'radar_kolchuga')?.coverageProfile,
@@ -558,6 +593,10 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         altitude: 20,
         antennaHeightAGL: 8,
         rangeKm: 200,
+        minEngagementRangeKm: 3,
+        maxEngagementAltitudeM: 27000,
+        reactionTimeSeconds: 5,
+        guidanceMethodVi: 'Radar Track-via-Missile (TVM) 48N6E2',
         scanSpeed: 0,
         minElevationDeg: 3,
         maxElevationDeg: 65,
@@ -580,6 +619,10 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         altitude: 10,
         antennaHeightAGL: 5,
         rangeKm: 50,
+        minEngagementRangeKm: 1,
+        maxEngagementAltitudeM: 16000,
+        reactionTimeSeconds: 9,
+        guidanceMethodVi: 'Chủ động sóng milimet Derby-MR & Hồng ngoại IIR Python-5',
         scanSpeed: 0,
         minElevationDeg: 5,
         maxElevationDeg: 75,

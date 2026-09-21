@@ -25,6 +25,8 @@ export interface AssetCapabilities {
   hasCommandLinks: boolean;
   /** Có cung quan sát / trinh sát quang học hoặc thụ động (TRẠM QUAN SÁT) */
   hasObservationSector: boolean;
+  /** Có mạng lưới liên kết trinh sát định vị thụ động TDoA baseline (CẢM BIẾN THỤ ĐỘNG) */
+  hasSensorNetwork: boolean;
 }
 
 export interface AssetTypeProfile {
@@ -55,6 +57,7 @@ export const ASSET_TYPE_REGISTRY: Record<EquipmentCategory, AssetTypeProfile> = 
       hasEngagementEnvelope: false,
       hasCommandLinks: false,
       hasObservationSector: false,
+      hasSensorNetwork: false,
     },
   },
   TenLuaPhongKhong: {
@@ -71,6 +74,7 @@ export const ASSET_TYPE_REGISTRY: Record<EquipmentCategory, AssetTypeProfile> = 
       hasEngagementEnvelope: true, // HIỂN THỊ VÙNG HỎA LỰC TIÊU DIỆT (ENGAGEMENT ENVELOPE)
       hasCommandLinks: false,
       hasObservationSector: false,
+      hasSensorNetwork: false,
     },
   },
   SoChiHuy: {
@@ -87,6 +91,7 @@ export const ASSET_TYPE_REGISTRY: Record<EquipmentCategory, AssetTypeProfile> = 
       hasEngagementEnvelope: false,
       hasCommandLinks: true,  // HIỂN THỊ MẠNG ĐƯỜNG LIÊN KẾT CHỈ HUY TỚI CÁC ĐƠN VỊ PHỤ THUỘC
       hasObservationSector: false,
+      hasSensorNetwork: false,
     },
   },
   PhaoPhongKhong: {
@@ -103,6 +108,7 @@ export const ASSET_TYPE_REGISTRY: Record<EquipmentCategory, AssetTypeProfile> = 
       hasEngagementEnvelope: true, // VÙNG HỎA LỰC PHÁO TẦM GẦN (3-5KM)
       hasCommandLinks: false,
       hasObservationSector: false,
+      hasSensorNetwork: false,
     },
   },
   TramQuanSat: {
@@ -119,6 +125,24 @@ export const ASSET_TYPE_REGISTRY: Record<EquipmentCategory, AssetTypeProfile> = 
       hasEngagementEnvelope: false,
       hasCommandLinks: false,
       hasObservationSector: true, // CUNG QUAN SÁT THỰC TẾ
+      hasSensorNetwork: false,
+    },
+  },
+  CamBienThuDong: {
+    category: 'CamBienThuDong',
+    nameVi: 'Trinh Sát Thụ Động (ESM)',
+    shortPrefix: 'ESM',
+    defaultColor: '#a855f7',
+    iconName: 'RadioTower',
+    militaryRoleVi: 'Trinh sát bức xạ điện từ thụ động, đo định vị TDoA/DF không phát sóng',
+    capabilities: {
+      hasRadarCoverage: false,
+      hasRangeRings: false,
+      hasSweep: false,
+      hasEngagementEnvelope: false,
+      hasCommandLinks: false,
+      hasObservationSector: false,
+      hasSensorNetwork: true,
     },
   },
 };
@@ -202,6 +226,17 @@ export function createCategoryTacticalMarkerSvg(
         <line x1="17.5" y1="19" x2="17.5" y2="17" stroke="#ffffff" stroke-width="1.5"/>
         <circle cx="14" cy="19" r="1.5" fill="#a855f7"/>
         <circle cx="21" cy="19" r="1.5" fill="#a855f7"/>
+      `;
+      break;
+
+    case 'CamBienThuDong':
+      // Cảm biến thụ động / ESM: Tháp ăng-ten tiếp nhận sóng thụ động
+      categoryIconSvg = `
+        <line x1="17" y1="12" x2="17" y2="26" stroke="#c084fc" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="13" y1="26" x2="21" y2="26" stroke="#c084fc" stroke-width="1.5"/>
+        <circle cx="17" cy="12" r="2.2" fill="#e879f9" stroke="#ffffff" stroke-width="0.8"/>
+        <path d="M12,10 A 6 6 0 0 1 22,10" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-dasharray="2,1"/>
+        <path d="M10,7 A 9 9 0 0 1 24,7" fill="none" stroke="#e879f9" stroke-width="1.2"/>
       `;
       break;
 
@@ -310,6 +345,11 @@ export function formatTacticalAssetInfoCard(params: {
     case 'TramQuanSat':
       lines.push(`  Cao độ trạm trinh sát: ${groundMsl} (MSL) | Tháp vọng: ${antennaAgl} (AGL)`);
       lines.push(`  Cự ly quan sát: ${rangeKm}  |  Trạng thái: [${statusVi}]`);
+      break;
+
+    case 'CamBienThuDong':
+      lines.push(`  Cao độ trạm : ${groundMsl} (MSL) | Cột thu: ${antennaAgl} (AGL)`);
+      lines.push(`  Cự ly trinh sát thụ động: ${rangeKm}  |  Trạng thái: [${statusVi}]`);
       break;
 
     case 'RadarCanhGioi':

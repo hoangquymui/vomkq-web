@@ -718,4 +718,75 @@ $$\tan \theta_{target}(d) \ge \tan \theta_{mask}(d) \quad \text{và} \quad \tan 
   - Kiểm tra các hàm chuyển đổi và xử lý ngoại lệ trong code.
 - **Kết luận**: Khắc phục dứt điểm nguyên nhân gốc của lỗi crash 3D khi chuyển chế độ xem. Không git commit, không git push.
 
-
+### Vấn đề 22: Chuẩn hóa kiến trúc hiển thị vũ khí PK-KQ và triển khai trực quan hóa chuyên biệt S-300PMU2, Spyder-MR, Kolchuga-M
+- **Ngày**: 21/09/2026
+- **Tính năng / Module**: Phân định trực quan hóa chuyên biệt khí tài tác chiến (Asset Capability Architecture) theo tài liệu kế hoạch `Cai_tien_hien_thi_S300PMU2_SpyderMR_KolchugaM_va_kien_truc_vu_khi_PKKQ.docx`.
+- **Vấn đề / Mục tiêu**:
+  - Khắc phục sự đồng nhất gượng ép: Trước đây mọi khí tài khi đặt lên bản đồ đều bị đối xử như radar cảnh giới, tự động kích hoạt tính toán DEM SPx và vẽ vòng tròn cự ly radar tròn đều.
+  - Phân định rạch ròi giữa các phân hệ:
+    1. **Tổ hợp tên lửa phòng không SAM (S-300PMU2, Spyder-MR)** & Pháo PK (ZSU-23-4 Shilka):
+       - Hiển thị Vùng hỏa lực tiêu diệt mục tiêu (Engagement Envelope) 2D gồm vòng ngoài cự ly cực đại $R_{kill}$, vòng trong nón mù cực cận $R_{min}$, nhãn tác chiến đầy đủ trần bắn $H_{max}$ và thời gian phản ứng $T_{pư}$.
+       - Hiển thị Vòm hỏa lực đánh chặn 3D (3D Firing Dome Envelope) theo trần hỏa lực $H_{max}$ bằng khung nan quạt an toàn (safe wireframe), tuyệt đối không quét búp sóng radar hay tính toán DEM SPx.
+    2. **Trạm trinh sát thụ động Kolchuga-M (ESM)**:
+       - Tách thành chuyên ngành riêng biệt `CamBienThuDong` (icon `RadioTower`, tiền tố `ESM`, màu tím `#a855f7`).
+       - Bán kính trinh sát thụ động 600km, dải tần số bức xạ tiếp nhận 0.1 - 18.0 GHz.
+       - Tự động thiết lập mạng lưới đường cơ sở trinh sát định vị thụ động (TDoA Sensor Network Baselines) kết nối các cặp trạm Kolchuga trên bản đồ kèm nhãn cự ly đường cơ sở chính xác bằng công thức đại vòng tròn Haversine.
+       - Vòm tiếp nhận bức xạ 3D tĩnh không phát sóng radar.
+    3. **Kiến trúc mở rộng nhiều tầng (Extensible Open Architecture)**:
+       - Tuân thủ chuỗi xử lý: `Asset -> Type -> Capabilities -> Visualization Profile -> Renderer`.
+       - Mở rộng tập Capabilities: `hasRadarCoverage`, `hasRangeRings`, `hasSweep`, `hasEngagementEnvelope`, `hasCommandLinks`, `hasObservationSector`, `hasSensorNetwork`.
+    4. **Bảng thuộc tính RightInspector tự thích ứng**:
+       - Tự động hiển thị các thanh điều khiển chuyên biệt theo capabilities của khí tài được chọn.
+       - Tab 2D & Tab 3D không còn hiển thị thông số thừa của radar đối với SAM, AAA và Kolchuga.
+       - Ẩn/hiện thông số kỹ thuật chuyên sâu bằng accordion (Progressive Disclosure) giữ cho giao diện luôn gọn gàng, tinh tế.
+- **File đã thay đổi**:
+  - `src/types/equipment.ts`: Bổ sung category `CamBienThuDong`, thêm các trường thông số quân sự (`minEngagementRangeKm`, `maxEngagementAltitudeM`, `reactionTimeSeconds`, `guidanceMethodVi`, `frequencyRangeGhz`, `networkGroupId`).
+  - `src/utils/assetVisualization.ts`: Cập nhật `AssetCapabilities`, đăng ký hồ sơ `CamBienThuDong` trong `ASSET_TYPE_REGISTRY`, tạo biểu tượng cờ cắm tác chiến SVG đặc trưng cho ESM, định dạng thẻ thông tin quân sự.
+  - `src/data/equipmentTemplates.ts`: Cập nhật thông số chuẩn quân sự cho S-300PMU2 ($R_{kill}=200km$, $R_{min}=3km$, $H_{max}=27.000m$, $T_{pư}=5s$, TVM 48N6E2), Spyder-MR ($R_{kill}=50km$, $R_{min}=1km$, $H_{max}=16.000m$, $T_{pư}=9s$, Derby-MR/Python-5), ZSU-23-4 Shilka ($R_{kill}=5km$, $R_{min}=0.2km$, $H_{max}=2.500m$, RPK-2), Kolchuga-M (ESM, $R=600km$, 0.1 - 18.0 GHz).
+  - `src/store/useTacticalStore.ts`: Ánh xạ các trường thông số mới trong `addEquipment`, thêm state `showSensorNetwork` và action `toggleSensorNetwork`, bổ sung 2 trạm Kolchuga-M (Fansipan & Ba Vì) vào kịch bản mẫu để mô phỏng đường cơ sở TDoA.
+  - `src/components/map/CesiumGlobe.tsx`: Dựng vùng hỏa lực 2D ($R_{min} - R_{kill}$), vòm hỏa lực 3D ($H_{max}$), vùng trinh sát thụ động ESM 600km, đường cơ sở mạng cảm biến TDoA (nét đứt tím/vàng neon) và nhãn cự ly đại vòng tròn giữa các trạm.
+  - `src/components/ui/RightInspector.tsx`: Tự thích ứng Tab 2D và Tab 3D theo capabilities, bổ sung bảng điều khiển hỏa lực SAM/AAA, bảng điều khiển cảm biến thụ động ESM và mạng TDoA, thêm accordion dữ liệu tác chiến quân sự chi tiết.
+  - `src/components/ui/LeftSidebar.tsx`: Hỗ trợ biểu tượng `RadioTower` cho trinh sát thụ động ESM.
+  - `src/components/ui/TacticalLayerControls.tsx`: Thêm danh mục `CamBienThuDong` vào bộ lọc chuyên ngành.
+  - `docs/DEBUG_NOTES.md`: Ghi chép tài liệu thực thi.
+- **Tên thông số / Biến quan trọng**:
+  - `minEngagementRangeKm`:
+    - Giá trị mặc định: `3` (S-300PMU2), `1` (Spyder-MR), `0.2` (ZSU-23-4).
+    - Đơn vị: $km$.
+    - Nơi khai báo: `src/types/equipment.ts`, `src/data/equipmentTemplates.ts`.
+    - Ý nghĩa: Cự ly diệt mục tiêu cực cận (nón mù hỏa lực tối thiểu dưới tầm bắn hiệu quả).
+  - `maxEngagementAltitudeM`:
+    - Giá trị mặc định: `27000` (S-300PMU2), `16000` (Spyder-MR), `2500` (ZSU-23-4).
+    - Đơn vị: Mét ($m$).
+    - Ý nghĩa: Trần hỏa lực tiêu diệt mục tiêu cực đại của tên lửa / pháo phòng không.
+  - `reactionTimeSeconds`:
+    - Giá trị mặc định: `5` (S-300PMU2), `9` (Spyder-MR), `3` (ZSU-23-4).
+    - Đơn vị: Giây ($s$).
+    - Ý nghĩa: Thời gian phản ứng từ khi phát hiện / nhận chỉ thị mục tiêu đến khi điểm hỏa đạn tên lửa.
+  - `guidanceMethodVi`:
+    - S-300PMU2: `'Radar Track-via-Missile (TVM) 48N6E2'`
+    - Spyder-MR: `'Chủ động sóng milimet Derby-MR & Hồng ngoại IIR Python-5'`
+    - ZSU-23-4: `'Quang học & Radar RPK-2'`
+  - `frequencyRangeGhz`:
+    - Kolchuga-M: `'0.1 - 18.0 GHz (VHF/UHF/SHF)'`
+  - `showSensorNetwork`:
+    - Giá trị mặc định: `true`.
+    - Type: `boolean`.
+    - Ý nghĩa: Bật/tắt hiển thị mạng đường cơ sở TDoA liên trạm giữa các đài trinh sát thụ động.
+- **Công thức tính toán liên quan**:
+  - Khoảng cách đường cơ sở TDoA giữa 2 đài Kolchuga:
+    $$d = 2 R \cdot \arcsin \left( \sqrt{\sin^2\left(\frac{\Delta \varphi}{2}\right) + \cos \varphi_1 \cos \varphi_2 \sin^2\left(\frac{\Delta \lambda}{2}\right)} \right)$$
+    với $R \approx 6,371\text{ km}$, $\varphi$ là vĩ độ, $\lambda$ là kinh độ.
+- **Kỳ vọng**:
+  - Khí tài tên lửa S-300PMU2 và Spyder-MR hiển thị vùng hỏa lực chuyên biệt, không có vòng tròn radar hay vệt quét sóng.
+  - Đài Kolchuga-M hiển thị vùng thu thụ động 600km, khi có $\ge 2$ đài trên bản đồ sẽ tự động nối đường cơ sở TDoA.
+  - Inspector tự điều chỉnh giao diện chính xác theo từng chuyên ngành.
+  - 100% không lỗi biên dịch, không crash 3D.
+- **Kết quả thực tế**:
+  - `npx tsc -b`: Hoàn thành với mã thoát 0 (Zero error).
+  - `npm run lint` (oxlint): 0 lỗi.
+  - Dev server chạy mượt mà trên `http://localhost:3000`.
+- **Cách kiểm tra**:
+  - Kiểm tra tĩnh `npx tsc -b` và `npm run lint`.
+  - Kiểm tra tính toán cự ly đường cơ sở Fansipan - Ba Vì (~185 km).
+- **Kết luận**: Triển khai hoàn tất 100% các yêu cầu trong bảng kế hoạch `Cai_tien_hien_thi_S300PMU2_SpyderMR_KolchugaM_va_kien_truc_vu_khi_PKKQ.docx`. Không thực hiện git commit hoặc git push.

@@ -5,6 +5,7 @@ export type EquipmentCategory =
   | 'TenLuaPhongKhong'
   | 'SoChiHuy'
   | 'PhaoPhongKhong'
+  | 'CamBienThuDong'
   | 'TramQuanSat';
 
 export type OperationalStatus = 'Active' | 'Standby' | 'Maintenance' | 'Offline';
@@ -37,6 +38,12 @@ export interface EquipmentTemplate {
   wavelengthM?: number; // Bước sóng của đài (m): sóng mét ~2m, sóng cm ~0.05m
   coverageProfile?: CoverageProfile;
   altitudeDetectionTable?: AltitudeDetectionTable;
+  minEngagementRangeKm?: number; // Cự ly xạ giới tối thiểu (km) cho Tên Lửa / Pháo
+  maxEngagementAltitudeM?: number; // Trần bắn tiêu diệt tối đa (m)
+  reactionTimeSeconds?: number; // Thời gian phản ứng xạ kích (giây)
+  guidanceMethodVi?: string; // Phương thức dẫn bắn (Radar TVM, Hồng ngoại IIR, Lệnh vô tuyến...)
+  frequencyRangeGhz?: string; // Dải tần số trinh sát điện từ (GHz) cho trạm thụ động ESM
+  networkGroupId?: string; // Định danh nhóm mạng cảm biến TDoA
 }
 
 export interface EquipmentInstance {
@@ -59,10 +66,16 @@ export interface EquipmentInstance {
   showDome: boolean;
   showSweep: boolean;
   currentSweepHeading?: number; // deg
-  shortId?: string; // Mã định danh quân sự ngắn: R-01, SAM-01, CP-01...
+  shortId?: string; // Mã định danh quân sự ngắn: R-01, SAM-01, CP-01, ESM-01...
   wavelengthM?: number;
   coverageProfile?: CoverageProfile;
   altitudeDetectionTable?: AltitudeDetectionTable;
+  minEngagementRangeKm?: number;
+  maxEngagementAltitudeM?: number;
+  reactionTimeSeconds?: number;
+  guidanceMethodVi?: string;
+  frequencyRangeGhz?: string;
+  networkGroupId?: string;
   spxConfig?: Partial<import('./spxRadarCoverage').SpxRadarCoverageConfig>;
 }
 
@@ -74,6 +87,7 @@ export const CATEGORY_META: Record<
   TenLuaPhongKhong: { prefix: 'SAM', nameVi: 'Tên Lửa Phòng Không', icon: 'Target' },
   SoChiHuy: { prefix: 'CP', nameVi: 'Sở Chỉ Huy', icon: 'Radio' },
   PhaoPhongKhong: { prefix: 'AAA', nameVi: 'Pháo Phòng Không', icon: 'Zap' },
+  CamBienThuDong: { prefix: 'ESM', nameVi: 'Cảm Biến Thụ Động (ESM)', icon: 'RadioTower' },
   TramQuanSat: { prefix: 'OP', nameVi: 'Trạm Quan Sát', icon: 'Antenna' },
 };
 

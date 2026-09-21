@@ -18,6 +18,8 @@ import {
   Shield,
   Target,
   Zap,
+  RadioTower,
+  Network,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import type { OperationalStatus } from '../../types/equipment';
@@ -43,6 +45,8 @@ export const RightInspector: React.FC = () => {
     updateEquipmentSpxConfig,
     spxResults,
     viewMode,
+    showSensorNetwork,
+    toggleSensorNetwork,
   } = useTacticalStore();
 
   const [coordFormat, setCoordFormat] = useState<'decimal' | 'dms'>('dms');
@@ -54,8 +58,24 @@ export const RightInspector: React.FC = () => {
   // Accordion state (Tiêu chí Progressive Disclosure: ĐÓNG MẶC ĐỊNH để inspector luôn ngắn gọn)
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [isAltitudeTableOpen, setIsAltitudeTableOpen] = useState<boolean>(false);
+  const [isSpecsOpen, setIsSpecsOpen] = useState<boolean>(false);
 
   const selected = instances.find((i) => i.instanceId === selectedInstanceId);
+
+  // Helper tính cự ly đại vòng tròn giữa 2 điểm (km)
+  const computeDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
 
   // Helper chuyển đổi độ thập phân sang DMS (Độ, Phút, Giây)
   const toDms = (deg: number) => {
@@ -157,6 +177,17 @@ export const RightInspector: React.FC = () => {
     (i) => i.category === 'SoChiHuy' && i.instanceId !== selectedInstanceId
   );
 
+  // Danh sách các trạm cảm biến thụ động khác để tính cự ly đường cơ sở TDoA
+  const otherEsmNodes = useMemo(() => {
+    if (!selected) return [];
+    return instances.filter(
+      (i) =>
+        i.instanceId !== selected.instanceId &&
+        (i.category === 'CamBienThuDong' ||
+          ASSET_TYPE_REGISTRY[i.category]?.capabilities.hasSensorNetwork)
+    );
+  }, [instances, selected]);
+
   // Phân định khả năng hiển thị của khí tài (Capabilities)
   const caps = selected
     ? ASSET_TYPE_REGISTRY[selected.category]?.capabilities || {
@@ -168,6 +199,7 @@ export const RightInspector: React.FC = () => {
           selected.category === 'PhaoPhongKhong',
         hasCommandLinks: selected.category === 'SoChiHuy',
         hasObservationSector: selected.category === 'TramQuanSat',
+        hasSensorNetwork: selected.category === 'CamBienThuDong',
       }
     : null;
 
@@ -206,6 +238,8 @@ export const RightInspector: React.FC = () => {
               <Target className="w-4 h-4" />
             ) : selected.category === 'PhaoPhongKhong' ? (
               <Zap className="w-4 h-4" />
+            ) : selected.category === 'CamBienThuDong' ? (
+              <RadioTower className="w-4 h-4" />
             ) : (
               <Radio className="w-4 h-4" />
             )}
@@ -227,6 +261,8 @@ export const RightInspector: React.FC = () => {
                   ? 'SỞ CHỈ HUY (C2)'
                   : selected.category === 'PhaoPhongKhong'
                   ? 'PHÁO PHÒNG KHÔNG'
+                  : selected.category === 'CamBienThuDong'
+                  ? 'CẢM BIẾN THỤ ĐỘNG (ESM)'
                   : 'TRẠM QUAN SÁT'}
               </span>
             </div>
@@ -773,31 +809,188 @@ export const RightInspector: React.FC = () => {
                 <div className="bg-slate-900/60 p-2.5 rounded-xl border border-rose-500/40 space-y-2.5">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
                     <span className="text-[10px] font-bold text-rose-400 font-mono flex items-center gap-1">
-                      <Target className="w-3.5 h-3.5" /> VÙNG HỎA LỰC TIÊU DIỆT (ENGAGEMENT)
+                      <Target className="w-3.5 h-3.5 text-rose-400" />
+                      VÙNG HỎA LỰC TIÊU DIỆT (ENGAGEMENT)
                     </span>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-500/40 text-rose-300 font-mono">
-                      {selected.category === 'TenLuaPhongKhong' ? 'SAM' : 'AAA'}
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-500/40 text-rose-300 font-mono font-bold">
+                      {selected.category === 'TenLuaPhongKhong' ? 'TÊN LỬA PK (SAM)' : 'PHÁO PK (AAA)'}
                     </span>
                   </div>
 
+                  {/* Cự ly diệt xa nhất R_kill */}
                   <div>
                     <div className="flex justify-between text-[11px] mb-1 font-mono">
-                      <span className="text-slate-400">Bán kính hỏa lực tiêu diệt:</span>
+                      <span className="text-slate-400">Bán kính hỏa lực cực đại (R_kill):</span>
                       <span className="text-rose-400 font-bold">{selected.rangeKm} km</span>
                     </div>
                     <input
                       type="range"
-                      min="1"
+                      min={selected.category === 'PhaoPhongKhong' ? 1 : 10}
                       max={selected.category === 'PhaoPhongKhong' ? 15 : 300}
                       step={selected.category === 'PhaoPhongKhong' ? 0.5 : 5}
                       value={selected.rangeKm}
-                      onChange={(e) => updateEquipment(selected.instanceId, { rangeKm: parseFloat(e.target.value) })}
+                      onChange={(e) =>
+                        updateEquipment(selected.instanceId, { rangeKm: parseFloat(e.target.value) || 10 })
+                      }
                       className="w-full accent-rose-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
                     />
                   </div>
-                  <p className="text-[10px] text-slate-400 italic">
-                    Biên giới hỏa lực và nhãn tác chiến được vẽ theo đường bao trên bản đồ 2D.
-                  </p>
+
+                  {/* Cự ly diệt cực cận R_min & Trần bắn H_max */}
+                  <div className="grid grid-cols-2 gap-2 font-mono text-[10.5px]">
+                    <div>
+                      <span className="text-[10px] text-slate-400">Cực cận R_min (km):</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0.1"
+                        max="50"
+                        value={
+                          selected.minEngagementRangeKm ??
+                          (selected.category === 'TenLuaPhongKhong' ? 3 : 0.2)
+                        }
+                        onChange={(e) =>
+                          updateEquipment(selected.instanceId, {
+                            minEngagementRangeKm: parseFloat(e.target.value) || 0.1,
+                          })
+                        }
+                        className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-rose-300 text-xs font-bold focus:border-rose-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400">Trần hỏa lực H_max (m):</span>
+                      <input
+                        type="number"
+                        step="1000"
+                        min="500"
+                        max="50000"
+                        value={
+                          selected.maxEngagementAltitudeM ??
+                          (selected.category === 'TenLuaPhongKhong' ? 27000 : 2500)
+                        }
+                        onChange={(e) =>
+                          updateEquipment(selected.instanceId, {
+                            maxEngagementAltitudeM: parseFloat(e.target.value) || 1000,
+                          })
+                        }
+                        className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-rose-300 text-xs font-bold focus:border-rose-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Thời gian phản ứng & Phương thức dẫn bắn */}
+                  <div className="p-2 rounded-lg bg-slate-950/70 border border-slate-800 font-mono text-[10px] space-y-1">
+                    {selected.reactionTimeSeconds !== undefined && (
+                      <div className="flex justify-between items-center text-slate-300">
+                        <span className="text-slate-400">Thời gian phản ứng (T_pư):</span>
+                        <span className="font-bold text-amber-300">{selected.reactionTimeSeconds} giây</span>
+                      </div>
+                    )}
+                    {selected.guidanceMethodVi && (
+                      <div className="text-slate-300 pt-0.5">
+                        <span className="text-slate-500 block text-[9px] uppercase tracking-wider">
+                          Phương thức dẫn bắn:
+                        </span>
+                        <span className="text-rose-300 font-semibold leading-tight block">
+                          {selected.guidanceMethodVi}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Nếu là Cảm biến thụ động ESM (Kolchuga-M) */}
+              {caps.hasSensorNetwork && (
+                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-purple-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                    <span className="text-[10px] font-bold text-purple-300 font-mono flex items-center gap-1">
+                      <RadioTower className="w-3.5 h-3.5 text-purple-400" />
+                      VÙNG TRINH SÁT THỤ ĐỘNG (ESM)
+                    </span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-950/80 border border-purple-500/40 text-purple-300 font-mono font-bold">
+                      KOLCHUGA-M
+                    </span>
+                  </div>
+
+                  {/* Cự ly trinh sát thụ động */}
+                  <div>
+                    <div className="flex justify-between text-[11px] mb-1 font-mono">
+                      <span className="text-slate-400">Cự ly trinh sát thụ động (R_esm):</span>
+                      <span className="text-purple-300 font-bold">{selected.rangeKm} km</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="100"
+                      max="800"
+                      step="20"
+                      value={selected.rangeKm}
+                      onChange={(e) =>
+                        updateEquipment(selected.instanceId, {
+                          rangeKm: parseFloat(e.target.value) || 600,
+                        })
+                      }
+                      className="w-full accent-purple-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Dải tần số bức xạ thu nhận */}
+                  <div className="p-2 rounded-lg bg-slate-950/70 border border-slate-800 font-mono text-[10.5px] space-y-1">
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="text-slate-400">Dải tần số tiếp nhận:</span>
+                      <span className="text-purple-300 font-bold">
+                        {selected.frequencyRangeGhz || '0.1 - 18.0 GHz'}
+                      </span>
+                    </div>
+                    <span className="text-[9.5px] text-slate-500 block">
+                      Định vị TDoA / Đo hướng DF bức xạ radar đối phương
+                    </span>
+                  </div>
+
+                  {/* Mạng đường cơ sở TDoA liên trạm */}
+                  <div className="p-2 rounded-lg bg-slate-950/90 border border-purple-900/50 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-purple-300 font-mono flex items-center gap-1">
+                        <Network className="w-3.5 h-3.5" /> Mạng TDoA ({otherEsmNodes.length} trạm lân cận)
+                      </span>
+                      <button
+                        onClick={toggleSensorNetwork}
+                        className={`px-2 py-0.5 rounded text-[9px] font-mono border font-bold cursor-pointer transition-all ${
+                          showSensorNetwork
+                            ? 'bg-purple-950 text-purple-300 border-purple-500/60'
+                            : 'bg-slate-900 text-slate-500 border-slate-800'
+                        }`}
+                      >
+                        {showSensorNetwork ? 'BẬT MẠNG' : 'ẨN MẠNG'}
+                      </button>
+                    </div>
+
+                    {otherEsmNodes.length > 0 ? (
+                      <div className="space-y-1">
+                        {otherEsmNodes.map((node) => {
+                          const distKm = computeDistanceKm(
+                            selected.latitude,
+                            selected.longitude,
+                            node.latitude,
+                            node.longitude
+                          );
+                          return (
+                            <div
+                              key={node.instanceId}
+                              className="flex items-center justify-between text-[10px] font-mono bg-purple-950/30 p-1 rounded border border-purple-800/40 text-purple-200"
+                            >
+                              <span>⟷ {node.shortId ? `[${node.shortId}] ` : ''}{node.name}</span>
+                              <strong className="text-amber-300">{distKm.toFixed(1)} km</strong>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-[9.5px] text-slate-500 italic">
+                        Cần tối thiểu 2 trạm Kolchuga-M trên bản đồ để thiết lập mạng đo giao hội TDoA.
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -829,165 +1022,284 @@ export const RightInspector: React.FC = () => {
           {/* ===================================================================== */}
           {activeTab === '3d' && (
             <div className="space-y-2.5 animate-in fade-in duration-150">
-              {/* Bật/Tắt Vòm 3D & Góc tà */}
-              <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-cyan-300 font-mono flex items-center gap-1">
-                    <Compass className="w-3.5 h-3.5" /> HIỂN THỊ VÒM 3D & GÓC TÀ
-                  </span>
-                  <button
-                    onClick={() =>
-                      updateEquipment(selected.instanceId, {
-                        showDome: !selected.showDome,
-                      })
-                    }
-                    className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                      selected.showDome
-                        ? 'bg-cyan-950 text-cyan-300 border-cyan-500/60 shadow-[0_0_8px_rgba(6,182,212,0.3)]'
-                        : 'bg-slate-950 text-slate-500 border-slate-800'
-                    }`}
-                  >
-                    {selected.showDome ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                    <span>{selected.showDome ? 'Đang bật' : 'Đang ẩn'}</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 font-mono text-[10.5px]">
-                  <div>
-                    <span className="text-[10px] text-slate-400">Góc tà min (°)</span>
-                    <input
-                      type="number"
-                      value={selected.minElevationDeg}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
-                        updateEquipment(selected.instanceId, { minElevationDeg: val });
-                        updateSelectedSpx({ minElevationDeg: val });
-                      }}
-                      className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400">Góc tà max (°)</span>
-                    <input
-                      type="number"
-                      value={selected.maxElevationDeg}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
-                        updateEquipment(selected.instanceId, { maxElevationDeg: val });
-                        updateSelectedSpx({ maxElevationDeg: val });
-                      }}
-                      className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Phân tích Cắt địa hình & Line-of-sight (LOS) */}
-              <div className="bg-slate-900/60 p-2.5 rounded-xl border border-cyan-900/50 space-y-2.5">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-                  <span className="text-[10px] font-bold text-cyan-300 font-mono flex items-center gap-1">
-                    <Compass className="w-3.5 h-3.5 text-cyan-400" />
-                    CẮT ĐỊA HÌNH 3D & VÙNG MÙ (LOS)
-                  </span>
-                  <span className="text-[9px] bg-cyan-950 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded font-mono">
-                    k = 4/3
-                  </span>
-                </div>
-
-                {/* Độ cao mục tiêu bay H_mt */}
-                <div>
-                  <div className="flex justify-between text-[11px] mb-1 font-mono">
-                    <span className="text-slate-400">Độ cao mục tiêu (H_mt):</span>
-                    <span className="text-cyan-300 font-bold">{targetHeightMeters} m</span>
-                  </div>
-                  <div className="grid grid-cols-4 gap-1 mb-1.5">
-                    {[
-                      { label: '50m', value: 50 },
-                      { label: '300m', value: 300 },
-                      { label: '1km', value: 1000 },
-                      { label: '5km', value: 5000 },
-                    ].map((btn) => (
+              {/* Trường hợp 1: Radar Cảnh Giới (RadarCanhGioi) - Vòm quét và Phân tích LOS 3D raycasting */}
+              {caps.hasRadarCoverage && (
+                <>
+                  {/* Bật/Tắt Vòm 3D & Góc tà */}
+                  <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-cyan-300 font-mono flex items-center gap-1">
+                        <Compass className="w-3.5 h-3.5" /> HIỂN THỊ VÒM 3D & GÓC TÀ
+                      </span>
                       <button
-                        key={btn.value}
-                        onClick={() => setTargetHeightMeters(btn.value)}
-                        className={`py-1 rounded text-[10px] font-mono border transition-all cursor-pointer ${
-                          targetHeightMeters === btn.value
-                            ? 'bg-cyan-950 text-cyan-300 border-cyan-500 font-bold shadow-[0_0_8px_rgba(6,182,212,0.3)]'
-                            : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
+                        onClick={() =>
+                          updateEquipment(selected.instanceId, {
+                            showDome: !selected.showDome,
+                          })
+                        }
+                        className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          selected.showDome
+                            ? 'bg-cyan-950 text-cyan-300 border-cyan-500/60 shadow-[0_0_8px_rgba(6,182,212,0.3)]'
+                            : 'bg-slate-950 text-slate-500 border-slate-800'
                         }`}
                       >
-                        {btn.label}
+                        {selected.showDome ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        <span>{selected.showDome ? 'Đang bật' : 'Đang ẩn'}</span>
                       </button>
-                    ))}
-                  </div>
-                  <input
-                    type="range"
-                    min="20"
-                    max="15000"
-                    step="50"
-                    value={targetHeightMeters}
-                    onChange={(e) => setTargetHeightMeters(parseFloat(e.target.value))}
-                    className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
-                  />
-                </div>
+                    </div>
 
-                {/* Hiển thị tính toán công thức thực tế */}
-                <div className="grid grid-cols-2 gap-2 p-2 bg-slate-950 rounded-lg border border-slate-800 font-mono text-[10px]">
-                  <div>
-                    <span className="text-slate-500 block">KHU MÙ ĐỈNH (R_kh)</span>
-                    <span className="text-amber-300 font-bold">
-                      {(
-                        (targetHeightMeters *
-                          (1 / Math.tan((selected.maxElevationDeg * Math.PI) / 180))) /
-                        1000
-                      ).toFixed(2)}{' '}
-                      km
+                    <div className="grid grid-cols-2 gap-2 font-mono text-[10.5px]">
+                      <div>
+                        <span className="text-[10px] text-slate-400">Góc tà min (°)</span>
+                        <input
+                          type="number"
+                          value={selected.minElevationDeg}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            updateEquipment(selected.instanceId, { minElevationDeg: val });
+                            updateSelectedSpx({ minElevationDeg: val });
+                          }}
+                          className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400">Góc tà max (°)</span>
+                        <input
+                          type="number"
+                          value={selected.maxElevationDeg}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            updateEquipment(selected.instanceId, { maxElevationDeg: val });
+                            updateSelectedSpx({ maxElevationDeg: val });
+                          }}
+                          className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Phân tích Cắt địa hình & Line-of-sight (LOS) */}
+                  <div className="bg-slate-900/60 p-2.5 rounded-xl border border-cyan-900/50 space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                      <span className="text-[10px] font-bold text-cyan-300 font-mono flex items-center gap-1">
+                        <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                        CẮT ĐỊA HÌNH 3D & VÙNG MÙ (LOS)
+                      </span>
+                      <span className="text-[9px] bg-cyan-950 text-cyan-300 border border-cyan-500/30 px-1.5 py-0.5 rounded font-mono">
+                        k = 4/3
+                      </span>
+                    </div>
+
+                    {/* Độ cao mục tiêu bay H_mt */}
+                    <div>
+                      <div className="flex justify-between text-[11px] mb-1 font-mono">
+                        <span className="text-slate-400">Độ cao mục tiêu (H_mt):</span>
+                        <span className="text-cyan-300 font-bold">{targetHeightMeters} m</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1 mb-1.5">
+                        {[
+                          { label: '50m', value: 50 },
+                          { label: '300m', value: 300 },
+                          { label: '1km', value: 1000 },
+                          { label: '5km', value: 5000 },
+                        ].map((btn) => (
+                          <button
+                            key={btn.value}
+                            onClick={() => setTargetHeightMeters(btn.value)}
+                            className={`py-1 rounded text-[10px] font-mono border transition-all cursor-pointer ${
+                              targetHeightMeters === btn.value
+                                ? 'bg-cyan-950 text-cyan-300 border-cyan-500 font-bold shadow-[0_0_8px_rgba(6,182,212,0.3)]'
+                                : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            {btn.label}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="range"
+                        min="20"
+                        max="15000"
+                        step="50"
+                        value={targetHeightMeters}
+                        onChange={(e) => setTargetHeightMeters(parseFloat(e.target.value))}
+                        className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Hiển thị tính toán công thức thực tế */}
+                    <div className="grid grid-cols-2 gap-2 p-2 bg-slate-950 rounded-lg border border-slate-800 font-mono text-[10px]">
+                      <div>
+                        <span className="text-slate-500 block">KHU MÙ ĐỈNH (R_kh)</span>
+                        <span className="text-amber-300 font-bold">
+                          {(
+                            (targetHeightMeters *
+                              (1 / Math.tan((selected.maxElevationDeg * Math.PI) / 180))) /
+                            1000
+                          ).toFixed(2)}{' '}
+                          km
+                        </span>
+                        <span className="text-[9px] text-slate-600 block">H_mt · cotg ε_max</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block">CHÂN TRỜI (D_nt)</span>
+                        <span className="text-cyan-300 font-bold">
+                          {(
+                            4.12 *
+                            (Math.sqrt(selected.antennaHeightAGL) +
+                              Math.sqrt(targetHeightMeters))
+                          ).toFixed(1)}{' '}
+                          km
+                        </span>
+                        <span className="text-[9px] text-slate-600 block">4.12·(√ha + √Hmt)</span>
+                      </div>
+                    </div>
+
+                    {/* Trạng thái trường 3D */}
+                    {coverageFields[selected.instanceId] && (
+                      <div className="p-1.5 bg-slate-950 rounded border border-slate-800 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                        <span>Tia 3D: <strong className="text-cyan-300">{coverageFields[selected.instanceId].totalRays}</strong></span>
+                        <span>Bị chắn: <strong className="text-rose-400">{coverageFields[selected.instanceId].occludedRaysCount}</strong></span>
+                        <span>Tỷ lệ: <strong className="text-emerald-400">{coverageFields[selected.instanceId].coverageRatioPercent}%</strong></span>
+                      </div>
+                    )}
+
+                    {/* Nút Mặt Cắt Quang Tuyến 2D (Cross Section) */}
+                    <button
+                      onClick={toggleCrossSection}
+                      className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                        showCrossSection
+                          ? 'bg-cyan-950 text-cyan-300 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.4)] ring-1 ring-cyan-400'
+                          : 'bg-slate-950 hover:bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/50'
+                      }`}
+                    >
+                      <Compass
+                        className={`w-4 h-4 ${showCrossSection ? 'animate-spin' : ''}`}
+                        style={{ animationDuration: '6s' }}
+                      />
+                      <span>
+                        {showCrossSection
+                          ? 'Đang Xem Mặt Cắt 2D (Cross Section)'
+                          : 'Mở Mặt Cắt Quang Tuyến 2D'}
+                      </span>
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Trường hợp 2: Tên Lửa Phòng Không (SAM) & Pháo Phòng Không (AAA) */}
+              {caps.hasEngagementEnvelope && (
+                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-rose-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                    <span className="text-[10px] font-bold text-rose-300 font-mono flex items-center gap-1">
+                      <Target className="w-3.5 h-3.5 text-rose-400" />
+                      VÒM HỎA LỰC ĐÁNH CHẶN 3D
                     </span>
-                    <span className="text-[9px] text-slate-600 block">H_mt · cotg ε_max</span>
+                    <button
+                      onClick={() =>
+                        updateEquipment(selected.instanceId, {
+                          showDome: !selected.showDome,
+                        })
+                      }
+                      className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                        selected.showDome
+                          ? 'bg-rose-950 text-rose-300 border-rose-500/60 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
+                          : 'bg-slate-950 text-slate-500 border-slate-800'
+                      }`}
+                    >
+                      {selected.showDome ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                      <span>{selected.showDome ? 'Đang bật' : 'Đang ẩn'}</span>
+                    </button>
                   </div>
-                  <div>
-                    <span className="text-slate-500 block">CHÂN TRỜI (D_nt)</span>
-                    <span className="text-cyan-300 font-bold">
-                      {(
-                        4.12 *
-                        (Math.sqrt(selected.antennaHeightAGL) +
-                          Math.sqrt(targetHeightMeters))
-                      ).toFixed(1)}{' '}
-                      km
-                    </span>
-                    <span className="text-[9px] text-slate-600 block">4.12·(√ha + √Hmt)</span>
+
+                  <div className="grid grid-cols-2 gap-2 font-mono text-[10px]">
+                    <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                      <span className="text-slate-400 block">CỰ LY TIÊU DIỆT</span>
+                      <strong className="text-rose-400">
+                        {selected.minEngagementRangeKm ?? (selected.category === 'TenLuaPhongKhong' ? 3 : 0.2)} - {selected.rangeKm} km
+                      </strong>
+                    </div>
+                    <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                      <span className="text-slate-400 block">TRẦN HỎA LỰC H_max</span>
+                      <strong className="text-rose-400">
+                        {((selected.maxEngagementAltitudeM || 27000) / 1000).toFixed(0)} km
+                      </strong>
+                    </div>
                   </div>
+
+                  <p className="text-[9.5px] text-slate-400 italic">
+                    Vòm hỏa lực 3D hiển thị thể tích không gian đánh chặn thực tế, tối ưu hóa hiển thị không ép quét sóng như đài radar.
+                  </p>
                 </div>
+              )}
 
-                {/* Trạng thái trường 3D */}
-                {coverageFields[selected.instanceId] && (
-                  <div className="p-1.5 bg-slate-950 rounded border border-slate-800 flex items-center justify-between text-[10px] font-mono text-slate-400">
-                    <span>Tia 3D: <strong className="text-cyan-300">{coverageFields[selected.instanceId].totalRays}</strong></span>
-                    <span>Bị chắn: <strong className="text-rose-400">{coverageFields[selected.instanceId].occludedRaysCount}</strong></span>
-                    <span>Tỷ lệ: <strong className="text-emerald-400">{coverageFields[selected.instanceId].coverageRatioPercent}%</strong></span>
+              {/* Trường hợp 3: Cảm Biến Thụ Động ESM (Kolchuga-M) */}
+              {caps.hasSensorNetwork && (
+                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-purple-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                    <span className="text-[10px] font-bold text-purple-300 font-mono flex items-center gap-1">
+                      <RadioTower className="w-3.5 h-3.5 text-purple-400" />
+                      VÒM TRINH SÁT THỤ ĐỘNG 3D
+                    </span>
+                    <button
+                      onClick={() =>
+                        updateEquipment(selected.instanceId, {
+                          showDome: !selected.showDome,
+                        })
+                      }
+                      className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                        selected.showDome
+                          ? 'bg-purple-950 text-purple-300 border-purple-500/60 shadow-[0_0_8px_rgba(168,85,247,0.3)]'
+                          : 'bg-slate-950 text-slate-500 border-slate-800'
+                      }`}
+                    >
+                      {selected.showDome ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                      <span>{selected.showDome ? 'Đang bật' : 'Đang ẩn'}</span>
+                    </button>
                   </div>
-                )}
 
-                {/* Nút Mặt Cắt Quang Tuyến 2D (Cross Section) */}
-                <button
-                  onClick={toggleCrossSection}
-                  className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                    showCrossSection
-                      ? 'bg-cyan-950 text-cyan-300 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.4)] ring-1 ring-cyan-400'
-                      : 'bg-slate-950 hover:bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/50'
-                  }`}
-                >
-                  <Compass
-                    className={`w-4 h-4 ${showCrossSection ? 'animate-spin' : ''}`}
-                    style={{ animationDuration: '6s' }}
-                  />
-                  <span>
-                    {showCrossSection
-                      ? 'Đang Xem Mặt Cắt 2D (Cross Section)'
-                      : 'Mở Mặt Cắt Quang Tuyến 2D'}
-                  </span>
-                </button>
-              </div>
+                  <div className="grid grid-cols-2 gap-2 font-mono text-[10px]">
+                    <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                      <span className="text-slate-400 block">BÁN KÍNH TIẾP NHẬN</span>
+                      <strong className="text-purple-300">{selected.rangeKm} km</strong>
+                    </div>
+                    <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                      <span className="text-slate-400 block">ĐỘ CAO TRINH SÁT</span>
+                      <strong className="text-purple-300">{selected.coverageHeightKm || 40} km</strong>
+                    </div>
+                  </div>
+
+                  <p className="text-[9.5px] text-slate-400 italic">
+                    Vòm trinh sát thu sóng bức xạ thụ động toàn hướng không phát tín hiệu radar, giữ bí mật trận địa tuyệt đối.
+                  </p>
+                </div>
+              )}
+
+              {/* Trường hợp 4: Sở Chỉ Huy Tác Chiến C2 */}
+              {caps.hasCommandLinks && (
+                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-amber-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                    <span className="text-[10px] font-bold text-amber-300 font-mono flex items-center gap-1">
+                      <Shield className="w-3.5 h-3.5 text-amber-400" />
+                      PHẠM VI CHỈ HUY & ĐIỀU HÀNH TÁC CHIẾN C2
+                    </span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950/80 border border-amber-500/40 text-amber-300 font-mono font-bold">
+                      TRUNG TÂM C2
+                    </span>
+                  </div>
+
+                  <div className="p-1.5 bg-slate-950 rounded border border-slate-800 font-mono text-[10px]">
+                    <div className="flex justify-between text-slate-300">
+                      <span className="text-slate-400">Bán kính điều phối hỏa lực:</span>
+                      <strong className="text-amber-300">{selected.rangeKm} km</strong>
+                    </div>
+                  </div>
+
+                  <p className="text-[9.5px] text-slate-400 italic">
+                    Trung tâm xử lý sơ bộ & thứ cấp dữ liệu tình báo từ mạng radar và phân chia mục tiêu hỏa lực cho các tiểu đoàn tên lửa, pháo phòng không.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -999,6 +1311,68 @@ export const RightInspector: React.FC = () => {
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">
             Dữ liệu kỹ thuật chuyên sâu
           </span>
+
+          {/* Accordion 0: Thông Số Vũ Khí & Khí Tài Chuyên Sâu */}
+          {(selected.guidanceMethodVi || selected.frequencyRangeGhz || selected.reactionTimeSeconds) && (
+            <div className="bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden transition-all">
+              <button
+                onClick={() => setIsSpecsOpen(!isSpecsOpen)}
+                className="w-full p-2.5 flex items-center justify-between text-left hover:bg-slate-850 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Activity className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="text-xs font-semibold text-slate-200 truncate">
+                    Thông số Tác chiến & Quân sự Chi Tiết
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 text-slate-400 shrink-0 ml-1">
+                  <span className="text-[10px] font-mono text-amber-400">
+                    Chi tiết
+                  </span>
+                  {isSpecsOpen ? (
+                    <ChevronDown className="w-4 h-4 text-amber-400" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                </div>
+              </button>
+
+              {isSpecsOpen && (
+                <div className="p-2.5 pt-0 border-t border-slate-800/60 space-y-2 text-xs font-mono">
+                  {selected.guidanceMethodVi && (
+                    <div className="pt-2">
+                      <span className="text-[10px] text-slate-500 block uppercase">Hệ thống dẫn bắn & Điều khiển:</span>
+                      <span className="text-slate-200 font-semibold">{selected.guidanceMethodVi}</span>
+                    </div>
+                  )}
+                  {selected.minEngagementRangeKm !== undefined && (
+                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Cự ly tiêu diệt cực cận (R_min):</span>
+                      <strong className="text-rose-300">{selected.minEngagementRangeKm} km</strong>
+                    </div>
+                  )}
+                  {selected.maxEngagementAltitudeM !== undefined && (
+                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Trần hỏa lực (H_max):</span>
+                      <strong className="text-rose-300">{(selected.maxEngagementAltitudeM / 1000).toFixed(0)} km ({selected.maxEngagementAltitudeM}m)</strong>
+                    </div>
+                  )}
+                  {selected.reactionTimeSeconds !== undefined && (
+                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Thời gian phản ứng hệ thống (T_pư):</span>
+                      <strong className="text-amber-300">{selected.reactionTimeSeconds} giây</strong>
+                    </div>
+                  )}
+                  {selected.frequencyRangeGhz && (
+                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Dải tần công tác tiếp nhận:</span>
+                      <strong className="text-purple-300">{selected.frequencyRangeGhz}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Accordion 1: Coverage Profile (Giản đồ búp sóng) */}
           {selected.coverageProfile && (

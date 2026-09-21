@@ -32,6 +32,7 @@ export const TacticalLayerControls: React.FC = () => {
     { key: 'All', label: 'Tất cả loại khí tài' },
     { key: 'RadarCanhGioi', label: 'Radar Cảnh giới (R)' },
     { key: 'TenLuaPhongKhong', label: 'Tên lửa PK (SAM)' },
+    { key: 'CamBienThuDong', label: 'Cảm biến thụ động (ESM)' },
     { key: 'SoChiHuy', label: 'Sở chỉ huy (CP)' },
     { key: 'PhaoPhongKhong', label: 'Pháo PK (AAA)' },
     { key: 'TramQuanSat', label: 'Trạm quan sát (OP)' },
