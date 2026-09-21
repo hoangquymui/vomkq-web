@@ -22,6 +22,12 @@ export interface EquipmentTemplate {
   antennaHeightAGL: number; // meters
   coverageHeightKm: number;
   symbolColor: string;
+  /**
+   * Màu vỏ vòm phủ sóng riêng của loại đài (hex). Tuỳ chọn.
+   * Thứ tự ưu tiên màu vòm hiệu dụng: domeColorOverride -> domeColor (template) -> instance.color
+   * Nguồn: vomkq-web/docs/dome-video-match/README.md mục 5.
+   */
+  domeColor?: string;
   iconName: string;
   wavelengthM?: number; // Bước sóng của đài (m): sóng mét ~2m, sóng cm ~0.05m
   coverageProfile?: CoverageProfile;

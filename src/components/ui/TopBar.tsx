@@ -12,6 +12,7 @@ import {
   BarChart3,
   HardDriveDownload,
   Radio,
+  Sparkles,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { PRESET_LOCATIONS } from '../../data/equipmentTemplates';
@@ -42,6 +43,8 @@ export const TopBar: React.FC = () => {
     setShowMapDownloadModal,
     showSpxPanel,
     toggleSpxPanel,
+    aiAdvisorPanelOpen,
+    toggleAiAdvisorPanel,
   } = useTacticalStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -165,6 +168,20 @@ export const TopBar: React.FC = () => {
         >
           <Radio className={`w-3.5 h-3.5 ${showSpxPanel ? 'text-amber-400' : 'text-cyan-400'}`} />
           <span>SPx Vùng Phủ 2D</span>
+        </button>
+
+        {/* Nút mở Cố vấn vị trí đặt khí tài bằng AI local (VECTOR AI) */}
+        <button
+          onClick={toggleAiAdvisorPanel}
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded border transition-all ${
+            aiAdvisorPanelOpen
+              ? 'bg-violet-950/85 text-violet-300 border-violet-500/70 shadow-[0_0_10px_rgba(139,92,246,0.35)]'
+              : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-violet-500/50 hover:text-violet-200'
+          }`}
+          title="Bật/Tắt: Cố vấn vị trí đặt khí tài bằng VECTOR AI chạy local (127.0.0.1:8000)"
+        >
+          <Sparkles className={`w-3.5 h-3.5 ${aiAdvisorPanelOpen ? 'text-violet-300' : 'text-violet-400'}`} />
+          <span>AI Gợi ý</span>
         </button>
 
         {/* Nút Chỉ Vùng Việt Nam / Toàn Cầu */}

@@ -19,6 +19,29 @@ import {
 import {
   buildSpxCoverageEntities,
 } from '../../utils/spxGeometryBuilder';
+import {
+  buildRadarDomeGeometry,
+  createRadarDomeGeometryInstance,
+  DOME_FOOTPRINT_SEGMENTS,
+} from '../../utils/radarDomeGeometry';
+import {
+  createRadarDomeMaterial,
+  releaseRadarDomeMaterial,
+  resolveDomeColorHex,
+  updateRadarDomeMaterials,
+} from '../../utils/radarDomeMaterial';
+import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
+import { createEquipmentFromTemplate } from '../../utils/equipmentFactory';
+import { setAdvisorViewport } from '../../utils/aiPlacementAdvisor';
+
+/** Tra cứu template theo id để lấy `domeColor` (màu vỏ vòm riêng của từng loại đài) */
+const TEMPLATE_BY_ID = new Map(EQUIPMENT_TEMPLATES.map((t) => [t.id, t]));
+
+/** Tài nguyên GPU của một vòm radar: cần destroy/remove tường minh để không rò rỉ */
+interface DomeRenderResource {
+  primitive: Cesium.Primitive;
+  material: Cesium.Material;
+}
 
 // Access token cấu hình từ dự án VomKQ (CesiumIonServer)
 Cesium.Ion.defaultAccessToken =
@@ -105,6 +128,8 @@ function pickGroundCartesian(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2
 export const CesiumGlobe: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
+  // Tài nguyên vòm radar (Primitive + Material) — quản lý vòng đời thủ công
+  const domeResourcesRef = useRef<DomeRenderResource[]>([]);
 
   const [isPinned, setIsPinned] = useState<boolean>(true);
   const [cameraHeight, setCameraHeight] = useState<number>(95000);
@@ -152,7 +177,43 @@ export const CesiumGlobe: React.FC = () => {
     showLabelsLayer,
     showMarkersLayer,
     categoryFilter,
+    domeAlpha,
+    domeAzimuthSegments,
+    domeElevationRings,
+    domeRimColor,
+    domeRimPower,
+    domeScanLineCount,
+    domeScanLineSpeed,
+    domeScanLineAnimated,
+    showDomeFootprint,
+    domeTerrainMasked,
+    domeColorOverride,
+    aiAdvisorSuggestions,
+    aiAdvisorRoute,
   } = useTacticalStore();
+
+  /**
+   * Hủy toàn bộ Primitive + Material của vòm radar.
+   * Phải gọi TRƯỚC khi dựng lại vòm hoặc trước khi destroy viewer để không rò rỉ GPU.
+   */
+  const releaseDomeResources = useCallback(() => {
+    const viewer = viewerRef.current;
+    const scene = viewer && !viewer.isDestroyed() ? viewer.scene : null;
+
+    for (const resource of domeResourcesRef.current) {
+      if (!resource.primitive.isDestroyed()) {
+        if (scene && !scene.isDestroyed() && scene.primitives.contains(resource.primitive)) {
+          // PrimitiveCollection.remove() tự destroy primitive
+          scene.primitives.remove(resource.primitive);
+        } else {
+          resource.primitive.destroy();
+        }
+      }
+      releaseRadarDomeMaterial(resource.material);
+    }
+
+    domeResourcesRef.current = [];
+  }, []);
 
   // 1. Khởi tạo Cesium Viewer
   useEffect(() => {
@@ -203,8 +264,19 @@ export const CesiumGlobe: React.FC = () => {
     // Lắng nghe thay đổi vị trí camera để cập nhật chỉ số chiều cao thực tế
     viewer.camera.changed.addEventListener(() => {
       if (viewerRef.current) {
-        const h = Math.round(viewerRef.current.camera.positionCartographic.height);
+        const carto = viewerRef.current.camera.positionCartographic;
+        const h = Math.round(carto.height);
         setCameraHeight(h);
+
+        // Ghi tâm camera cho cố vấn AI (module-level, KHÔNG qua store để tránh re-render mỗi frame).
+        // Dùng toạ độ địa lý của vị trí camera làm tâm vùng quan tâm.
+        if (carto && Number.isFinite(carto.latitude) && Number.isFinite(carto.longitude)) {
+          setAdvisorViewport({
+            lat: Cesium.Math.toDegrees(carto.latitude),
+            lon: Cesium.Math.toDegrees(carto.longitude),
+            heightM: Number.isFinite(h) && h > 0 ? h : 95000,
+          });
+        }
       }
     });
 
@@ -218,14 +290,26 @@ export const CesiumGlobe: React.FC = () => {
       },
     });
 
+    // Đồng hồ thời gian thực cho dải quét của vòm radar (uniform u_time của Defense/RadarDome port).
+    // Custom uniform của Cesium được đọc lại tại thời điểm bind nên chỉ cần gán mỗi frame.
+    const removeDomeTimeListener = viewer.scene.preRender.addEventListener(() => {
+      updateRadarDomeMaterials(performance.now() / 1000);
+    });
+
     // Cleanup khi unmount
     return () => {
+      if (typeof removeDomeTimeListener === 'function') {
+        removeDomeTimeListener();
+      }
+      // Giải phóng Primitive/Material của vòm TRƯỚC khi destroy viewer
+      releaseDomeResources();
       if (viewerRef.current && !viewerRef.current.isDestroyed()) {
         viewerRef.current.destroy();
         viewerRef.current = null;
       }
     };
-  }, []);
+    // releaseDomeResources là useCallback([]) -> identity ổn định, effect vẫn chỉ chạy 1 lần
+  }, [releaseDomeResources]);
 
   // 2. Chuyển đổi chế độ 3D (Địa hình lồi lõm) / 2D (Bản đồ phẳng)
   useEffect(() => {
@@ -415,27 +499,14 @@ export const CesiumGlobe: React.FC = () => {
           ? Math.max(0, Math.round(cartographic.height))
           : 0;
 
-        const newId = `eq_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-        addEquipment({
-          instanceId: newId,
-          templateId: pendingTemplate.id,
-          name: `${pendingTemplate.name} #${instances.length + 1}`,
-          category: pendingTemplate.category,
-          latitude: Number(rawLat.toFixed(5)),
-          longitude: Number(rawLon.toFixed(5)),
-          altitude: groundHeight,
-          antennaHeightAGL: pendingTemplate.antennaHeightAGL || 15,
-          rangeKm: pendingTemplate.defaultRangeKm || 50,
-          scanSpeed: pendingTemplate.defaultScanSpeed || 0,
-          minElevationDeg: pendingTemplate.minElevationDeg !== undefined ? pendingTemplate.minElevationDeg : -10,
-          maxElevationDeg: pendingTemplate.maxElevationDeg !== undefined ? pendingTemplate.maxElevationDeg : 40,
-          coverageHeightKm: pendingTemplate.coverageHeightKm || 25,
-          status: 'Active',
-          commandedByInstanceId: null,
-          color: pendingTemplate.symbolColor || '#38bdf8',
-          showDome: true,
-          showSweep: (pendingTemplate.defaultScanSpeed || 0) > 0,
-        });
+        addEquipment(
+          createEquipmentFromTemplate(pendingTemplate, {
+            latitude: Number(rawLat.toFixed(5)),
+            longitude: Number(rawLon.toFixed(5)),
+            altitude: groundHeight,
+            nameIndex: instances.length + 1,
+          })
+        );
         return;
       }
 
@@ -705,6 +776,9 @@ export const CesiumGlobe: React.FC = () => {
 
     viewer.entities.removeAll();
 
+    // Giải phóng toàn bộ vòm cũ trước khi dựng lại (tránh rò rỉ primitive khi field/tham số đổi)
+    releaseDomeResources();
+
     const instanceMap = new Map(instances.map((i) => [i.instanceId, i]));
 
     const hasAnySelected = Boolean(selectedInstanceId && instances.some((i) => i.instanceId === selectedInstanceId));
@@ -869,44 +943,189 @@ export const CesiumGlobe: React.FC = () => {
           viewer.entities.add(e);
         });
       } else if (viewMode === '3D' && showAllDomes && inst.showDome && safeRangeKm > 0 && showCoverageLayer) {
-        const field = coverageFields[inst.instanceId];
-        if (field && field.rays && field.rays.length > 0) {
-          const { visibleEntities, blindEntities, coneOfSilenceEntities } =
-            buildRadarCoverageFieldEntities(
-              field,
-              showBlindZones,
-              inst.color,
-              isSelected,
-              showConeOfSilence
-            );
+        // 3a. VÒM PHỦ SÓNG 3D (port từ RadarDomeMeshRenderer.cs của Unity VomKQ_test):
+        //     - 1 Primitive duy nhất cho vỏ vòm (thay cho hàng trăm Entity polygon của bản cũ)
+        //     - 1 polyline vòng chân đế clamp mặt đất + 1 vòng nón mù đỉnh đầu nét đứt
+        //     - KHÔNG còn: quad canopy từng ô, vòng glow ngoài, ellipse 2D clamp, bán cầu ellipsoid tạm
+        const field = coverageFields[inst.instanceId] ?? null;
+        const template = TEMPLATE_BY_ID.get(inst.templateId);
+        const domeColorHex = resolveDomeColorHex(
+          inst.color,
+          template?.domeColor,
+          domeColorOverride
+        );
+        const domeColor = Cesium.Color.fromCssColorString(domeColorHex);
 
-          visibleEntities.forEach((e) => viewer.entities.add(e));
-          if (showBlindZones) {
-            blindEntities.forEach((e) => viewer.entities.add(e));
-          }
-          if (showConeOfSilence) {
-            coneOfSilenceEntities.forEach((e) => viewer.entities.add(e));
-          }
-        } else {
-          // Fallback bán cầu 3D mờ trong khi đang nạp dữ liệu quang tuyến
-          const radiusMeters = safeRangeKm * 1000;
-          const heightMeters = Math.min(radiusMeters, ((inst.coverageHeightKm || 25) * 1000));
+        // Sanitize tham số hình học trước khi dựng — chặn NaN lọt vào pipeline render Cesium
+        const safeCoverageHeightKm =
+          typeof inst.coverageHeightKm === 'number' &&
+          Number.isFinite(inst.coverageHeightKm) &&
+          inst.coverageHeightKm > 0
+            ? inst.coverageHeightKm
+            : 25;
+        const domeInstance = {
+          ...inst,
+          altitude: safeAlt,
+          antennaHeightAGL: safeAntennaAGL,
+          rangeKm: safeRangeKm,
+          coverageHeightKm: safeCoverageHeightKm,
+        };
 
-          viewer.entities.add({
-            position: Cesium.Cartesian3.fromDegrees(
-              inst.longitude,
-              inst.latitude,
-              safeAlt
-            ),
-            ellipsoid: {
-              radii: new Cesium.Cartesian3(radiusMeters, radiusMeters, heightMeters),
-              maximumCone: Cesium.Math.PI_OVER_TWO,
-              material: baseColor.withAlpha(isSelected ? 0.28 : 0.12),
-              outline: true,
-              outlineColor: baseColor.withAlpha(isSelected ? 0.8 : 0.3),
-              outlineWidth: 1,
-            },
+        // Vòm danh nghĩa được dựng ngay cả khi LOS chưa xong (field = null) — tương đương
+        // RadarDomeController.BuildFallbackDome của Unity, nên không cần ellipsoid tạm.
+        const domeGeometry = buildRadarDomeGeometry(domeInstance, field, {
+          azimuthSegments: domeAzimuthSegments,
+          elevationRings: domeElevationRings,
+          terrainMasked: domeTerrainMasked,
+        });
+
+        if (domeGeometry) {
+          const material = createRadarDomeMaterial({
+            baseColor: domeColor.withAlpha(domeAlpha),
+            rimColor: Cesium.Color.fromCssColorString(domeRimColor),
+            rimPower: domeRimPower,
+            scanLineCount: domeScanLineCount,
+            // Tắt animation = ép tốc độ dòng quét về 0 (dòng quét đứng yên)
+            scanLineSpeed: domeScanLineAnimated ? domeScanLineSpeed : 0,
           });
+
+          const domePrimitive = new Cesium.Primitive({
+            geometryInstances: createRadarDomeGeometryInstance(domeGeometry),
+            appearance: new Cesium.MaterialAppearance({
+              material,
+              // flat: true -> Cesium chạy nhánh #ifdef FLAT trong TexturedMaterialAppearanceFS:
+              //   out_FragColor = vec4(material.diffuse + material.emission, material.alpha)
+              // tức KHÔNG đi qua czm_phong => đúng bản chất unlit của shader Unity Defense/RadarDome.
+              // Nếu để false, màu vòm bị điều tiết theo hướng sáng -> lệch so với video tham chiếu.
+              flat: true,
+              faceForward: false,
+              closed: false,
+              translucent: true,
+              renderState: {
+                // Tương đương khối render state của Unity: Cull Off / ZTest LEqual / ZWrite Off /
+                // Blend SrcAlpha OneMinusSrcAlpha
+                cull: { enabled: false },
+                depthTest: { enabled: true },
+                depthMask: false,
+                blending: Cesium.BlendingState.ALPHA_BLEND,
+              },
+            }),
+            asynchronous: false,
+            allowPicking: false,
+            // Tắt nén đỉnh: Cesium mặc định oct-encode normal và chỉ giữ 12 bit cho st
+            // (AttributeCompression.compressTextureCoordinates). Vòm chỉ ~1.2k đỉnh nên giữ
+            // nguyên normal/st gốc để viền sáng và dải quét chính xác, không bị lượng tử hoá.
+            compressVertices: false,
+          });
+
+          viewer.scene.primitives.add(domePrimitive);
+          domeResourcesRef.current.push({ primitive: domePrimitive, material });
+
+          if (import.meta.env.DEV) {
+            console.debug('[VomKQ] Vòm radar', {
+              instance: inst.name,
+              azimuthSegments: domeGeometry.azimuthSegments,
+              elevationRings: domeGeometry.elevationRings,
+              vertices: domeGeometry.vertexCount,
+              triangles: domeGeometry.triangleCount,
+              baseRadiusKm: Number((domeGeometry.baseRadiusM / 1000).toFixed(3)),
+              apexHeightM: Number(domeGeometry.apexHeightM.toFixed(1)),
+              terrainMasked: domeTerrainMasked,
+              domeColor: domeColorHex,
+            });
+          }
+        }
+
+        // 3b. Vòng chân đế mặt đất — Unity CoverageFootprint (96 điểm)
+        if (showDomeFootprint && domeGeometry && domeGeometry.baseRadiusM > 0) {
+          const footprintPositions: Cesium.Cartesian3[] = [];
+          for (let i = 0; i < DOME_FOOTPRINT_SEGMENTS; i++) {
+            const azimuthDeg = (i / DOME_FOOTPRINT_SEGMENTS) * 360;
+            const destination = destinationPoint(
+              inst.latitude,
+              inst.longitude,
+              domeGeometry.baseRadiusM,
+              azimuthDeg
+            );
+            if (!Number.isFinite(destination.lat) || !Number.isFinite(destination.lon)) continue;
+            footprintPositions.push(
+              Cesium.Cartesian3.fromDegrees(destination.lon, destination.lat, 0)
+            );
+          }
+          if (footprintPositions.length >= 2) {
+            footprintPositions.push(footprintPositions[0]);
+
+            viewer.entities.add({
+              name: `Vòng chân đế vòm - ${inst.name}`,
+              polyline: {
+                positions: footprintPositions,
+                width: 2,
+                clampToGround: true,
+                arcType: Cesium.ArcType.GEODESIC,
+                material: domeColor.withAlpha(0.85),
+              },
+            });
+          }
+        }
+
+        // 3c. Vòng "nón mù đỉnh đầu": 1 vòng nét đứt mảnh màu vàng ở cao độ trần phủ sóng,
+        //     bán kính R = H * cotg(eps_max) — Unity R_kh_mù = H_mt * cotg(eps_max).
+        if (showConeOfSilence) {
+          const coverageHeightM = Math.max(1, safeCoverageHeightKm * 1000);
+          const maxElevationDeg = inst.maxElevationDeg;
+          if (
+            typeof maxElevationDeg === 'number' &&
+            Number.isFinite(maxElevationDeg) &&
+            maxElevationDeg > 0.5 &&
+            maxElevationDeg < 89.5
+          ) {
+            const coneRadiusM =
+              coverageHeightM / Math.tan((maxElevationDeg * Math.PI) / 180);
+            const coneAltitudeM = safeAlt + safeAntennaAGL + coverageHeightM;
+
+            const conePositions: Cesium.Cartesian3[] = [];
+            for (let i = 0; i < DOME_FOOTPRINT_SEGMENTS; i++) {
+              const azimuthDeg = (i / DOME_FOOTPRINT_SEGMENTS) * 360;
+              const destination = destinationPoint(
+                inst.latitude,
+                inst.longitude,
+                coneRadiusM,
+                azimuthDeg
+              );
+              if (!Number.isFinite(destination.lat) || !Number.isFinite(destination.lon)) continue;
+              conePositions.push(
+                Cesium.Cartesian3.fromDegrees(destination.lon, destination.lat, coneAltitudeM)
+              );
+            }
+            if (conePositions.length >= 2) {
+              conePositions.push(conePositions[0]);
+
+              viewer.entities.add({
+                name: `Vòng nón mù đỉnh đầu - ${inst.name}`,
+                polyline: {
+                  positions: conePositions,
+                  width: 1.5,
+                  material: new Cesium.PolylineDashMaterialProperty({
+                    color: Cesium.Color.fromCssColorString('#facc15'),
+                    dashLength: 12,
+                  }),
+                },
+              });
+            }
+          }
+        }
+
+        // 3d. Vùng mù địa hình (mặc định TẮT) — dùng lại blindEntities sẵn có, không vẽ
+        //     các lớp canopy/vòng glow đã bỏ.
+        if (showBlindZones && field && field.rays && field.rays.length > 0) {
+          const { blindEntities } = buildRadarCoverageFieldEntities(
+            field,
+            true,
+            domeColorHex,
+            isSelected,
+            false // không dựng lại phễu nón mù / vành khuyết của bản cũ
+          );
+          blindEntities.forEach((entity) => viewer.entities.add(entity));
         }
       }
 
@@ -1045,7 +1264,68 @@ export const CesiumGlobe: React.FC = () => {
       }
     }
 
-    // D. Render đường bao ranh giới tác chiến Việt Nam khi bật chế độ Chỉ Vùng VN
+    // D. Render gợi ý vị trí đặt khí tài + tuyến khả thi của cố vấn AI (VECTOR AI local).
+    //    Chỉ vẽ khi dữ liệu là số hữu hạn — tuyệt đối không để toạ độ NaN lọt vào pipeline Cesium.
+    if (aiAdvisorSuggestions.length > 0) {
+      const validSuggestions = aiAdvisorSuggestions.filter(
+        (s) => Number.isFinite(s.latitude) && Number.isFinite(s.longitude)
+      );
+      validSuggestions.forEach((suggestion, idx) => {
+        const altitudeM = 0;
+        viewer.entities.add({
+          name: `Gợi ý đặt khí tài #${idx + 1}`,
+          position: Cesium.Cartesian3.fromDegrees(suggestion.longitude, suggestion.latitude, altitudeM),
+          point: {
+            pixelSize: 12,
+            color: Cesium.Color.CYAN,
+            outlineColor: Cesium.Color.fromCssColorString('#020617'),
+            outlineWidth: 2,
+            heightReference:
+              viewMode === '2D' ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+          label: {
+            text: `#${idx + 1} · ${Math.round(suggestion.score * 100)}%`,
+            font: 'bold 11px "JetBrains Mono", monospace',
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            fillColor: Cesium.Color.CYAN,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            showBackground: true,
+            backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.85),
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            pixelOffset: new Cesium.Cartesian2(0, -16),
+            heightReference:
+              viewMode === '2D' ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        });
+      });
+    }
+
+    if (aiAdvisorRoute.length >= 2) {
+      const routePositions = aiAdvisorRoute
+        .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude))
+        .map((p) => Cesium.Cartesian3.fromDegrees(p.longitude, p.latitude, 0));
+
+      if (routePositions.length >= 2) {
+        viewer.entities.add({
+          name: 'Tuyến khả thi (AI gợi ý)',
+          polyline: {
+            positions: routePositions,
+            width: 3,
+            // Ở chế độ 2D không dùng clampToGround (tránh lỗi NaN đã ghi trong DEBUG_NOTES)
+            clampToGround: viewMode !== '2D',
+            material: new Cesium.PolylineDashMaterialProperty({
+              color: Cesium.Color.CYAN,
+              dashLength: 14,
+            }),
+          },
+        });
+      }
+    }
+
+    // E. Render đường bao ranh giới tác chiến Việt Nam khi bật chế độ Chỉ Vùng VN
     if (vietnamOnly) {
       viewer.entities.add({
         name: 'Ranh Giới Vùng Tác Chiến Việt Nam',
@@ -1088,6 +1368,20 @@ export const CesiumGlobe: React.FC = () => {
     showLabelsLayer,
     showMarkersLayer,
     categoryFilter,
+    domeAlpha,
+    domeAzimuthSegments,
+    domeElevationRings,
+    domeRimColor,
+    domeRimPower,
+    domeScanLineCount,
+    domeScanLineSpeed,
+    domeScanLineAnimated,
+    showDomeFootprint,
+    domeTerrainMasked,
+    domeColorOverride,
+    aiAdvisorSuggestions,
+    aiAdvisorRoute,
+    releaseDomeResources,
   ]);
 
   // 7. Thao tác Ghim vị trí điểm đặt & Kéo lên xuống theo chiều cao

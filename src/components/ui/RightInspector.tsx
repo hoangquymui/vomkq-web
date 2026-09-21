@@ -17,6 +17,60 @@ import {
 import { useTacticalStore } from '../../store/useTacticalStore';
 import type { OperationalStatus } from '../../types/equipment';
 import type { SpxTargetHeightTier } from '../../types/spxRadarCoverage';
+import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
+import { resolveDomeColorHex } from '../../utils/radarDomeMaterial';
+
+/** Slider có nhãn + giá trị, dùng cho khối tham số vòm phủ sóng */
+const DomeSlider: React.FC<{
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  decimals?: number;
+  onChange: (value: number) => void;
+}> = ({ label, value, min, max, step, unit, decimals = 2, onChange }) => (
+  <div>
+    <div className="flex justify-between text-[11px] mb-1">
+      <span className="text-slate-400">{label}</span>
+      <span className="text-emerald-300 font-mono">
+        {value.toFixed(decimals)}
+        {unit ?? ''}
+      </span>
+    </div>
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(e) => onChange(parseFloat(e.target.value))}
+      className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+    />
+  </div>
+);
+
+/** Nút bật/tắt dạng thẻ, dùng cho khối tham số vòm phủ sóng */
+const DomeToggle: React.FC<{
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onToggle: () => void;
+}> = ({ label, hint, checked, onToggle }) => (
+  <button
+    onClick={onToggle}
+    title={hint}
+    className={`w-full py-1.5 px-2 rounded border text-[11px] font-medium transition-all flex items-center justify-between ${
+      checked
+        ? 'border-emerald-500/50 bg-emerald-950/40 text-emerald-300'
+        : 'border-slate-800 bg-slate-950/70 text-slate-400 hover:border-slate-700'
+    }`}
+  >
+    <span>{label}</span>
+    <span className="font-mono text-[10px]">{checked ? 'BẬT' : 'TẮT'}</span>
+  </button>
+);
 
 export const RightInspector: React.FC = () => {
   const {
@@ -36,6 +90,30 @@ export const RightInspector: React.FC = () => {
     spxConfig,
     updateEquipmentSpxConfig,
     spxResults,
+    // Kiểu vòm phủ sóng tham chiếu (port từ Unity Defense/RadarDome)
+    domeAlpha,
+    setDomeAlpha,
+    domeAzimuthSegments,
+    setDomeAzimuthSegments,
+    domeElevationRings,
+    setDomeElevationRings,
+    domeRimColor,
+    setDomeRimColor,
+    domeRimPower,
+    setDomeRimPower,
+    domeScanLineCount,
+    setDomeScanLineCount,
+    domeScanLineSpeed,
+    setDomeScanLineSpeed,
+    domeScanLineAnimated,
+    toggleDomeScanLineAnimated,
+    showDomeFootprint,
+    setShowDomeFootprint,
+    domeTerrainMasked,
+    setDomeTerrainMasked,
+    domeColorOverride,
+    setDomeColorOverride,
+    resetDomeStyleDefaults,
   } = useTacticalStore();
 
   const [coordFormat, setCoordFormat] = useState<'decimal' | 'dms'>('dms');
@@ -87,6 +165,14 @@ export const RightInspector: React.FC = () => {
   }, [selected, spxConfig]);
 
   const activeSpxResult = selected ? spxResults[selected.instanceId] : null;
+
+  // Màu vòm hiệu dụng: ghi đè -> domeColor của template -> màu khí tài
+  const templateDomeColor = selected
+    ? EQUIPMENT_TEMPLATES.find((t) => t.id === selected.templateId)?.domeColor
+    : undefined;
+  const effectiveDomeColor = selected
+    ? resolveDomeColorHex(selected.color, templateDomeColor, domeColorOverride)
+    : '#77ff7e';
 
   const updateSelectedSpx = (updates: Partial<typeof spxConfig>) => {
     if (!selected) return;
@@ -791,6 +877,157 @@ export const RightInspector: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* 5c. Vòm phủ sóng — kiểu tham chiếu (port từ Unity Defense/RadarDome) */}
+        <div className="bg-slate-900/60 p-3 rounded-lg border border-emerald-900/50 space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-semibold text-emerald-300 flex items-center gap-1.5">
+              <Radio className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Vòm phủ sóng (kiểu tham chiếu)</span>
+            </label>
+            <span className="text-[9px] text-emerald-300/80 font-mono">RadarDome</span>
+          </div>
+
+          {/* Màu vòm hiệu dụng */}
+          <div className="flex items-center justify-between p-2 bg-slate-950/80 rounded-lg border border-slate-800 text-[10px] font-mono">
+            <span className="text-slate-500">MÀU VÒM HIỆU DỤNG</span>
+            <span className="flex items-center gap-1.5">
+              <span
+                className="w-3 h-3 rounded-sm border border-slate-600"
+                style={{ backgroundColor: effectiveDomeColor }}
+              />
+              <span className="text-emerald-300">{effectiveDomeColor}</span>
+            </span>
+          </div>
+
+          {/* Ghi đè màu vòm */}
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <span className="text-[10px] text-slate-400 block mb-1">Ghi đè màu vòm</span>
+              <input
+                type="color"
+                value={domeColorOverride ?? effectiveDomeColor}
+                onChange={(e) => setDomeColorOverride(e.target.value)}
+                className="w-full h-7 bg-slate-950 border border-slate-700 rounded cursor-pointer"
+              />
+            </div>
+            <button
+              onClick={() => setDomeColorOverride(null)}
+              className={`mt-4 px-2 py-1.5 rounded border text-[10px] font-mono transition-colors ${
+                domeColorOverride
+                  ? 'border-slate-700 bg-slate-950 text-slate-300 hover:border-rose-500/60'
+                  : 'border-slate-800 bg-slate-950/60 text-slate-600'
+              }`}
+              title="Bỏ ghi đè, quay về màu theo template/màu khí tài"
+            >
+              BỎ GHI ĐÈ
+            </button>
+          </div>
+
+          <DomeSlider
+            label="Độ đục màu nền vòm (domeAlpha):"
+            value={domeAlpha}
+            min={0.05}
+            max={0.9}
+            step={0.01}
+            onChange={setDomeAlpha}
+          />
+
+          <div className="grid grid-cols-2 gap-2">
+            <DomeSlider
+              label="Phân đoạn phương vị:"
+              value={domeAzimuthSegments}
+              min={32}
+              max={192}
+              step={8}
+              decimals={0}
+              onChange={setDomeAzimuthSegments}
+            />
+            <DomeSlider
+              label="Vòng góc tà:"
+              value={domeElevationRings}
+              min={4}
+              max={32}
+              step={1}
+              decimals={0}
+              onChange={setDomeElevationRings}
+            />
+          </div>
+
+          <div className="flex items-end gap-2">
+            <div className="w-16">
+              <span className="text-[10px] text-slate-400 block mb-1">Viền sáng</span>
+              <input
+                type="color"
+                value={domeRimColor}
+                onChange={(e) => setDomeRimColor(e.target.value)}
+                className="w-full h-7 bg-slate-950 border border-slate-700 rounded cursor-pointer"
+                title={`Màu viền sáng (rimColor) — ${domeRimColor}`}
+              />
+            </div>
+            <div className="flex-1">
+              <DomeSlider
+                label="Độ gắt viền (rimPower):"
+                value={domeRimPower}
+                min={0.5}
+                max={8}
+                step={0.1}
+                decimals={1}
+                onChange={setDomeRimPower}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <DomeSlider
+              label="Số đường quét:"
+              value={domeScanLineCount}
+              min={1}
+              max={40}
+              step={1}
+              decimals={0}
+              onChange={setDomeScanLineCount}
+            />
+            <DomeSlider
+              label="Tốc độ quét:"
+              value={domeScanLineSpeed}
+              min={-5}
+              max={5}
+              step={0.1}
+              decimals={1}
+              onChange={setDomeScanLineSpeed}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-1.5">
+            <DomeToggle
+              label="Chạy animation dải quét"
+              hint="Tắt để đóng băng dải quét ngang"
+              checked={domeScanLineAnimated}
+              onToggle={toggleDomeScanLineAnimated}
+            />
+            <DomeToggle
+              label="Vòng chân đế mặt đất"
+              hint="Tương đương CoverageFootprint LineRenderer của Unity"
+              checked={showDomeFootprint}
+              onToggle={() => setShowDomeFootprint(!showDomeFootprint)}
+            />
+            <DomeToggle
+              label="Cắt vòm theo địa hình"
+              hint="Bật để giới hạn bán kính vòm theo visibleEndM của tia LOS (mặc định tắt = vòm lý tưởng như video)"
+              checked={domeTerrainMasked}
+              onToggle={() => setDomeTerrainMasked(!domeTerrainMasked)}
+            />
+          </div>
+
+          <button
+            onClick={resetDomeStyleDefaults}
+            className="w-full py-2 px-3 rounded-xl border border-emerald-600/60 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 text-xs font-semibold transition-colors"
+            title="Đặt lại toàn bộ tham số vòm về đúng bộ giá trị của video tham chiếu (alpha 0.30, 96x12, rim #fff232 power 2.0, 14 đường quét, tốc độ 0.6)"
+          >
+            Khôi phục mặc định kiểu video
+          </button>
+        </div>
 
         {/* 6. Quan hệ Chỉ Huy Tác Chiến (C2) */}
         <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 space-y-2">
