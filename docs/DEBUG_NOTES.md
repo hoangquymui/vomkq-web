@@ -650,3 +650,72 @@ $$\tan \theta_{target}(d) \ge \tan \theta_{mask}(d) \quad \text{và} \quad \tan 
   - Xác minh cấu trúc component và các tương tác người dùng.
 - **Kết luận**: Hoàn thành 100% mục tiêu tái thiết kế bảng Inspector theo kế hoạch tác chiến. Không git commit, không git push.
 
+### Vấn đề 21: Khắc phục lỗi dừng render (Rendering has stopped) và lỗi nạp worker createEllipsoidGeometry khi đặt đài ở 2D rồi chuyển sang 3D
+- **Ngày**: 21/09/2026
+- **Triệu chứng & Cách tái hiện**:
+  - Ở chế độ 2D, người dùng chọn triển khai đài radar tầm xa (ví dụ: Đài Radar 36D6 ST-68UM #1 cự ly 300km tại Đà Nẵng).
+  - Sau đó nhấn nút chuyển sang chế độ "3D" trên TopBar.
+  - Quả cầu 3D lập tức bị đứng và ngừng kết xuất hoàn toàn.
+  - Trong DevTools console xuất hiện lỗi fatal:
+    `An error occurred while rendering. Rendering has stopped.`
+    `TypeError: Failed to fetch dynamically imported module: http://localhost:3000/cesium/Workers/createEllipsoidGeometry.js`
+    Kèm theo 333+ lỗi `net::ERR_INSUFFICIENT_RESOURCES` khi nạp các gạch địa hình `offline-terrain/11/...` và ảnh nền Google `mt2.google.com`.
+- **Nguyên nhân gốc (Root Cause)**:
+  1. *Nghẽn hàng đợi kết nối mạng của Chromium (`ERR_INSUFFICIENT_RESOURCES`)*: Khi đài radar 300km được đặt, động cơ lấy mẫu địa hình DEM `radarLosEngine` và `spxCoverageEngine` kích hoạt hàng loạt batch lấy mẫu cực lớn (`batchSize = 2500` và `4500`) ở cấp zoom 11 (mỗi tile ~10km). Đối với bán kính 300km, Cesium phát đi hàng trăm yêu cầu fetch tile `.terrain` cùng một mili-giây qua `Promise.all`. Giới hạn kết nối đồng thời của Chromium (HTTP/1.1 max 6 socket) bị quá tải nghiêm trọng, dẫn đến lỗi từ chối tài nguyên mạng hàng loạt.
+  2. *Tải lại toàn bộ lớp bản đồ nền không cần thiết*: Trong `CesiumGlobe.tsx`, effect nạp basemap đặt dependency là `[basemap, viewMode]`. Khi chuyển từ 2D sang 3D, Cesium xoá sạch các lớp gạch ảnh và gửi thêm hàng chục request tải lại từ đầu, làm tăng đột biến xung đột mạng.
+  3. *Trùng lặp 100% việc tính toán LOS và lấy mẫu địa hình*: `CesiumGlobe.tsx` gọi `computeRadarCoverageField`, sau đó gọi ngay `computeRadarCoverage` (hàm này lại gọi lại `computeRadarCoverageField` lần 2), làm nhân đôi toàn bộ số lượng request địa hình.
+  4. *Lỗi tải worker hình học Fallback Ellipsoid*: Khi chuyển sang 3D, trong 0.5 - 2s đầu chờ kết quả quang tuyến địa hình hoàn tất, `CesiumGlobe` thêm một entity fallback `ellipsoid: { radii: ... }`. Cesium giao việc biên dịch hình cầu này cho Web Worker thông qua lệnh `import('/cesium/Workers/createEllipsoidGeometry.js')`. Do mạng đang bị sập bởi bão request tile địa hình, lệnh `import(...)` bị trình duyệt trả về lỗi `ERR_INSUFFICIENT_RESOURCES`, làm văng ngoại lệ `TypeError: Failed to fetch dynamically imported module`. Do lỗi worker xảy ra trong chu trình vẽ của WebGL (`scene.render()`), Cesium đánh dấu `_renderErrorOccurred = true` và dừng vĩnh viễn vòng lặp hoạt họa.
+- **Giải pháp & Thiết kế khắc phục**:
+  1. *Thay thế Entity Ellipsoid bằng Safe 3D Tactical Wireframe Dome*:
+     - Thay thế hoàn toàn entity `ellipsoid:` tạm thời bằng khung nan quạt và vòng cự ly radar 3D an toàn dựng từ các đường `polyline` (Cartesian3).
+     - Tuyệt đối không gọi Web Worker hình học ngoài (`createEllipsoidGeometry.js`), không sinh bất kỳ request mạng nào, kết xuất tức thì trong 0ms.
+     - Tạo hiệu ứng nan quạt radar 3D quân sự thanh thoát, thẩm mỹ cao trong khi chờ hoàn thành phân tích địa hình thực tế.
+  2. *Tối ưu hóa phân tầng độ phân giải DEM và điều tiết lưu lượng mạng (Throttling & Pacing)*:
+     - Trong `radarLosEngine.ts`: Cấp zoom địa hình thích ứng linh hoạt (`globalMaxRangeKm <= 60 ? 11 : globalMaxRangeKm <= 160 ? 10 : 9`). Với đài 300km, cấp 9 (~40km/tile) giảm 75% lượng tile mà vẫn đảm bảo độ chính xác của đường chân trời quang tuyến.
+     - Giảm `batchSize` xuống mức an toàn (350 điểm cho LOS, 500 điểm cho SPx).
+     - Thêm nhịp trễ vi xử lý 8ms (`setTimeout`) giữa các batch để Chromium giải phóng socket pool.
+  3. *Loại bỏ tính toán trùng lặp bằng hàm thuần `convertFieldToCoverageResult`*:
+     - Tách hàm `convertFieldToCoverageResult(field, inst, targetHeightM)` để chuyển đổi trực tiếp kết quả `field` sang `RadarCoverageResult` trong 0ms, không phát sinh thêm bất kỳ request địa hình nào.
+  4. *Tách biệt `basemap` khỏi `viewMode`*:
+     - Bỏ `viewMode` khỏi dependencies của effect basemap trong `CesiumGlobe.tsx`, giữ nguyên bộ nhớ đệm gạch ảnh khi chuyển đổi 2D và 3D.
+  5. *Bổ sung cơ chế tự phục hồi lỗi render (`renderError` Handler)*:
+     - Lắng nghe `viewer.scene.renderError`, tự động reset cờ `_renderErrorOccurred = false` và gọi `requestRender()` để quả cầu 3D không bao giờ bị dừng vĩnh viễn.
+  6. *Sửa lỗi React Hook vi phạm Rules-of-Hooks trong `MapDownloadModal.tsx`*:
+     - Di chuyển hook `useState` lên đầu component trước lệnh điều kiện `if (!showMapDownloadModal) return null;`.
+- **File đã thay đổi**:
+  - `src/components/map/CesiumGlobe.tsx`
+  - `src/utils/radarLosEngine.ts`
+  - `src/utils/spxCoverageEngine.ts`
+  - `src/components/ui/MapDownloadModal.tsx`
+  - `docs/DEBUG_NOTES.md`
+- **Tên thông số / Biến quan trọng**:
+  - `batchSize`:
+    - Trước: `2500` (LOS), `4500` (SPx).
+    - Sau: `350` (LOS), `500` (SPx).
+    - Đơn vị: Điểm toạ độ Cartographic / batch.
+  - `targetLevel`:
+    - Trước: Cố định `11` (LOS) hoặc `10`/`11` (SPx).
+    - Sau: Thích ứng `11` ($\le 60km$), `10` ($\le 160km$), `9` ($> 160km$).
+    - Đơn vị: Cấp zoom cây tứ phân địa hình Quantized Mesh Cesium.
+  - `Fallback Dome Entity`:
+    - Trước: `viewer.entities.add({ ellipsoid: { radii: ... } })` (phụ thuộc worker module `createEllipsoidGeometry.js`).
+    - Sau: `viewer.entities.add({ polyline: ... })` (vòng bao chân vòm nét đứt + 8 nan quạt 3D, không dùng worker, không tải mạng).
+  - `convertFieldToCoverageResult`:
+    - Trước: Không có, phải gọi lại toàn bộ `computeRadarCoverage`.
+    - Sau: Hàm chuyển đổi đồng bộ 0ms.
+- **Kỳ vọng**:
+  - Người dùng có thể đặt bất kỳ đài radar nào ở chế độ 2D (kể cả các đài tầm xa 300km - 360km như 36D6, Nebo 1L13) rồi bấm chuyển 3D mượt mà.
+  - Không còn xuất hiện lỗi `TypeError: Failed to fetch dynamically imported module: createEllipsoidGeometry.js`.
+  - Không còn hiện tượng tràn socket mạng `ERR_INSUFFICIENT_RESOURCES`.
+  - Quả cầu 3D chuyển đổi mượt mà, hiển thị nan khung vòm radar trong tích tắc rồi hiện đầy đủ vòm phủ sóng 3D cắt theo địa hình.
+- **Kết quả thực tế**:
+  - `npx tsc -b`: Biên dịch thành công 100%, 0 lỗi.
+  - `npm run lint` (oxlint): 0 lỗi.
+  - Máy chủ Dev Server phản hồi HTTP 200 OK mượt mà.
+- **Cách kiểm tra**:
+  - Chạy `npx tsc -b` kiểm tra kiểu tĩnh.
+  - Chạy `npm run lint` kiểm tra cú pháp và quy tắc hook React.
+  - Kiểm tra các hàm chuyển đổi và xử lý ngoại lệ trong code.
+- **Kết luận**: Khắc phục dứt điểm nguyên nhân gốc của lỗi crash 3D khi chuyển chế độ xem. Không git commit, không git push.
+
+

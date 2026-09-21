@@ -154,9 +154,10 @@ async function sampleTerrainInBatches(
   endRangeM: number
 ): Promise<{ heights: number[]; status: 'dem_loaded' | 'flat_fallback' | 'error' }> {
   // Cấp 11: mỗi tile ~10km, độ chi tiết mesh rất cao, bao phủ trọn vẹn đỉnh núi Bà Nà, Sơn Trà, Hải Vân
-  // Cấp 10: mỗi tile ~20km, tối ưu cho cự ly lớn > 80km
-  const targetLevel = endRangeM <= 80000 ? 11 : 10;
-  const batchSize = 4500;
+  // Cấp 10: mỗi tile ~20km, tối ưu cho cự ly lớn > 60km
+  // Cấp 9: mỗi tile ~40km, tối ưu cho cự ly siêu lớn > 160km (ví dụ 36D6 300km, Nebo 360km) tránh nghẽn socket Chromium
+  const targetLevel = endRangeM <= 60000 ? 11 : endRangeM <= 160000 ? 10 : 9;
+  const batchSize = 500;
   const heights = new Array<number>(positions.length).fill(0);
 
   try {
@@ -165,9 +166,9 @@ async function sampleTerrainInBatches(
       try {
         await Cesium.sampleTerrain(terrainProvider, targetLevel, chunk, false);
       } catch (err) {
-        console.warn(`Lô lấy mẫu địa hình ${i}-${i + chunk.length} tại level ${targetLevel} có lỗi, fallback sang level 10:`, err);
+        console.warn(`Lô lấy mẫu địa hình ${i}-${i + chunk.length} tại level ${targetLevel} có lỗi, fallback sang cấp thấp hơn:`, err);
         try {
-          await Cesium.sampleTerrain(terrainProvider, 10, chunk, false);
+          await Cesium.sampleTerrain(terrainProvider, Math.max(8, targetLevel - 1), chunk, false);
         } catch {
           // Bỏ qua lỗi cục bộ, các điểm không đọc được sẽ mặc định 0m (mực nước biển)
         }
@@ -176,6 +177,10 @@ async function sampleTerrainInBatches(
       for (let j = 0; j < chunk.length; j++) {
         const h = chunk[j].height;
         heights[i + j] = h !== undefined && !isNaN(h) && isFinite(h) ? Math.max(0, h) : 0;
+      }
+
+      if (i + batchSize < positions.length) {
+        await new Promise((resolve) => setTimeout(resolve, 8));
       }
     }
 

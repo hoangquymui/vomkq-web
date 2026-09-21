@@ -41,6 +41,7 @@ export const MapDownloadModal: React.FC = () => {
   const [selectedRegion, setSelectedRegion] = useState<string>('mientrung');
   const [minZoom, setMinZoom] = useState<number>(8);
   const [maxZoom, setMaxZoom] = useState<number>(13);
+  const [copiedType, setCopiedType] = useState<string | null>(null);
 
   useEffect(() => {
     if (showMapDownloadModal) {
@@ -57,8 +58,6 @@ export const MapDownloadModal: React.FC = () => {
   const cliSatCommand = `node download-tactical-map.js --region=${selectedRegion} --minZoom=${minZoom} --maxZoom=${maxZoom}`;
   const cliTerrainCommand = `node download-tactical-terrain.js --region=${selectedRegion} --minZoom=8 --maxZoom=13`;
   const cliGoogleTerrainCommand = `node download-tactical-google-terrain.js --region=${selectedRegion} --minZoom=8 --maxZoom=13`;
-
-  const [copiedType, setCopiedType] = useState<string | null>(null);
 
   const handleCopy = (text: string, type: string) => {
     navigator.clipboard.writeText(text);

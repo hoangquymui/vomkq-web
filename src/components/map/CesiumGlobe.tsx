@@ -5,7 +5,7 @@ import { Pin, PinOff, ArrowUp, ArrowDown } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import {
   computeRadarCoverageField,
-  computeRadarCoverage,
+  convertFieldToCoverageResult,
   destinationPoint,
   generateCoverageCacheKey,
 } from '../../utils/radarLosEngine';
@@ -207,6 +207,19 @@ export const CesiumGlobe: React.FC = () => {
 
     viewerRef.current = viewer;
 
+    // Bắt và cô lập lỗi render không mong muốn, tự động hồi phục tránh dừng vĩnh viễn vòng lặp Cesium
+    viewer.scene.renderError.addEventListener((scene, error) => {
+      console.warn('Cảnh báo lỗi render Cesium đã được cô lập:', error);
+      if ((scene as any)._renderErrorOccurred) {
+        (scene as any)._renderErrorOccurred = false;
+        requestAnimationFrame(() => {
+          if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+            viewerRef.current.scene.requestRender();
+          }
+        });
+      }
+    });
+
     // Nạp địa hình 3D trực tiếp từ thư mục public/offline-terrain
     Cesium.CesiumTerrainProvider.fromUrl('./offline-terrain')
       .then((provider) => {
@@ -321,7 +334,7 @@ export const CesiumGlobe: React.FC = () => {
       );
       viewer.imageryLayers.add(fallbackLayer);
     }
-  }, [basemap, viewMode]);
+  }, [basemap]);
 
   // 4. Cắt gọn và giới hạn phạm vi hiển thị chỉ vùng Việt Nam
   useEffect(() => {
@@ -612,11 +625,11 @@ export const CesiumGlobe: React.FC = () => {
 
             if (!isCancelled) {
               setCoverageField(inst.instanceId, field);
-              // Cập nhật coverageResults để tương thích ngược cho Modal Đánh Giá Chỉ Số
-              const legacyRes = await computeRadarCoverage(
+              // Chuyển đổi trực tiếp kết quả sang coverageResults mà không lấy mẫu địa hình lại
+              const legacyRes = convertFieldToCoverageResult(
+                field,
                 inst,
-                viewer.scene.terrainProvider,
-                params
+                targetHeightMeters
               );
               setCoverageResult(inst.instanceId, legacyRes);
             }
@@ -1036,25 +1049,59 @@ export const CesiumGlobe: React.FC = () => {
             coneOfSilenceEntities.forEach((e) => viewer.entities.add(e));
           }
         } else {
-          // Fallback bán cầu 3D mờ trong khi đang nạp dữ liệu quang tuyến
+          // Fallback khung vòm radar 3D an toàn trong khi đang nạp dữ liệu quang tuyến (Safe Wireframe Dome)
+          // Sử dụng các vòng cung toạ độ 3D thuần (Cartesian3) thay vì Entity Ellipsoid
+          // Tránh gọi worker createEllipsoidGeometry.js gây nghẽn kết nối mạng và lỗi fatal rendering
           const radiusMeters = safeRangeKm * 1000;
-          const heightMeters = Math.min(radiusMeters, ((inst.coverageHeightKm || 25) * 1000));
+          const domeColor = baseColor.withAlpha(isSelected ? 0.35 : 0.18);
+          const ribCount = 8;
+          const centerPos = Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, safeAlt + safeAntennaAGL);
+
+          // Vòng cung chân vòm cự ly tối đa trên mặt phẳng/địa hình
+          const ringPositions: Cesium.Cartesian3[] = [];
+          const stepDeg = 10;
+          for (let deg = 0; deg <= 360; deg += stepDeg) {
+            const dest = destinationPoint(inst.latitude, inst.longitude, radiusMeters, deg);
+            ringPositions.push(Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 10));
+          }
 
           viewer.entities.add({
-            position: Cesium.Cartesian3.fromDegrees(
-              inst.longitude,
-              inst.latitude,
-              safeAlt
-            ),
-            ellipsoid: {
-              radii: new Cesium.Cartesian3(radiusMeters, radiusMeters, heightMeters),
-              maximumCone: Cesium.Math.PI_OVER_TWO,
-              material: baseColor.withAlpha(isSelected ? 0.28 : 0.12),
-              outline: true,
-              outlineColor: baseColor.withAlpha(isSelected ? 0.8 : 0.3),
-              outlineWidth: 1,
+            name: `Vòng Giới Hạn Quét 3D [Đang tính LOS] ${inst.shortId || ''}`,
+            properties: { instanceId: inst.instanceId },
+            polyline: {
+              positions: ringPositions,
+              width: isSelected ? 2.5 : 1.5,
+              material: new Cesium.PolylineDashMaterialProperty({
+                color: domeColor,
+                dashLength: 16,
+              }),
             },
           });
+
+          // Các nan quạt khung vòm định hướng 3D
+          for (let r = 0; r < ribCount; r++) {
+            const az = (r * 360) / ribCount;
+            const dest = destinationPoint(inst.latitude, inst.longitude, radiusMeters, az);
+            const midDist = radiusMeters * 0.7;
+            const midDest = destinationPoint(inst.latitude, inst.longitude, midDist, az);
+            const peakHeight = Math.min(radiusMeters * 0.3, ((inst.coverageHeightKm || 25) * 1000));
+
+            const ribPositions = [
+              centerPos,
+              Cesium.Cartesian3.fromDegrees(midDest.lon, midDest.lat, safeAlt + peakHeight * 0.7),
+              Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 10),
+            ];
+
+            viewer.entities.add({
+              name: `Nan Khung Vòm 3D ${az}° ${inst.shortId || ''}`,
+              properties: { instanceId: inst.instanceId },
+              polyline: {
+                positions: ribPositions,
+                width: 1,
+                material: domeColor,
+              },
+            });
+          }
         }
       }
 

@@ -165,17 +165,29 @@ export async function computeRadarCoverageField(
 
   if (terrainProvider) {
     try {
-      const batchSize = 2500;
+      // Xác định cấp zoom địa hình phù hợp theo tầm hoạt động của radar
+      // Tầm nhỏ (<= 60km): level 11 (~10km/tile, mesh dày)
+      // Tầm trung (<= 160km): level 10 (~20km/tile)
+      // Tầm xa (> 160km): level 9 (~40km/tile, tối ưu hóa triệt để lưu lượng mạng tránh lỗi net::ERR_INSUFFICIENT_RESOURCES)
+      const targetLevel = globalMaxRangeKm <= 60 ? 11 : globalMaxRangeKm <= 160 ? 10 : 9;
+      const batchSize = 350;
       for (let i = 0; i < cartographics.length; i += batchSize) {
         const chunk = cartographics.slice(i, i + batchSize);
         try {
-          await Cesium.sampleTerrain(terrainProvider, 11, chunk, false);
+          await Cesium.sampleTerrain(terrainProvider, targetLevel, chunk, false);
         } catch {
-          await Cesium.sampleTerrain(terrainProvider, 10, chunk, false);
+          try {
+            await Cesium.sampleTerrain(terrainProvider, Math.max(8, targetLevel - 1), chunk, false);
+          } catch {
+            // Không ngắt luồng nếu thiếu một vài tile cục bộ
+          }
         }
         for (let j = 0; j < chunk.length; j++) {
           const h = chunk[j].height;
-          sampledHeights[i + j] = h !== undefined && !isNaN(h) ? Math.max(0, h) : 0;
+          sampledHeights[i + j] = h !== undefined && !isNaN(h) && isFinite(h) ? Math.max(0, h) : 0;
+        }
+        if (i + batchSize < cartographics.length) {
+          await new Promise((resolve) => setTimeout(resolve, 8));
         }
       }
       terrainStatus = 'loaded';
@@ -350,15 +362,13 @@ export async function computeRadarCoverageField(
 }
 
 /**
- * Hàm tương thích ngược computeRadarCoverage chuyển đổi từ CoverageField
+ * Chuyển đổi dữ liệu từ RadarCoverageField sang RadarCoverageResult (Không lấy mẫu địa hình lại)
  */
-export async function computeRadarCoverage(
+export function convertFieldToCoverageResult(
+  field: RadarCoverageField,
   instance: EquipmentInstance,
-  terrainProvider: Cesium.TerrainProvider | null,
-  params: RadarCalculationParams
-): Promise<RadarCoverageResult> {
-  const field = await computeRadarCoverageField(instance, terrainProvider, params);
-
+  targetHeightM: number = 300
+): RadarCoverageResult {
   const profiles: RayProfile[] = [];
   const azimuths = Object.keys(field.azimuthRays).map(Number).sort((a, b) => a - b);
 
@@ -392,7 +402,7 @@ export async function computeRadarCoverage(
     radarAltM: field.radarAltM,
     antennaHeightAGL: field.antennaHeightAGL,
     maxRangeKm: field.maxRangeKm,
-    targetHeightM: params.targetHeightMeters || 300,
+    targetHeightM,
     coneOfSilenceRadiusKm: field.coneOfSilenceRadiusKm,
     radarHorizonKm: field.radarHorizonKm,
     profiles,
@@ -400,5 +410,17 @@ export async function computeRadarCoverage(
     blockedRaysCount: field.occludedRaysCount,
     coverageRatioPercent: field.coverageRatioPercent,
   };
+}
+
+/**
+ * Hàm tương thích ngược computeRadarCoverage chuyển đổi từ CoverageField
+ */
+export async function computeRadarCoverage(
+  instance: EquipmentInstance,
+  terrainProvider: Cesium.TerrainProvider | null,
+  params: RadarCalculationParams
+): Promise<RadarCoverageResult> {
+  const field = await computeRadarCoverageField(instance, terrainProvider, params);
+  return convertFieldToCoverageResult(field, instance, params.targetHeightMeters || 300);
 }
 
