@@ -24,7 +24,60 @@ import {
 import { useTacticalStore } from '../../store/useTacticalStore';
 import type { OperationalStatus } from '../../types/equipment';
 import type { SpxTargetHeightTier } from '../../types/spxRadarCoverage';
+import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
+import { resolveDomeColorHex } from '../../utils/radarDomeMaterial';
 import { ASSET_TYPE_REGISTRY } from '../../utils/assetVisualization';
+
+/** Slider có nhãn + giá trị, dùng cho khối tham số vòm phủ sóng */
+const DomeSlider: React.FC<{
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  decimals?: number;
+  onChange: (value: number) => void;
+}> = ({ label, value, min, max, step, unit, decimals = 2, onChange }) => (
+  <div>
+    <div className="flex justify-between text-[11px] mb-1">
+      <span className="text-slate-400">{label}</span>
+      <span className="text-emerald-300 font-mono">
+        {value.toFixed(decimals)}
+        {unit ?? ''}
+      </span>
+    </div>
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(e) => onChange(parseFloat(e.target.value))}
+      className="w-full accent-emerald-500 h-1 bg-slate-800 rounded-lg cursor-pointer"
+    />
+  </div>
+);
+
+/** Nút bật/tắt dạng thẻ, dùng cho khối tham số vòm phủ sóng */
+const DomeToggle: React.FC<{
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onToggle: () => void;
+}> = ({ label, hint, checked, onToggle }) => (
+  <button
+    onClick={onToggle}
+    title={hint}
+    className={`w-full py-1.5 px-2 rounded border text-[11px] font-medium transition-all flex items-center justify-between ${checked
+        ? 'border-emerald-500/50 bg-emerald-950/40 text-emerald-300'
+        : 'border-slate-800 bg-slate-950/70 text-slate-400 hover:border-slate-700'
+      }`}
+  >
+    <span>{label}</span>
+    <span className="font-mono text-[10px]">{checked ? 'BẬT' : 'TẮT'}</span>
+  </button>
+);
 
 export const RightInspector: React.FC = () => {
   const {
@@ -44,9 +97,39 @@ export const RightInspector: React.FC = () => {
     spxConfig,
     updateEquipmentSpxConfig,
     spxResults,
+    // Kiểu vòm phủ sóng tham chiếu (port từ Unity Defense/RadarDome)
+    domeAlpha,
+    setDomeAlpha,
+    domeAzimuthSegments,
+    setDomeAzimuthSegments,
+    domeElevationRings,
+    setDomeElevationRings,
+    domeRimColor,
+    setDomeRimColor,
+    domeRimPower,
+    setDomeRimPower,
+    domeScanLineCount,
+    setDomeScanLineCount,
+    domeScanLineSpeed,
+    setDomeScanLineSpeed,
+    domeScanLineAnimated,
+    toggleDomeScanLineAnimated,
+    showDomeFootprint,
+    setShowDomeFootprint,
+    domeTerrainMasked,
+    setDomeTerrainMasked,
+    domeColorOverride,
+    setDomeColorOverride,
+    resetDomeStyleDefaults,
     viewMode,
     showSensorNetwork,
     toggleSensorNetwork,
+    coverageVolumes,
+    dome3DMode,
+    setDome3DMode,
+    selectedAltitudeM,
+    setSelectedAltitudeM,
+    isCalculatingVolume,
   } = useTacticalStore();
 
   const [coordFormat, setCoordFormat] = useState<'decimal' | 'dms'>('dms');
@@ -70,9 +153,9 @@ export const RightInspector: React.FC = () => {
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
@@ -128,6 +211,24 @@ export const RightInspector: React.FC = () => {
   }, [selected, spxConfig]);
 
   const activeSpxResult = selected ? spxResults[selected.instanceId] : null;
+
+  // Màu vòm hiệu dụng: ghi đè -> domeColor của template -> màu khí tài
+  const templateDomeColor = selected
+    ? EQUIPMENT_TEMPLATES.find((t) => t.id === selected.templateId)?.domeColor
+    : undefined;
+  const effectiveDomeColor = selected
+    ? resolveDomeColorHex(selected.color, templateDomeColor, domeColorOverride)
+    : '#77ff7e';
+
+  const activeVolume = selected ? coverageVolumes[selected.instanceId] : null;
+  const selectedBandInfo = useMemo(() => {
+    if (!activeVolume || !activeVolume.bandInfos) return null;
+    return (
+      activeVolume.bandInfos.find((b) => b.altitudeM === selectedAltitudeM) ||
+      activeVolume.bandInfos[0] ||
+      null
+    );
+  }, [activeVolume, selectedAltitudeM]);
 
   const updateSelectedSpx = (updates: Partial<typeof spxConfig>) => {
     if (!selected) return;
@@ -191,16 +292,16 @@ export const RightInspector: React.FC = () => {
   // Phân định khả năng hiển thị của khí tài (Capabilities)
   const caps = selected
     ? ASSET_TYPE_REGISTRY[selected.category]?.capabilities || {
-        hasRadarCoverage: selected.category === 'RadarCanhGioi',
-        hasRangeRings: selected.category === 'RadarCanhGioi',
-        hasSweep: selected.scanSpeed > 0,
-        hasEngagementEnvelope:
-          selected.category === 'TenLuaPhongKhong' ||
-          selected.category === 'PhaoPhongKhong',
-        hasCommandLinks: selected.category === 'SoChiHuy',
-        hasObservationSector: selected.category === 'TramQuanSat',
-        hasSensorNetwork: selected.category === 'CamBienThuDong',
-      }
+      hasRadarCoverage: selected.category === 'RadarCanhGioi',
+      hasRangeRings: selected.category === 'RadarCanhGioi',
+      hasSweep: selected.scanSpeed > 0,
+      hasEngagementEnvelope:
+        selected.category === 'TenLuaPhongKhong' ||
+        selected.category === 'PhaoPhongKhong',
+      hasCommandLinks: selected.category === 'SoChiHuy',
+      hasObservationSector: selected.category === 'TramQuanSat',
+      hasSensorNetwork: selected.category === 'CamBienThuDong',
+    }
     : null;
 
   if (!selected || !caps) {
@@ -256,14 +357,14 @@ export const RightInspector: React.FC = () => {
                 {selected.category === 'RadarCanhGioi'
                   ? 'RADAR CẢNH GIỚI'
                   : selected.category === 'TenLuaPhongKhong'
-                  ? 'TÊN LỬA PHÒNG KHÔNG'
-                  : selected.category === 'SoChiHuy'
-                  ? 'SỞ CHỈ HUY (C2)'
-                  : selected.category === 'PhaoPhongKhong'
-                  ? 'PHÁO PHÒNG KHÔNG'
-                  : selected.category === 'CamBienThuDong'
-                  ? 'CẢM BIẾN THỤ ĐỘNG (ESM)'
-                  : 'TRẠM QUAN SÁT'}
+                    ? 'TÊN LỬA PHÒNG KHÔNG'
+                    : selected.category === 'SoChiHuy'
+                      ? 'SỞ CHỈ HUY (C2)'
+                      : selected.category === 'PhaoPhongKhong'
+                        ? 'PHÁO PHÒNG KHÔNG'
+                        : selected.category === 'CamBienThuDong'
+                          ? 'CẢM BIẾN THỤ ĐỘNG (ESM)'
+                          : 'TRẠM QUAN SÁT'}
               </span>
             </div>
             <input
@@ -301,15 +402,14 @@ export const RightInspector: React.FC = () => {
               <span>Trạng thái sẵn sàng</span>
             </span>
             <span
-              className={`w-2 h-2 rounded-full ${
-                selected.status === 'Active'
+              className={`w-2 h-2 rounded-full ${selected.status === 'Active'
                   ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]'
                   : selected.status === 'Standby'
-                  ? 'bg-amber-400'
-                  : selected.status === 'Maintenance'
-                  ? 'bg-orange-400'
-                  : 'bg-rose-500'
-              }`}
+                    ? 'bg-amber-400'
+                    : selected.status === 'Maintenance'
+                      ? 'bg-orange-400'
+                      : 'bg-rose-500'
+                }`}
             />
           </div>
 
@@ -345,11 +445,10 @@ export const RightInspector: React.FC = () => {
                     status: st.id as OperationalStatus,
                   })
                 }
-                className={`py-1.5 px-2 rounded-lg border text-[10.5px] font-medium transition-all cursor-pointer ${
-                  selected.status === st.id
+                className={`py-1.5 px-2 rounded-lg border text-[10.5px] font-medium transition-all cursor-pointer ${selected.status === st.id
                     ? `${st.color} shadow-sm font-bold`
                     : 'border-slate-800/90 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                }`}
+                  }`}
               >
                 {st.label}
               </button>
@@ -360,11 +459,10 @@ export const RightInspector: React.FC = () => {
           <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-800/80">
             <button
               onClick={() => setActiveTool(activeTool === 'move' ? 'select' : 'move')}
-              className={`py-1.5 px-2 rounded-lg border font-semibold text-[10.5px] flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                activeTool === 'move'
+              className={`py-1.5 px-2 rounded-lg border font-semibold text-[10.5px] flex items-center justify-center gap-1 transition-all cursor-pointer ${activeTool === 'move'
                   ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.5)] animate-pulse'
                   : 'bg-slate-950 hover:bg-slate-900 text-cyan-300 border-slate-800 hover:border-cyan-500/40'
-              }`}
+                }`}
               title="Di chuyển đài sang vị trí tọa độ mới trên bản đồ"
             >
               <Move className="w-3 h-3" />
@@ -588,22 +686,20 @@ export const RightInspector: React.FC = () => {
           <div className="grid grid-cols-2 p-1 bg-slate-900 rounded-xl border border-slate-800 text-xs font-mono">
             <button
               onClick={() => setActiveTab('2d')}
-              className={`py-1.5 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === '2d'
+              className={`py-1.5 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${activeTab === '2d'
                   ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
                   : 'text-slate-400 hover:text-slate-200'
-              }`}
+                }`}
             >
               <Radio className="w-3.5 h-3.5" />
               <span>2D BẢN ĐỒ</span>
             </button>
             <button
               onClick={() => setActiveTab('3d')}
-              className={`py-1.5 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === '3d'
+              className={`py-1.5 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${activeTab === '3d'
                   ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
                   : 'text-slate-400 hover:text-slate-200'
-              }`}
+                }`}
             >
               <Compass className="w-3.5 h-3.5" />
               <span>3D / LOS KHÔNG GIAN</span>
@@ -659,11 +755,10 @@ export const RightInspector: React.FC = () => {
                         <button
                           key={chip.m}
                           onClick={() => updateSelectedSpx({ endRangeM: chip.m })}
-                          className={`py-1 rounded text-[10px] font-mono border transition-all cursor-pointer ${
-                            instSpxConfig.endRangeM === chip.m
+                          className={`py-1 rounded text-[10px] font-mono border transition-all cursor-pointer ${instSpxConfig.endRangeM === chip.m
                               ? 'bg-cyan-900 text-cyan-300 border-cyan-400 font-bold'
                               : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
-                          }`}
+                            }`}
                         >
                           {chip.label}
                         </button>
@@ -955,11 +1050,10 @@ export const RightInspector: React.FC = () => {
                       </span>
                       <button
                         onClick={toggleSensorNetwork}
-                        className={`px-2 py-0.5 rounded text-[9px] font-mono border font-bold cursor-pointer transition-all ${
-                          showSensorNetwork
+                        className={`px-2 py-0.5 rounded text-[9px] font-mono border font-bold cursor-pointer transition-all ${showSensorNetwork
                             ? 'bg-purple-950 text-purple-300 border-purple-500/60'
                             : 'bg-slate-900 text-slate-500 border-slate-800'
-                        }`}
+                          }`}
                       >
                         {showSensorNetwork ? 'BẬT MẠNG' : 'ẨN MẠNG'}
                       </button>
@@ -1025,6 +1119,88 @@ export const RightInspector: React.FC = () => {
               {/* Trường hợp 1: Radar Cảnh Giới (RadarCanhGioi) - Vòm quét và Phân tích LOS 3D raycasting */}
               {caps.hasRadarCoverage && (
                 <>
+                  {/* BỘ CHUYỂN ĐỔI CHẾ ĐỘ VÒM 3D: DANH NGHĨA vs CẮT ĐỊA HÌNH */}
+                  <div className="bg-slate-900/80 p-2.5 rounded-xl border border-cyan-500/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-cyan-300 font-mono flex items-center gap-1.5">
+                        <Radio className="w-3.5 h-3.5 text-cyan-400" />
+                        CHẾ ĐỘ MÔ HÌNH VÒM 3D
+                      </span>
+                      <span
+                        className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold border ${
+                          dome3DMode === 'terrain-aware'
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-500/50'
+                            : 'bg-cyan-950 text-cyan-300 border-cyan-500/50'
+                        }`}
+                      >
+                        {dome3DMode === 'terrain-aware' ? 'CẮT ĐỊA HÌNH' : 'DANH NGHĨA'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950/80 rounded-lg border border-slate-800">
+                      <button
+                        onClick={() => {
+                          setDome3DMode('nominal');
+                          setDomeTerrainMasked(false);
+                        }}
+                        className={`py-1.5 px-2 rounded-md font-mono text-[10.5px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${
+                          dome3DMode === 'nominal'
+                            ? 'bg-cyan-900/60 text-cyan-200 border border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.4)]'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                        }`}
+                      >
+                        <span>DANH NGHĨA</span>
+                        <span className="text-[9px] font-normal text-slate-400">(Lý thuyết)</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setDome3DMode('terrain-aware');
+                          setDomeTerrainMasked(true);
+                        }}
+                        className={`py-1.5 px-2 rounded-md font-mono text-[10.5px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${
+                          dome3DMode === 'terrain-aware'
+                            ? 'bg-emerald-900/60 text-emerald-200 border border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.4)]'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                        }`}
+                      >
+                        <span>CẮT ĐỊA HÌNH</span>
+                        <span className="text-[9px] font-normal text-emerald-400/80">(Thực tế LOS)</span>
+                      </button>
+                    </div>
+
+                    {/* Trạng thái Volume Engine */}
+                    {activeVolume && (
+                      <div className="p-2 bg-slate-950 rounded-lg border border-slate-800/80 space-y-1.5 text-[10px] font-mono">
+                        <div className="flex items-center justify-between text-slate-400">
+                          <span>Ma trận tầng cao:</span>
+                          <span className="text-cyan-300 font-bold">{activeVolume.bandInfos.length} tầng độ cao</span>
+                        </div>
+                        <div className="flex items-center justify-between text-slate-400">
+                          <span>Góc quét phương vị:</span>
+                          <span className="text-slate-200">
+                            {activeVolume.azimuthSamples.length} hướng (bước{' '}
+                            {activeVolume.azimuthSamples.length > 1
+                              ? (360 / activeVolume.azimuthSamples.length).toFixed(0)
+                              : 5}
+                            °)
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-slate-400">
+                          <span>Bán kính bao cực đại:</span>
+                          <span className="text-amber-300 font-bold">{activeVolume.maxRangeKm.toFixed(1)} km</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {isCalculatingVolume && (
+                      <div className="flex items-center gap-2 p-1.5 bg-cyan-950/40 rounded border border-cyan-500/30 text-[10px] font-mono text-cyan-300 animate-pulse">
+                        <Activity className="w-3 h-3 animate-spin" />
+                        <span>Đang phân tích bề mặt địa hình 3D...</span>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Bật/Tắt Vòm 3D & Góc tà */}
                   <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 space-y-2.5">
                     <div className="flex items-center justify-between">
@@ -1164,6 +1340,59 @@ export const RightInspector: React.FC = () => {
                       </div>
                     )}
 
+                    {/* Bảng phân tích các tầng cao độ của vòm 3D */}
+                    {activeVolume && activeVolume.bandInfos && activeVolume.bandInfos.length > 0 && (
+                      <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
+                        <div className="flex items-center justify-between text-[10.5px] font-mono text-slate-400">
+                          <span>Khảo sát nhanh tầng cao:</span>
+                          <span className="text-cyan-300 font-bold">{selectedAltitudeM} m</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {activeVolume.bandInfos.map((b) => (
+                            <button
+                              key={b.altitudeM}
+                              onClick={() => {
+                                setSelectedAltitudeM(b.altitudeM);
+                                setTargetHeightMeters(b.altitudeM);
+                              }}
+                              className={`px-2 py-0.5 rounded text-[9.5px] font-mono border transition-all cursor-pointer ${
+                                selectedAltitudeM === b.altitudeM
+                                  ? 'bg-cyan-950 text-cyan-300 border-cyan-400 font-bold shadow-[0_0_6px_rgba(6,182,212,0.4)]'
+                                  : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
+                              }`}
+                            >
+                              {b.altitudeM >= 1000 ? `${(b.altitudeM / 1000).toFixed(0)}k` : `${b.altitudeM}m`}
+                            </button>
+                          ))}
+                        </div>
+
+                        {selectedBandInfo && (
+                          <div className="p-2 bg-slate-950 rounded-lg border border-slate-800 text-[10px] font-mono space-y-1">
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Tầm danh nghĩa (lý thuyết):</span>
+                              <span className="text-cyan-300 font-bold">{selectedBandInfo.nominalRangeKm.toFixed(1)} km</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Tầm hiệu dụng sau địa hình:</span>
+                              <span className="text-emerald-300 font-bold">{selectedBandInfo.averageEffectiveRangeKm.toFixed(1)} km</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Tỷ lệ bao phủ địa hình:</span>
+                              <span className="text-amber-300 font-bold">
+                                {(100 - selectedBandInfo.terrainLimitedPercent).toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500">Tỷ lệ bị che chắn địa hình:</span>
+                              <span className="text-rose-400 font-bold">
+                                {selectedBandInfo.terrainLimitedPercent.toFixed(1)}%
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Nút Mặt Cắt Quang Tuyến 2D (Cross Section) */}
                     <button
                       onClick={toggleCrossSection}
@@ -1182,6 +1411,157 @@ export const RightInspector: React.FC = () => {
                           ? 'Đang Xem Mặt Cắt 2D (Cross Section)'
                           : 'Mở Mặt Cắt Quang Tuyến 2D'}
                       </span>
+                    </button>
+                  </div>
+
+                  {/* 5c. Vòm phủ sóng — kiểu tham chiếu (port từ Unity Defense/RadarDome) */}
+                  <div className="bg-slate-900/60 p-3 rounded-lg border border-emerald-900/50 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-semibold text-emerald-300 flex items-center gap-1.5">
+                        <Radio className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Vòm phủ sóng (kiểu tham chiếu)</span>
+                      </label>
+                      <span className="text-[9px] text-emerald-300/80 font-mono">RadarDome</span>
+                    </div>
+
+                    {/* Màu vòm hiệu dụng */}
+                    <div className="flex items-center justify-between p-2 bg-slate-950/80 rounded-lg border border-slate-800 text-[10px] font-mono">
+                      <span className="text-slate-500">MÀU VÒM HIỆU DỤNG</span>
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="w-3 h-3 rounded-sm border border-slate-600"
+                          style={{ backgroundColor: effectiveDomeColor }}
+                        />
+                        <span className="text-emerald-300">{effectiveDomeColor}</span>
+                      </span>
+                    </div>
+
+                    {/* Ghi đè màu vòm */}
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <span className="text-[10px] text-slate-400 block mb-1">Ghi đè màu vòm</span>
+                        <input
+                          type="color"
+                          value={domeColorOverride ?? effectiveDomeColor}
+                          onChange={(e) => setDomeColorOverride(e.target.value)}
+                          className="w-full h-7 bg-slate-950 border border-slate-700 rounded cursor-pointer"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setDomeColorOverride(null)}
+                        className={`mt-4 px-2 py-1.5 rounded border text-[10px] font-mono transition-colors ${
+                          domeColorOverride
+                            ? 'border-slate-700 bg-slate-950 text-slate-300 hover:border-rose-500/60'
+                            : 'border-slate-800 bg-slate-950/60 text-slate-600'
+                        }`}
+                        title="Bỏ ghi đè, quay về màu theo template/màu khí tài"
+                      >
+                        BỎ GHI ĐÈ
+                      </button>
+                    </div>
+
+                    <DomeSlider
+                      label="Độ đục màu nền vòm (domeAlpha):"
+                      value={domeAlpha}
+                      min={0.05}
+                      max={0.9}
+                      step={0.01}
+                      onChange={setDomeAlpha}
+                    />
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <DomeSlider
+                        label="Phân đoạn phương vị:"
+                        value={domeAzimuthSegments}
+                        min={32}
+                        max={192}
+                        step={8}
+                        decimals={0}
+                        onChange={setDomeAzimuthSegments}
+                      />
+                      <DomeSlider
+                        label="Vòng góc tà:"
+                        value={domeElevationRings}
+                        min={4}
+                        max={32}
+                        step={1}
+                        decimals={0}
+                        onChange={setDomeElevationRings}
+                      />
+                    </div>
+
+                    <div className="flex items-end gap-2">
+                      <div className="w-16">
+                        <span className="text-[10px] text-slate-400 block mb-1">Viền sáng</span>
+                        <input
+                          type="color"
+                          value={domeRimColor}
+                          onChange={(e) => setDomeRimColor(e.target.value)}
+                          className="w-full h-7 bg-slate-950 border border-slate-700 rounded cursor-pointer"
+                          title={`Màu viền sáng (rimColor) — ${domeRimColor}`}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <DomeSlider
+                          label="Độ gắt viền (rimPower):"
+                          value={domeRimPower}
+                          min={0.5}
+                          max={8}
+                          step={0.1}
+                          decimals={1}
+                          onChange={setDomeRimPower}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <DomeSlider
+                        label="Số đường quét:"
+                        value={domeScanLineCount}
+                        min={1}
+                        max={40}
+                        step={1}
+                        decimals={0}
+                        onChange={setDomeScanLineCount}
+                      />
+                      <DomeSlider
+                        label="Tốc độ quét:"
+                        value={domeScanLineSpeed}
+                        min={-5}
+                        max={5}
+                        step={0.1}
+                        decimals={1}
+                        onChange={setDomeScanLineSpeed}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-1.5">
+                      <DomeToggle
+                        label="Chạy animation dải quét"
+                        hint="Tắt để đóng băng dải quét ngang"
+                        checked={domeScanLineAnimated}
+                        onToggle={toggleDomeScanLineAnimated}
+                      />
+                      <DomeToggle
+                        label="Vòng chân đế mặt đất"
+                        hint="Tương đương CoverageFootprint LineRenderer của Unity"
+                        checked={showDomeFootprint}
+                        onToggle={() => setShowDomeFootprint(!showDomeFootprint)}
+                      />
+                      <DomeToggle
+                        label="Cắt vòm theo địa hình"
+                        hint="Bật để giới hạn bán kính vòm theo visibleEndM của tia LOS (mặc định tắt = vòm lý tưởng như video)"
+                        checked={domeTerrainMasked}
+                        onToggle={() => setDomeTerrainMasked(!domeTerrainMasked)}
+                      />
+                    </div>
+
+                    <button
+                      onClick={resetDomeStyleDefaults}
+                      className="w-full py-2 px-3 rounded-xl border border-emerald-600/60 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 text-xs font-semibold transition-colors"
+                      title="Đặt lại toàn bộ tham số vòm về đúng bộ giá trị của video tham chiếu (alpha 0.30, 96x12, rim #fff232 power 2.0, 14 đường quét, tốc độ 0.6)"
+                    >
+                      Khôi phục mặc định kiểu video
                     </button>
                   </div>
                 </>
@@ -1304,236 +1684,234 @@ export const RightInspector: React.FC = () => {
           )}
         </div>
 
-        {/* ======================================================================= */}
-        {/* 5. NÂNG CAO (ADVANCED SECTIONS — PROGRESSIVE DISCLOSURE: ĐÓNG MẶC ĐỊNH) */}
-        {/* ======================================================================= */}
-        <div className="space-y-2 pt-1 border-t border-slate-800/80">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">
-            Dữ liệu kỹ thuật chuyên sâu
-          </span>
+        {/* ======================================================================= */ }
+  {/* 5. NÂNG CAO (ADVANCED SECTIONS — PROGRESSIVE DISCLOSURE: ĐÓNG MẶC ĐỊNH) */ }
+  {/* ======================================================================= */ }
+  <div className="space-y-2 pt-1 border-t border-slate-800/80">
+    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">
+      Dữ liệu kỹ thuật chuyên sâu
+    </span>
 
-          {/* Accordion 0: Thông Số Vũ Khí & Khí Tài Chuyên Sâu */}
-          {(selected.guidanceMethodVi || selected.frequencyRangeGhz || selected.reactionTimeSeconds) && (
-            <div className="bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden transition-all">
-              <button
-                onClick={() => setIsSpecsOpen(!isSpecsOpen)}
-                className="w-full p-2.5 flex items-center justify-between text-left hover:bg-slate-850 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Activity className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="text-xs font-semibold text-slate-200 truncate">
-                    Thông số Tác chiến & Quân sự Chi Tiết
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 text-slate-400 shrink-0 ml-1">
-                  <span className="text-[10px] font-mono text-amber-400">
-                    Chi tiết
-                  </span>
-                  {isSpecsOpen ? (
-                    <ChevronDown className="w-4 h-4 text-amber-400" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </div>
-              </button>
+    {/* Accordion 0: Thông Số Vũ Khí & Khí Tài Chuyên Sâu */}
+    {(selected.guidanceMethodVi || selected.frequencyRangeGhz || selected.reactionTimeSeconds) && (
+      <div className="bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden transition-all">
+        <button
+          onClick={() => setIsSpecsOpen(!isSpecsOpen)}
+          className="w-full p-2.5 flex items-center justify-between text-left hover:bg-slate-850 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Activity className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="text-xs font-semibold text-slate-200 truncate">
+              Thông số Tác chiến & Quân sự Chi Tiết
+            </span>
+          </div>
+          <div className="flex items-center gap-1 text-slate-400 shrink-0 ml-1">
+            <span className="text-[10px] font-mono text-amber-400">
+              Chi tiết
+            </span>
+            {isSpecsOpen ? (
+              <ChevronDown className="w-4 h-4 text-amber-400" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+          </div>
+        </button>
 
-              {isSpecsOpen && (
-                <div className="p-2.5 pt-0 border-t border-slate-800/60 space-y-2 text-xs font-mono">
-                  {selected.guidanceMethodVi && (
-                    <div className="pt-2">
-                      <span className="text-[10px] text-slate-500 block uppercase">Hệ thống dẫn bắn & Điều khiển:</span>
-                      <span className="text-slate-200 font-semibold">{selected.guidanceMethodVi}</span>
-                    </div>
-                  )}
-                  {selected.minEngagementRangeKm !== undefined && (
-                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                      <span className="text-slate-400">Cự ly tiêu diệt cực cận (R_min):</span>
-                      <strong className="text-rose-300">{selected.minEngagementRangeKm} km</strong>
-                    </div>
-                  )}
-                  {selected.maxEngagementAltitudeM !== undefined && (
-                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                      <span className="text-slate-400">Trần hỏa lực (H_max):</span>
-                      <strong className="text-rose-300">{(selected.maxEngagementAltitudeM / 1000).toFixed(0)} km ({selected.maxEngagementAltitudeM}m)</strong>
-                    </div>
-                  )}
-                  {selected.reactionTimeSeconds !== undefined && (
-                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                      <span className="text-slate-400">Thời gian phản ứng hệ thống (T_pư):</span>
-                      <strong className="text-amber-300">{selected.reactionTimeSeconds} giây</strong>
-                    </div>
-                  )}
-                  {selected.frequencyRangeGhz && (
-                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                      <span className="text-slate-400">Dải tần công tác tiếp nhận:</span>
-                      <strong className="text-purple-300">{selected.frequencyRangeGhz}</strong>
-                    </div>
-                  )}
+        {isSpecsOpen && (
+          <div className="p-2.5 pt-0 border-t border-slate-800/60 space-y-2 text-xs font-mono">
+            {selected.guidanceMethodVi && (
+              <div className="pt-2">
+                <span className="text-[10px] text-slate-500 block uppercase">Hệ thống dẫn bắn & Điều khiển:</span>
+                <span className="text-slate-200 font-semibold">{selected.guidanceMethodVi}</span>
+              </div>
+            )}
+            {selected.minEngagementRangeKm !== undefined && (
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Cự ly tiêu diệt cực cận (R_min):</span>
+                <strong className="text-rose-300">{selected.minEngagementRangeKm} km</strong>
+              </div>
+            )}
+            {selected.maxEngagementAltitudeM !== undefined && (
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Trần hỏa lực (H_max):</span>
+                <strong className="text-rose-300">{(selected.maxEngagementAltitudeM / 1000).toFixed(0)} km ({selected.maxEngagementAltitudeM}m)</strong>
+              </div>
+            )}
+            {selected.reactionTimeSeconds !== undefined && (
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Thời gian phản ứng hệ thống (T_pư):</span>
+                <strong className="text-amber-300">{selected.reactionTimeSeconds} giây</strong>
+              </div>
+            )}
+            {selected.frequencyRangeGhz && (
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Dải tần công tác tiếp nhận:</span>
+                <strong className="text-purple-300">{selected.frequencyRangeGhz}</strong>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* Accordion 1: Coverage Profile (Giản đồ búp sóng) */}
+    {selected.coverageProfile && (
+      <div className="bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden transition-all">
+        <button
+          onClick={() => setIsProfileOpen(!isProfileOpen)}
+          className="w-full p-2.5 flex items-center justify-between text-left hover:bg-slate-850 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Layers className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span className="text-xs font-semibold text-slate-200 truncate">
+              Coverage Profile ({selected.coverageProfile.name})
+            </span>
+          </div>
+          <div className="flex items-center gap-1 text-slate-400 shrink-0 ml-1">
+            <span className="text-[10px] font-mono text-cyan-400">
+              {selected.coverageProfile.points.length} điểm
+            </span>
+            {isProfileOpen ? (
+              <ChevronDown className="w-4 h-4 text-cyan-400" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+          </div>
+        </button>
+
+        {isProfileOpen && (
+          <div className="p-2.5 pt-0 border-t border-slate-800/60 space-y-2 text-xs">
+            <p className="text-[10px] text-slate-400 pt-2">
+              Giới hạn cự ly theo từng góc tà (nội suy liên tục theo búp sóng thực tế):
+            </p>
+            <div className="grid grid-cols-3 gap-1 font-mono text-[10px]">
+              {selected.coverageProfile.points.map((pt, idx) => (
+                <div
+                  key={idx}
+                  className="bg-slate-950 p-1.5 rounded border border-slate-800 text-center"
+                >
+                  <span className="text-slate-500 block">{pt.elevationDeg}°</span>
+                  <span className="text-cyan-300 font-bold">{pt.maxRangeKm} km</span>
                 </div>
-              )}
+              ))}
             </div>
-          )}
+          </div>
+        )}
+      </div>
+    )}
 
-          {/* Accordion 1: Coverage Profile (Giản đồ búp sóng) */}
-          {selected.coverageProfile && (
-            <div className="bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden transition-all">
-              <button
-                onClick={() => setIsProfileOpen(!isProfileOpen)}
-                className="w-full p-2.5 flex items-center justify-between text-left hover:bg-slate-850 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Layers className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                  <span className="text-xs font-semibold text-slate-200 truncate">
-                    Coverage Profile ({selected.coverageProfile.name})
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 text-slate-400 shrink-0 ml-1">
-                  <span className="text-[10px] font-mono text-cyan-400">
-                    {selected.coverageProfile.points.length} điểm
-                  </span>
-                  {isProfileOpen ? (
-                    <ChevronDown className="w-4 h-4 text-cyan-400" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </div>
-              </button>
+    {/* Accordion 2: Bảng Tầm Radar Theo Độ Cao Mục Tiêu */}
+    {selected.altitudeDetectionTable && (
+      <div className="bg-slate-900/60 rounded-xl border border-cyan-500/40 overflow-hidden transition-all shadow-[0_0_12px_rgba(6,182,212,0.1)]">
+        <button
+          onClick={() => setIsAltitudeTableOpen(!isAltitudeTableOpen)}
+          className="w-full p-2.5 flex items-center justify-between text-left hover:bg-slate-850 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Table2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span className="text-xs font-semibold text-cyan-300 truncate">
+              Bảng Tầm Radar Theo Độ Cao (Chuẩn Tài Liệu)
+            </span>
+          </div>
+          <div className="flex items-center gap-1 text-slate-400 shrink-0 ml-1">
+            <span className="text-[9px] text-amber-300 font-mono bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/30">
+              m ➜ km
+            </span>
+            {isAltitudeTableOpen ? (
+              <ChevronDown className="w-4 h-4 text-cyan-400" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+          </div>
+        </button>
 
-              {isProfileOpen && (
-                <div className="p-2.5 pt-0 border-t border-slate-800/60 space-y-2 text-xs">
-                  <p className="text-[10px] text-slate-400 pt-2">
-                    Giới hạn cự ly theo từng góc tà (nội suy liên tục theo búp sóng thực tế):
-                  </p>
-                  <div className="grid grid-cols-3 gap-1 font-mono text-[10px]">
-                    {selected.coverageProfile.points.map((pt, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-slate-950 p-1.5 rounded border border-slate-800 text-center"
+        {isAltitudeTableOpen && (
+          <div className="p-2.5 pt-0 border-t border-slate-800/60 space-y-2 text-xs">
+            <p className="text-[10px] text-slate-400 pt-2">
+              Nhấp vào từng hàng để áp dụng ngay cự ly trinh sát tương ứng với tầng độ cao mục tiêu:
+            </p>
+
+            <div className="overflow-x-auto rounded border border-slate-800">
+              <table className="w-full text-[10px] text-left font-mono">
+                <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
+                  <tr>
+                    {selected.altitudeDetectionTable.headers.map((h, i) => (
+                      <th
+                        key={i}
+                        className={`p-1.5 font-bold ${i === 0 ? 'text-slate-300' : 'text-cyan-300 text-center'
+                          }`}
                       >
-                        <span className="text-slate-500 block">{pt.elevationDeg}°</span>
-                        <span className="text-cyan-300 font-bold">{pt.maxRangeKm} km</span>
-                      </div>
+                        {h}
+                      </th>
                     ))}
-                  </div>
-                </div>
-              )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 bg-slate-950/40">
+                  {selected.altitudeDetectionTable.rows.map((row, idx) => {
+                    const numVal1 =
+                      typeof row.val1 === 'number'
+                        ? row.val1
+                        : parseFloat(String(row.val1));
+                    const numVal2 =
+                      row.val2 !== undefined && row.val2 !== '-'
+                        ? typeof row.val2 === 'number'
+                          ? row.val2
+                          : parseFloat(String(row.val2))
+                        : undefined;
+                    const isRowActive =
+                      (!isNaN(numVal1) && selected.rangeKm === numVal1) ||
+                      (numVal2 !== undefined &&
+                        !isNaN(numVal2) &&
+                        selected.rangeKm === numVal2);
+
+                    return (
+                      <tr
+                        key={idx}
+                        onClick={() => {
+                          const targetKm = !isNaN(numVal1) ? numVal1 : numVal2;
+                          if (targetKm && !isNaN(targetKm)) {
+                            updateSelectedSpx({ endRangeM: targetKm * 1000 });
+                          }
+                        }}
+                        className={`hover:bg-cyan-950/40 cursor-pointer transition-colors ${isRowActive
+                            ? 'bg-cyan-950/70 text-cyan-200 font-bold border-l-2 border-cyan-400'
+                            : 'text-slate-300'
+                          }`}
+                        title={`Bấm để chọn cự ly ${row.val1} km ở độ cao ${row.altitudeM}m`}
+                      >
+                        <td className="p-1.5 font-bold text-amber-300 whitespace-nowrap">
+                          {row.altitudeM >= 1000
+                            ? `${(row.altitudeM / 1000).toLocaleString()} km (${row.altitudeM}m)`
+                            : `${row.altitudeM} m`}
+                        </td>
+                        <td className="p-1.5 text-center font-bold text-cyan-300 whitespace-nowrap">
+                          {row.val1 !== '-' ? `${row.val1} km` : '-'}
+                        </td>
+                        {selected.altitudeDetectionTable!.headers.length > 2 && (
+                          <td
+                            className="p-1.5 text-center font-bold text-emerald-300 hover:text-emerald-200 whitespace-nowrap"
+                            onClick={(e) => {
+                              if (numVal2 && !isNaN(numVal2)) {
+                                e.stopPropagation();
+                                updateSelectedSpx({ endRangeM: numVal2 * 1000 });
+                              }
+                            }}
+                          >
+                            {row.val2 !== undefined && row.val2 !== '-'
+                              ? `${row.val2} km`
+                              : '-'}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          )}
-
-          {/* Accordion 2: Bảng Tầm Radar Theo Độ Cao Mục Tiêu */}
-          {selected.altitudeDetectionTable && (
-            <div className="bg-slate-900/60 rounded-xl border border-cyan-500/40 overflow-hidden transition-all shadow-[0_0_12px_rgba(6,182,212,0.1)]">
-              <button
-                onClick={() => setIsAltitudeTableOpen(!isAltitudeTableOpen)}
-                className="w-full p-2.5 flex items-center justify-between text-left hover:bg-slate-850 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Table2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                  <span className="text-xs font-semibold text-cyan-300 truncate">
-                    Bảng Tầm Radar Theo Độ Cao (Chuẩn Tài Liệu)
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 text-slate-400 shrink-0 ml-1">
-                  <span className="text-[9px] text-amber-300 font-mono bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/30">
-                    m ➜ km
-                  </span>
-                  {isAltitudeTableOpen ? (
-                    <ChevronDown className="w-4 h-4 text-cyan-400" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </div>
-              </button>
-
-              {isAltitudeTableOpen && (
-                <div className="p-2.5 pt-0 border-t border-slate-800/60 space-y-2 text-xs">
-                  <p className="text-[10px] text-slate-400 pt-2">
-                    Nhấp vào từng hàng để áp dụng ngay cự ly trinh sát tương ứng với tầng độ cao mục tiêu:
-                  </p>
-
-                  <div className="overflow-x-auto rounded border border-slate-800">
-                    <table className="w-full text-[10px] text-left font-mono">
-                      <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
-                        <tr>
-                          {selected.altitudeDetectionTable.headers.map((h, i) => (
-                            <th
-                              key={i}
-                              className={`p-1.5 font-bold ${
-                                i === 0 ? 'text-slate-300' : 'text-cyan-300 text-center'
-                              }`}
-                            >
-                              {h}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/60 bg-slate-950/40">
-                        {selected.altitudeDetectionTable.rows.map((row, idx) => {
-                          const numVal1 =
-                            typeof row.val1 === 'number'
-                              ? row.val1
-                              : parseFloat(String(row.val1));
-                          const numVal2 =
-                            row.val2 !== undefined && row.val2 !== '-'
-                              ? typeof row.val2 === 'number'
-                                ? row.val2
-                                : parseFloat(String(row.val2))
-                              : undefined;
-                          const isRowActive =
-                            (!isNaN(numVal1) && selected.rangeKm === numVal1) ||
-                            (numVal2 !== undefined &&
-                              !isNaN(numVal2) &&
-                              selected.rangeKm === numVal2);
-
-                          return (
-                            <tr
-                              key={idx}
-                              onClick={() => {
-                                const targetKm = !isNaN(numVal1) ? numVal1 : numVal2;
-                                if (targetKm && !isNaN(targetKm)) {
-                                  updateSelectedSpx({ endRangeM: targetKm * 1000 });
-                                }
-                              }}
-                              className={`hover:bg-cyan-950/40 cursor-pointer transition-colors ${
-                                isRowActive
-                                  ? 'bg-cyan-950/70 text-cyan-200 font-bold border-l-2 border-cyan-400'
-                                  : 'text-slate-300'
-                              }`}
-                              title={`Bấm để chọn cự ly ${row.val1} km ở độ cao ${row.altitudeM}m`}
-                            >
-                              <td className="p-1.5 font-bold text-amber-300 whitespace-nowrap">
-                                {row.altitudeM >= 1000
-                                  ? `${(row.altitudeM / 1000).toLocaleString()} km (${row.altitudeM}m)`
-                                  : `${row.altitudeM} m`}
-                              </td>
-                              <td className="p-1.5 text-center font-bold text-cyan-300 whitespace-nowrap">
-                                {row.val1 !== '-' ? `${row.val1} km` : '-'}
-                              </td>
-                              {selected.altitudeDetectionTable!.headers.length > 2 && (
-                                <td
-                                  className="p-1.5 text-center font-bold text-emerald-300 hover:text-emerald-200 whitespace-nowrap"
-                                  onClick={(e) => {
-                                    if (numVal2 && !isNaN(numVal2)) {
-                                      e.stopPropagation();
-                                      updateSelectedSpx({ endRangeM: numVal2 * 1000 });
-                                    }
-                                  }}
-                                >
-                                  {row.val2 !== undefined && row.val2 !== '-'
-                                    ? `${row.val2} km`
-                                    : '-'}
-                                </td>
-                              )}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          </div>
+        )}
+      </div>
+    )}
         </div>
       </div>
     </aside>

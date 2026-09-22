@@ -9,6 +9,52 @@ import { CATEGORY_META } from '../types/equipment';
 import type { LayoutSaveData, SavedEquipmentEntry } from '../types/layout';
 import { EQUIPMENT_TEMPLATES, PRESET_LOCATIONS } from '../data/equipmentTemplates';
 import { DEFAULT_SPX_CONFIG } from '../types/spxRadarCoverage';
+import { createEquipmentFromTemplate } from '../utils/equipmentFactory';
+import { checkVectorAiHealth, askVectorAi } from '../services/vectorAiClient';
+import {
+  buildPlacementMessages,
+  deriveAdvisorRadiusKm,
+  getAdvisorViewport,
+  parsePlacementAdvice,
+} from '../utils/aiPlacementAdvisor';
+import type {
+  AiPlacementContext,
+  AiPlacementRoutePoint,
+  AiPlacementSuggestion,
+} from '../utils/aiPlacementAdvisor';
+import type { RadarCoverageVolume } from '../types/radarVolume';
+import { invalidateVolumeCache } from '../utils/radarVolumeEngine';
+
+/**
+ * Trạng thái cố vấn vị trí đặt khí tài (VECTOR AI local).
+ * - idle     : chưa chạy
+ * - checking : đang kiểm tra backend (GET /api/v1/health)
+ * - thinking : backend sẵn sàng, đang chờ model trả lời
+ * - ready    : đã có gợi ý
+ * - error    : lỗi có thể xử lý (HTTP/parse/stream)
+ * - offline  : không kết nối được backend 127.0.0.1:8000
+ */
+export type AiAdvisorStatus = 'idle' | 'checking' | 'thinking' | 'ready' | 'error' | 'offline';
+
+/**
+ * Bộ tham số "kiểu vòm tham chiếu" mặc định — port từ Defense/RadarDome.shader + RadarDomeMeshRenderer.cs
+ * của dự án Unity VomKQ_test. Dùng chung cho state khởi tạo và nút "Khôi phục mặc định kiểu video"
+ * để hai nơi không bao giờ lệch nhau.
+ * Nguồn: vomkq-web/docs/dome-video-match/README.md mục 5.
+ */
+export const DOME_STYLE_DEFAULTS = {
+  domeAlpha: 0.3, // Unity RadarDomeMeshRenderer.domeAlpha | 0.05–0.9 | độ đục lòng vòm
+  domeAzimuthSegments: 96, // Unity RadarDomeMeshRenderer.azimuthSegments | 32–192
+  domeElevationRings: 12, // Unity RadarDomeMeshRenderer.elevationRings | 4–32
+  domeRimColor: '#fff232', // Unity shader _RimColor = (1, 0.95, 0.2)
+  domeRimPower: 2.0, // Unity shader _RimPower | 0.5–8
+  domeScanLineCount: 14, // Unity shader _ScanLineCount | 1–40
+  domeScanLineSpeed: 0.6, // Unity shader _ScanLineSpeed | -5..5
+  domeScanLineAnimated: true,
+  showDomeFootprint: true, // Unity showGroundFootprint
+  domeTerrainMasked: false, // vòm lý tưởng giống video (Unity fallback dome chưa cắt địa hình)
+  domeColorOverride: null as string | null,
+} as const;
 
 interface TacticalState {
   // Battlefield Entities
@@ -53,6 +99,61 @@ interface TacticalState {
   showRadarFieldModal: boolean;
   showCrossSection: boolean; // Bật/tắt bảng Mặt cắt ngang 2D
   selectedAzimuthDeg: number; // Góc phương vị đang khảo sát mặt cắt ngang (0-359)
+
+  // === 3D Radar Coverage Volume (Chuẩn hóa vòm 3D theo Địa hình & Danh nghĩa) ===
+  coverageVolumes: Record<string, RadarCoverageVolume>;
+  dome3DMode: 'nominal' | 'terrain-aware';
+  selectedAltitudeM: number;
+  isCalculatingVolume: boolean;
+  setCoverageVolume: (instanceId: string, volume: RadarCoverageVolume) => void;
+  setDome3DMode: (mode: 'nominal' | 'terrain-aware') => void;
+  setSelectedAltitudeM: (altM: number) => void;
+  setIsCalculatingVolume: (calculating: boolean) => void;
+  clearCoverageVolumes: () => void;
+
+  // === Kiểu vòm phủ sóng tham chiếu (port từ Unity Defense/RadarDome) ===
+  domeAlpha: number; // Độ đục màu nền vòm | 0.05–0.9 | mặc định 0.30
+  domeAzimuthSegments: number; // Số phân đoạn phương vị của lưới vòm | 32–192 | mặc định 96
+  domeElevationRings: number; // Số vòng góc tà của lưới vòm | 4–32 | mặc định 12
+  domeRimColor: string; // Màu viền sáng (hex) | mặc định #fff232
+  domeRimPower: number; // Độ gắt viền sáng | 0.5–8 | mặc định 2.0
+  domeScanLineCount: number; // Số đường quét ngang | 1–40 | mặc định 14
+  domeScanLineSpeed: number; // Tốc độ dòng quét trôi lên | -5..5 | mặc định 0.6
+  domeScanLineAnimated: boolean; // Bật/tắt animation dòng quét | mặc định true
+  showDomeFootprint: boolean; // Vẽ vòng chân đế mặt đất | mặc định true
+  domeTerrainMasked: boolean; // Cắt vòm theo địa hình (visibleEndM) | mặc định false
+  domeColorOverride: string | null; // Ghi đè màu vòm | null = theo template -> màu khí tài
+  setDomeAlpha: (alpha: number) => void;
+  setDomeAzimuthSegments: (segments: number) => void;
+  setDomeElevationRings: (rings: number) => void;
+  setDomeRimColor: (color: string) => void;
+  setDomeRimPower: (power: number) => void;
+  setDomeScanLineCount: (count: number) => void;
+  setDomeScanLineSpeed: (speed: number) => void;
+  setDomeScanLineAnimated: (animated: boolean) => void;
+  toggleDomeScanLineAnimated: () => void;
+  setShowDomeFootprint: (show: boolean) => void;
+  setDomeTerrainMasked: (masked: boolean) => void;
+  setDomeColorOverride: (color: string | null) => void;
+  resetDomeStyleDefaults: () => void;
+
+  // === Cố vấn vị trí đặt khí tài bằng AI local (VECTOR AI @ 127.0.0.1:8000) ===
+  aiAdvisorPanelOpen: boolean;
+  aiAdvisorStatus: AiAdvisorStatus;
+  aiAdvisorError: string | null;
+  aiAdvisorSummary: string;
+  aiAdvisorSuggestions: AiPlacementSuggestion[];
+  aiAdvisorRoute: AiPlacementRoutePoint[];
+  /** templateId của khí tài sẽ được đặt tại gợi ý; null = suy ra từ khí tài đang chọn */
+  aiAdvisorTemplateId: string | null;
+  setAiAdvisorPanelOpen: (open: boolean) => void;
+  toggleAiAdvisorPanel: () => void;
+  setAiAdvisorTemplateId: (templateId: string | null) => void;
+  /** Kiểm tra backend -> dựng prompt -> hỏi model -> parse JSON. Không bao giờ ném lỗi ra UI. */
+  runAiPlacementAnalysis: (model: string) => Promise<void>;
+  clearAiPlacementSuggestions: () => void;
+  /** Đặt khí tài tại gợi ý thứ `index` (tái dùng đúng action addEquipment hiện có) */
+  placeEquipmentAtSuggestion: (index: number) => void;
 
   // SPx Multi-Altitude Coverage (Cambridge Pixel Standard)
   showSpxPanel: boolean;
@@ -136,6 +237,31 @@ interface TacticalState {
   loadSampleScenario: () => void;
 }
 
+/**
+ * Chọn template khí tài cho cố vấn AI theo thứ tự ưu tiên:
+ * aiAdvisorTemplateId -> template của khí tài đang chọn -> template đang chờ đặt -> template đầu tiên.
+ */
+function resolveAdvisorTemplate(state: {
+  aiAdvisorTemplateId: string | null;
+  instances: EquipmentInstance[];
+  selectedInstanceId: string | null;
+  pendingTemplate: EquipmentTemplate | null;
+}): EquipmentTemplate {
+  const byId = state.aiAdvisorTemplateId
+    ? EQUIPMENT_TEMPLATES.find((t) => t.id === state.aiAdvisorTemplateId)
+    : undefined;
+  if (byId) return byId;
+
+  const selected = state.instances.find((i) => i.instanceId === state.selectedInstanceId);
+  const fromSelected = selected
+    ? EQUIPMENT_TEMPLATES.find((t) => t.id === selected.templateId)
+    : undefined;
+  if (fromSelected) return fromSelected;
+
+  if (state.pendingTemplate) return state.pendingTemplate;
+  return EQUIPMENT_TEMPLATES[0];
+}
+
 export const useTacticalStore = create<TacticalState>((set, get) => ({
   instances: [],
   selectedInstanceId: null,
@@ -195,12 +321,40 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       };
     }),
 
-  updateEquipment: (instanceId, updates) =>
-    set((state) => ({
-      instances: state.instances.map((item) =>
-        item.instanceId === instanceId ? { ...item, ...updates } : item
-      ),
-    })),
+  updateEquipment: (instanceId, updates) => {
+    if (
+      updates.latitude !== undefined ||
+      updates.longitude !== undefined ||
+      updates.altitude !== undefined ||
+      updates.antennaHeightAGL !== undefined ||
+      updates.rangeKm !== undefined ||
+      updates.minElevationDeg !== undefined ||
+      updates.maxElevationDeg !== undefined ||
+      updates.coverageHeightKm !== undefined
+    ) {
+      invalidateVolumeCache(instanceId);
+    }
+    set((state) => {
+      const locationOrRadarChanged =
+        updates.latitude !== undefined ||
+        updates.longitude !== undefined ||
+        updates.altitude !== undefined ||
+        updates.antennaHeightAGL !== undefined ||
+        updates.rangeKm !== undefined;
+      const nextVolumes = locationOrRadarChanged
+        ? { ...state.coverageVolumes }
+        : state.coverageVolumes;
+      if (locationOrRadarChanged) {
+        delete nextVolumes[instanceId];
+      }
+      return {
+        instances: state.instances.map((item) =>
+          item.instanceId === instanceId ? { ...item, ...updates } : item
+        ),
+        coverageVolumes: nextVolumes,
+      };
+    });
+  },
 
   updateEquipmentSpxConfig: (instanceId, updates) =>
     set((state) => ({
@@ -217,12 +371,19 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       ),
     })),
 
-  removeEquipment: (instanceId) =>
-    set((state) => ({
-      instances: state.instances.filter((item) => item.instanceId !== instanceId),
-      selectedInstanceId:
-        state.selectedInstanceId === instanceId ? null : state.selectedInstanceId,
-    })),
+  removeEquipment: (instanceId) => {
+    invalidateVolumeCache(instanceId);
+    set((state) => {
+      const nextVolumes = { ...state.coverageVolumes };
+      delete nextVolumes[instanceId];
+      return {
+        instances: state.instances.filter((item) => item.instanceId !== instanceId),
+        selectedInstanceId:
+          state.selectedInstanceId === instanceId ? null : state.selectedInstanceId,
+        coverageVolumes: nextVolumes,
+      };
+    });
+  },
 
   selectEquipment: (instanceId) =>
     set({
@@ -285,6 +446,35 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   showRadarFieldModal: false,
   showCrossSection: false,
   selectedAzimuthDeg: 45,
+
+  // 3D Radar Coverage Volume Initial State & Actions
+  coverageVolumes: {},
+  dome3DMode: 'terrain-aware',
+  selectedAltitudeM: 1000,
+  isCalculatingVolume: false,
+  setCoverageVolume: (instanceId, volume) =>
+    set((state) => ({
+      coverageVolumes: { ...state.coverageVolumes, [instanceId]: volume },
+    })),
+  setDome3DMode: (mode) => set({ dome3DMode: mode }),
+  setSelectedAltitudeM: (altM) => set({ selectedAltitudeM: altM }),
+  setIsCalculatingVolume: (calculating) =>
+    set((state) =>
+      state.isCalculatingVolume === calculating ? state : { isCalculatingVolume: calculating }
+    ),
+  clearCoverageVolumes: () => set({ coverageVolumes: {} }),
+
+  // Kiểu vòm tham chiếu (xem DOME_STYLE_DEFAULTS)
+  ...DOME_STYLE_DEFAULTS,
+
+  // Cố vấn vị trí đặt khí tài (VECTOR AI local)
+  aiAdvisorPanelOpen: false,
+  aiAdvisorStatus: 'idle',
+  aiAdvisorError: null,
+  aiAdvisorSummary: '',
+  aiAdvisorSuggestions: [],
+  aiAdvisorRoute: [],
+  aiAdvisorTemplateId: null,
 
   // SPx Multi-Altitude Coverage (Cambridge Pixel Standard)
   showSpxPanel: false,
@@ -356,6 +546,150 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   clearCoverageResults: () =>
     set({ coverageResults: {}, coverageFields: {} }),
 
+  // === Kiểu vòm tham chiếu: setter có kẹp biên theo đúng bảng tham số ở DOME_STYLE_DEFAULTS ===
+  setDomeAlpha: (alpha) =>
+    set({ domeAlpha: Math.min(0.9, Math.max(0.05, alpha)) }),
+  setDomeAzimuthSegments: (segments) =>
+    set({ domeAzimuthSegments: Math.min(192, Math.max(32, Math.round(segments))) }),
+  setDomeElevationRings: (rings) =>
+    set({ domeElevationRings: Math.min(32, Math.max(4, Math.round(rings))) }),
+  setDomeRimColor: (color) => set({ domeRimColor: color }),
+  setDomeRimPower: (power) =>
+    set({ domeRimPower: Math.min(8, Math.max(0.5, power)) }),
+  setDomeScanLineCount: (count) =>
+    set({ domeScanLineCount: Math.min(40, Math.max(1, Math.round(count))) }),
+  setDomeScanLineSpeed: (speed) =>
+    set({ domeScanLineSpeed: Math.min(5, Math.max(-5, speed)) }),
+  setDomeScanLineAnimated: (animated) => set({ domeScanLineAnimated: animated }),
+  toggleDomeScanLineAnimated: () =>
+    set((state) => ({ domeScanLineAnimated: !state.domeScanLineAnimated })),
+  setShowDomeFootprint: (show) => set({ showDomeFootprint: show }),
+  setDomeTerrainMasked: (masked) => set({ domeTerrainMasked: masked }),
+  setDomeColorOverride: (color) => set({ domeColorOverride: color }),
+  resetDomeStyleDefaults: () =>
+    set({
+      ...DOME_STYLE_DEFAULTS,
+      // Bật lại đúng trạng thái mặc định "kiểu video": không khối mù đỏ, có vòng nón mù đỉnh đầu
+      showBlindZones: false,
+      showConeOfSilence: true,
+    }),
+
+  // === Cố vấn vị trí đặt khí tài bằng AI local (VECTOR AI) ===
+  setAiAdvisorPanelOpen: (open) => set({ aiAdvisorPanelOpen: open }),
+  toggleAiAdvisorPanel: () =>
+    set((state) => ({ aiAdvisorPanelOpen: !state.aiAdvisorPanelOpen })),
+  setAiAdvisorTemplateId: (templateId) => set({ aiAdvisorTemplateId: templateId }),
+
+  clearAiPlacementSuggestions: () =>
+    set({
+      aiAdvisorSuggestions: [],
+      aiAdvisorRoute: [],
+      aiAdvisorSummary: '',
+      aiAdvisorError: null,
+      aiAdvisorStatus: 'idle',
+    }),
+
+  runAiPlacementAnalysis: async (model) => {
+    const state = get();
+    const template = resolveAdvisorTemplate(state);
+
+    // Ghi lại template đã chọn để UI phản ánh đúng khí tài vừa dùng
+    set({ aiAdvisorTemplateId: template.id, aiAdvisorStatus: 'checking', aiAdvisorError: null });
+
+    // 1. Kiểm tra backend (health)
+    const health = await checkVectorAiHealth();
+    if (!health.ok) {
+      // Backend local không trả lời (kể cả timeout) => coi như chưa kết nối
+      const isOffline = health.error.kind === 'offline' || health.error.kind === 'timeout';
+      set({
+        aiAdvisorStatus: isOffline ? 'offline' : 'error',
+        aiAdvisorError: health.error.message,
+      });
+      return;
+    }
+
+    // 2. Dựng prompt từ state tác chiến hiện tại
+    const viewport = getAdvisorViewport();
+    const context: AiPlacementContext = {
+      equipment: {
+        templateId: template.id,
+        name: template.name,
+        category: template.categoryNameVi || template.category,
+        rangeKm: template.defaultRangeKm,
+        minElevationDeg: template.minElevationDeg,
+        maxElevationDeg: template.maxElevationDeg,
+        coverageHeightKm: template.coverageHeightKm,
+        antennaHeightAGL: template.antennaHeightAGL,
+      },
+      placed: state.instances.map((item) => ({
+        shortId: item.shortId,
+        name: item.name,
+        category: item.category,
+        latitude: item.latitude,
+        longitude: item.longitude,
+        altitude: item.altitude,
+        rangeKm: item.rangeKm,
+        status: item.status,
+      })),
+      viewport,
+      areaRadiusKm: deriveAdvisorRadiusKm(viewport.heightM),
+    };
+
+    set({ aiAdvisorStatus: 'thinking' });
+
+    // 3. Hỏi model qua SSE
+    const answer = await askVectorAi({
+      model,
+      messages: buildPlacementMessages(context),
+    });
+    if (!answer.ok) {
+      set({
+        aiAdvisorStatus:
+          answer.error.kind === 'offline' || answer.error.kind === 'timeout' ? 'offline' : 'error',
+        aiAdvisorError: answer.error.message,
+      });
+      return;
+    }
+
+    // 4. Parse JSON an toàn
+    const parsed = parsePlacementAdvice(answer.value.text);
+    if (!parsed.ok) {
+      set({ aiAdvisorStatus: 'error', aiAdvisorError: parsed.message });
+      return;
+    }
+
+    set({
+      aiAdvisorStatus: 'ready',
+      aiAdvisorError: null,
+      aiAdvisorSummary: parsed.value.summary,
+      aiAdvisorSuggestions: parsed.value.suggestions,
+      aiAdvisorRoute: parsed.value.route,
+    });
+  },
+
+  placeEquipmentAtSuggestion: (index) => {
+    const state = get();
+    const suggestion = state.aiAdvisorSuggestions[index];
+    if (!suggestion) return;
+    if (!Number.isFinite(suggestion.latitude) || !Number.isFinite(suggestion.longitude)) return;
+
+    const template = resolveAdvisorTemplate(state);
+    const latitude = Math.min(90, Math.max(-90, suggestion.latitude));
+    const longitude = Math.min(180, Math.max(-180, suggestion.longitude));
+
+    // GIẢ ĐỊNH: gợi ý của AI chỉ có lat/lon nên cao độ mặt đất chưa biết -> đặt 0 m.
+    // Người dùng có thể dùng công cụ "Di chuyển đài" để trạm lại đúng cao độ DEM.
+    const instance = createEquipmentFromTemplate(template, {
+      latitude: Number(latitude.toFixed(5)),
+      longitude: Number(longitude.toFixed(5)),
+      altitude: 0,
+      nameIndex: state.instances.length + 1,
+    });
+
+    // Tái dùng đúng action addEquipment sẵn có (tự sinh shortId, gán profile, chọn khí tài)
+    get().addEquipment(instance);
+  },
+
   addMeasurePoint: (point) =>
     set((state) => ({ measurePoints: [...state.measurePoints, point] })),
 
@@ -364,12 +698,15 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   triggerFlyTo: (location) => set({ flyToTarget: location }),
   clearFlyTo: () => set({ flyToTarget: null }),
 
-  clearAll: () =>
+  clearAll: () => {
+    invalidateVolumeCache();
     set({
       instances: [],
       selectedInstanceId: null,
       measurePoints: [],
-    }),
+      coverageVolumes: {},
+    });
+  },
 
   importFromLayout: (layout) => {
     const importedInstances: EquipmentInstance[] = layout.equipments.map((saved, index) => {

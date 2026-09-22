@@ -45,6 +45,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 12,
     coverageHeightKm: 20,
     symbolColor: '#0ea5e9', // Sky blue
+    domeColor: '#77ff7e', // Vỏ vòm xanh lá — Unity symbolColor = (0.466, 1, 0.494)
     iconName: 'Radio',
     wavelengthM: 2.0, // Sóng mét (VHF ~2m)
     coverageProfile: {
@@ -173,6 +174,34 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
         { altitudeM: 3000, val1: 145, val2: 145 },
         { altitudeM: 4500, val1: '-', val2: 185 },
         { altitudeM: 6000, val1: '-', val2: 160 },
+      ],
+    },
+  },
+  {
+    id: 'radar_p18_terek',
+    name: 'Đài Radar P-18 Terek (tham chiếu video)',
+    category: 'RadarCanhGioi',
+    categoryNameVi: 'Radar Cảnh Giới',
+    description:
+      'Cấu hình mô phỏng đúng theo dự án tham chiếu Unity VomKQ_test (Assets/Data/Equipment/Radar_Test.asset): tầm 20 km, góc tà 0°–70°, trần phủ sóng 6 km, tốc độ quét 36°/s, tháp ăng-ten 10 m. Giản đồ phủ phẳng 20 km trên toàn dải góc tà.',
+    defaultRangeKm: 20,
+    defaultScanSpeed: 36, // 6 vòng/phút = 36 deg/s — Unity EquipmentData.scanSpeed
+    minElevationDeg: 0,
+    maxElevationDeg: 70,
+    antennaHeightAGL: 10,
+    coverageHeightKm: 6,
+    symbolColor: '#77ff7e', // Unity symbolColor = (0.466, 1, 0.494)
+    domeColor: '#77ff7e',
+    iconName: 'Radio',
+    wavelengthM: 2.0, // Sóng mét (VHF ~2m)
+    coverageProfile: {
+      id: 'prof_p18_terek_video',
+      name: 'Giản đồ P-18 Terek (tham chiếu video)',
+      minElevationDeg: 0,
+      maxElevationDeg: 70,
+      points: [
+        { elevationDeg: 0, maxRangeKm: 20 },
+        { elevationDeg: 70, maxRangeKm: 20 },
       ],
     },
   },

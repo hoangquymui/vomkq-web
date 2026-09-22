@@ -7,6 +7,8 @@ import {
   MapPin,
   BarChart3,
   HardDriveDownload,
+  Radio,
+  Sparkles,
   FolderKanban,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
@@ -30,6 +32,10 @@ export const TopBar: React.FC = () => {
     clearAll,
     setShowRadarFieldModal,
     setShowMapDownloadModal,
+    showSpxPanel,
+    toggleSpxPanel,
+    aiAdvisorPanelOpen,
+    toggleAiAdvisorPanel,
     setShowLayoutModal,
   } = useTacticalStore();
 
@@ -80,34 +86,60 @@ export const TopBar: React.FC = () => {
         <div className="flex rounded bg-slate-900 p-0.5 border border-slate-700">
           <button
             onClick={() => setViewMode('3D')}
-            className={`px-3 py-1 text-xs font-bold rounded transition-all ${
-              viewMode === '3D'
+            className={`px-3 py-1 text-xs font-bold rounded transition-all ${viewMode === '3D'
                 ? 'bg-cyan-600 text-white shadow-[0_0_8px_rgba(6,182,212,0.4)]'
                 : 'text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             3D
           </button>
           <button
             onClick={() => setViewMode('2D')}
-            className={`px-3 py-1 text-xs font-bold rounded transition-all ${
-              viewMode === '2D'
+            className={`px-3 py-1 text-xs font-bold rounded transition-all ${viewMode === '2D'
                 ? 'bg-cyan-600 text-white shadow-[0_0_8px_rgba(6,182,212,0.4)]'
                 : 'text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             2D
           </button>
         </div>
 
+        {/* Nút bật SPx Radar Coverage 2D (Cambridge Pixel) */}
+        <button
+          onClick={() => {
+            if (viewMode !== '2D') setViewMode('2D');
+            toggleSpxPanel();
+          }}
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded border transition-all ${showSpxPanel
+              ? 'bg-amber-950/85 text-amber-300 border-amber-500/70 shadow-[0_0_10px_rgba(245,158,11,0.35)]'
+              : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-amber-500/50 hover:text-amber-200'
+            }`}
+          title="Bật/Tắt: Bảng điều khiển mô phỏng vùng phủ radar SPx đa tầng độ cao (Cambridge Pixel)"
+        >
+          <Radio className={`w-3.5 h-3.5 ${showSpxPanel ? 'text-amber-400' : 'text-cyan-400'}`} />
+          <span>SPx Vùng Phủ 2D</span>
+        </button>
+
+        {/* Nút mở Cố vấn vị trí đặt khí tài bằng AI local (VECTOR AI) */}
+        <button
+          onClick={toggleAiAdvisorPanel}
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded border transition-all ${aiAdvisorPanelOpen
+              ? 'bg-violet-950/85 text-violet-300 border-violet-500/70 shadow-[0_0_10px_rgba(139,92,246,0.35)]'
+              : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-violet-500/50 hover:text-violet-200'
+            }`}
+          title="Bật/Tắt: Cố vấn vị trí đặt khí tài bằng VECTOR AI chạy local (127.0.0.1:8000)"
+        >
+          <Sparkles className={`w-3.5 h-3.5 ${aiAdvisorPanelOpen ? 'text-violet-300' : 'text-violet-400'}`} />
+          <span>AI Gợi ý</span>
+        </button>
+
         {/* Nút Chỉ Vùng Việt Nam / Toàn Cầu */}
         <button
           onClick={toggleVietnamOnly}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded border transition-all ${
-            vietnamOnly
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded border transition-all ${vietnamOnly
               ? 'bg-rose-950/85 text-rose-300 border-rose-500/60 shadow-[0_0_10px_rgba(244,63,94,0.3)]'
               : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
-          }`}
+            }`}
           title="Bật/Tắt: Cắt gọn chỉ hiển thị vùng lãnh thổ & hải đảo Việt Nam"
         >
           <span className="text-xs">🇻🇳</span>
@@ -176,11 +208,10 @@ export const TopBar: React.FC = () => {
         <button
           onClick={toggleDomes}
           title="Bật/Tắt Vòm Radar 3D"
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-all ${
-            showAllDomes
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-all ${showAllDomes
               ? 'bg-cyan-950/80 text-cyan-300 border-cyan-500/50'
               : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
-          }`}
+            }`}
         >
           <Layers className="w-3.5 h-3.5 text-cyan-400" />
           <span className="hidden lg:inline">Vòm 3D</span>
@@ -191,11 +222,10 @@ export const TopBar: React.FC = () => {
           onClick={() =>
             setActiveTool(activeTool === 'measure' ? 'select' : 'measure')
           }
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-all ${
-            activeTool === 'measure'
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded border transition-all ${activeTool === 'measure'
               ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
               : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
-          }`}
+            }`}
         >
           <Ruler className="w-3.5 h-3.5 text-emerald-400" />
           <span className="hidden lg:inline">Thước Đo</span>

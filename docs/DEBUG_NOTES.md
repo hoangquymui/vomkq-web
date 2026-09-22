@@ -790,3 +790,485 @@ $$\tan \theta_{target}(d) \ge \tan \theta_{mask}(d) \quad \text{và} \quad \tan 
   - Kiểm tra tĩnh `npx tsc -b` và `npm run lint`.
   - Kiểm tra tính toán cự ly đường cơ sở Fansipan - Ba Vì (~185 km).
 - **Kết luận**: Triển khai hoàn tất 100% các yêu cầu trong bảng kế hoạch `Cai_tien_hien_thi_S300PMU2_SpyderMR_KolchugaM_va_kien_truc_vu_khi_PKKQ.docx`. Không thực hiện git commit hoặc git push.
+
+---
+
+## [2026-09-19] Task A — Port "UI khí tài" (vòm phủ sóng radar 1 Primitive) từ vomkq-web sang vpk
+
+### Mục tiêu
+Mỗi khí tài radar khi đặt lên bản đồ phải hiển thị "vòm phủ sóng" là **MỘT `Cesium.Primitive`** duy nhất
+(lưới tam giác 96 phương vị × 12 vòng góc tà + nắp đỉnh kín) với vật liệu tuỳ biến `VomKQRadarDome`
+port từ shader Unity `Defense/RadarDome.shader`, cộng **1 polyline vòng chân đế** clamp mặt đất —
+thay cho cách render cũ (hàng chục–hàng trăm `Entity` cho mỗi vòm).
+
+Nguồn chân lý: `vomkq-web/docs/dome-video-match/README.md` (mục 3 công thức, mục 5 bộ tham số).
+
+### Files đã thay đổi (chỉ trong `vpk/`)
+| File | Thay đổi |
+|---|---|
+| `src/utils/radarDomeGeometry.ts` | **(mới)** port nguyên trạng từ vomkq-web; thêm 2 dòng ghi chú nguồn port |
+| `src/utils/radarDomeMaterial.ts` | **(mới)** port nguyên trạng (material `VomKQRadarDome` + ticker `u_time`) |
+| `src/types/equipment.ts` | thêm `domeColor?: string` vào `EquipmentTemplate` |
+| `src/data/equipmentTemplates.ts` | `radar_p18.domeColor = '#77ff7e'`; thêm template `radar_p18_terek` |
+| `src/store/useTacticalStore.ts` | `DOME_STYLE_DEFAULTS` + 11 tham số + 13 setter/toggle + `resetDomeStyleDefaults` |
+| `src/components/map/CesiumGlobe.tsx` | render vòm = 1 Primitive + footprint; bỏ 3 lớp entity vòm cũ; thêm vòng nón mù đỉnh đầu; quản lý vòng đời primitive/material |
+| `src/components/ui/RightInspector.tsx` | khối "Vòm phủ sóng (kiểu tham chiếu)" + nút "Khôi phục mặc định kiểu video" |
+| `src/main.tsx` | hook DEV `window.__vomkq` (chỉ bản dev) |
+| `docs/verify-dome-and-advisor.ts` | **(mới)** harness kiểm chứng runtime (Node) |
+
+### Thông số quan trọng (nguồn: `DOME_STYLE_DEFAULTS` — `src/store/useTacticalStore.ts`)
+| Tên biến | Type | Mặc định | Đơn vị | Khoảng | Nơi dùng |
+|---|---|---|---|---|---|
+| `domeAlpha` | number | 0.30 | - | 0.05–0.90 | `baseColor.withAlpha()` của material |
+| `domeAzimuthSegments` | number | 96 | phân đoạn | 32–192 | `buildRadarDomeGeometry({azimuthSegments})` |
+| `domeElevationRings` | number | 12 | vòng | 4–32 | `buildRadarDomeGeometry({elevationRings})` |
+| `domeRimColor` | string hex | `#fff232` | - | hex | uniform `u_rimColor` |
+| `domeRimPower` | number | 2.0 | - | 0.5–8 | uniform `u_rimPower` |
+| `domeScanLineCount` | number | 14 | dải | 1–40 | uniform `u_scanLineCount` |
+| `domeScanLineSpeed` | number | 0.6 | vòng/s (theo `u_time`) | −5…5 | uniform `u_scanLineSpeed` |
+| `domeScanLineAnimated` | boolean | true | - | - | ép `scanLineSpeed = 0` khi tắt |
+| `showDomeFootprint` | boolean | true | - | - | polyline 96 điểm clamp mặt đất |
+| `domeTerrainMasked` | boolean | false | - | - | `terrainMasked` -> cắt bán kính theo `visibleEndM` |
+| `domeColorOverride` | string \| null | null | - | hex \| null | màu vòm hiệu dụng |
+
+Màu vòm hiệu dụng: `domeColorOverride` → `template.domeColor` → `instance.color` (hàm `resolveDomeColorHex`).
+
+Hằng số hình học (`radarDomeGeometry.ts`): `DOME_DEFAULT_AZIMUTH_SEGMENTS = 96`,
+`DOME_DEFAULT_ELEVATION_RINGS = 12`, `DOME_FOOTPRINT_SEGMENTS = 96`, `DOME_MIN_RADIUS_M = 0.25`,
+`ELEVATION_SIN_THRESHOLD_DEG = 0.01`.
+
+### Công thức (nguyên trạng theo README mục 3)
+```
+Rprofile = getProfileMaxRange(profile, elev, instance.rangeKm) * 1000    [m]
+H        = max(1, coverageHeightKm * 1000)                               [m]
+elev <= 0.01° -> radius = Rprofile
+elev  > 0.01° -> radius = min(Rprofile, H / sin(elev))
+(tuỳ chọn)        radius = min(radius, visibleEndM(az, elev))            // domeTerrainMasked
+radius = max(0.25, radius)
+ENU: east = sin(az)·cos(elev)·radius ; north = cos(az)·cos(elev)·radius ; up = sin(elev)·radius
+```
+Shader (uniform Cesium): `rim = pow(1 - |dot(n,v)|, u_rimPower)`, `phase = fract(st.t·count − u_time·speed)`,
+`rgb = mix(base, rim, clamp(rim·0.9))`, `alpha = clamp(max(base.a, 0.14) + rim·0.42 + scan·0.08)`.
+Render state: `flat: true` (unlit), `cull: {enabled:false}`, `depthMask:false`, `ALPHA_BLEND`, `compressVertices:false`.
+
+### Thay đổi hành vi render (vpk đã tiến hoá khác vomkq-web — các tính năng này được GIỮ NGUYÊN)
+- Điều kiện vẽ vòm 3D giữ đúng gate của vpk: `viewMode === '3D' && showAllDomes && inst.showDome && safeRangeKm > 0 && showCoverageLayer`,
+  và vẫn nằm trong vòng lặp `visibleInstances` đã lọc theo `categoryFilter`.
+- Nhánh SPx 2D (`isSpxActive`) không đổi; `TacticalLayerControls`, `TacticalMapLegend`, `shortId`, `spxConfig` từng khí tài không đổi.
+- Vòm 2D: không vẽ Primitive (chỉ 3D), giữ nguyên hành vi ellipse 2D sẵn có của vpk.
+- Đã bỏ trong nhánh vòm 3D: `visibleEntities` dạng lưới quad/ellipsoid tạm, `coneOfSilenceEntities` dạng phễu.
+  Vòng nón mù đỉnh đầu nay là 1 polyline nét đứt vàng; vùng mù địa hình (mặc định tắt) dùng lại `blindEntities`.
+- Chống NaN: vòm dựng từ `domeInstance` đã sanitize `altitude`, `antennaHeightAGL`, `rangeKm`, `coverageHeightKm`
+  (NaN/≤0 -> mặc định an toàn) trước khi gọi `buildRadarDomeGeometry`.
+
+### Kỳ vọng vs Kết quả thực tế
+| Hạng mục | Kỳ vọng | Đo được |
+|---|---|---|
+| Lưới vòm (96×12 + nắp) | 1.249 đỉnh / 2.400 tam giác | **1.249 đỉnh / 2.400 tam giác / 7.200 index** (harness runtime) |
+| Toạ độ/normal/st | không có NaN/Inf | 0 giá trị không hữu hạn |
+| Bán kính đáy P-18 Terek (tầm 20 km, H 6 km, góc tà min 0°) | 20.000 m | **20.000 m** |
+| Đỉnh vòm | ≤ H = 6.000 m | **6.000 m** |
+| Số đối tượng vòm | 1 Primitive + 1 polyline footprint | chưa xác minh trực quan trên scene (xem mục "Chưa xác minh") |
+
+### Cách kiểm tra
+```bash
+cd vpk
+npx tsc --noEmit          # exit 0
+npx tsc -b                # exit 0
+# Harness runtime cho hình học vòm + parser cố vấn (không thuộc app, chạy bằng Node):
+npx esbuild docs/verify-dome-and-advisor.ts --bundle --platform=node --format=esm \
+  --external:cesium --outfile=docs/.verify-dome.mjs && node docs/.verify-dome.mjs
+# Kiểm tra thủ công: npm run dev -> chọn 1 radar -> xem panel "Vòm phủ sóng (kiểu tham chiếu)"
+```
+Kết quả harness (2026-09-19): `ALL CHECKS PASSED` (29/29), exit code 0.
+
+Kiểm chứng thêm vật liệu `VomKQRadarDome` (chạy bằng Node + shim DOM tối thiểu vì Node thiếu
+`HTMLCanvasElement`/`ImageBitmap` mà `Cesium.Material.getUniformType` cần):
+```
+material.type      = VomKQRadarDome
+u_baseColor        = (0.4667, 1, 0.4941, 0.3)   <- #77ff7e alpha 0.30
+u_rimColor         = (1, 0.9490, 0.1961, 1)      <- #fff232
+u_rimPower / count / speed = 2 / 14 / 0.6
+updateRadarDomeMaterials(12.5) -> u_time = 12.5
+resolveDomeColorHex: override > template > instance = '#ff0000' > '#77ff7e' > '#0ea5e9'
+```
+Các giá trị này trùng khớp README mục 10.3 của bản tham chiếu.
+
+### Kết luận
+Port hoàn tất phần mã nguồn và toán học; đã xác nhận bằng kiểm tra kiểu tĩnh + harness runtime.
+Việc quan sát vòm trên scene 3D (đếm Primitive/Entity, màu, dải quét) **chưa được xác minh trực quan**
+trong phiên này (không chạy trình duyệt tự động) — cần người dùng kiểm tra theo các bước ở trên.
+
+---
+
+## [2026-09-19] Task B — Tích hợp VECTOR AI local thành "cố vấn vị trí đặt khí tài"
+
+### Mục tiêu
+Khi đặt khí tài, AI chạy local chỉ ra các tuyến/vị trí khả thi để đặt khí tài, hiển thị trên bản đồ;
+backend không chạy thì app vẫn dùng bình thường và báo đúng trạng thái offline.
+
+### Files đã thay đổi (chỉ trong `vpk/`)
+| File | Thay đổi |
+|---|---|
+| `vite.config.ts` | `server.proxy['/vector-ai'] -> http://127.0.0.1:8000` (rewrite bỏ tiền tố) |
+| `src/services/vectorAiClient.ts` | **(mới)** health / models / hỏi model + ghép SSE, lỗi có kiểu, có timeout |
+| `src/utils/aiPlacementAdvisor.ts` | **(mới)** dựng prompt + parse JSON an toàn + ô nhớ tâm camera |
+| `src/utils/equipmentFactory.ts` | **(mới)** `createEquipmentFromTemplate` dùng chung cho đặt bằng chuột và đặt tại gợi ý |
+| `src/store/useTacticalStore.ts` | state/action cố vấn; `placeEquipmentAtSuggestion` tái dùng `addEquipment` |
+| `src/components/map/CesiumGlobe.tsx` | render marker gợi ý + nhãn điểm số + polyline tuyến nét đứt cyan; ghi tâm camera |
+| `src/components/ui/AiPlacementAdvisorPanel.tsx` | **(mới)** panel cố vấn |
+| `src/components/ui/TopBar.tsx` | nút "AI Gợi ý" |
+| `src/App.tsx` | gắn panel |
+| `docs/verify-vector-ai-client.ts` | **(mới)** harness kiểm chứng client bằng HTTP/SSE server giả |
+
+### Thông số quan trọng
+| Tên | Type | Mặc định | Đơn vị | Nơi khai báo | Ý nghĩa |
+|---|---|---|---|---|---|
+| `VECTOR_AI_BASE_URL` | string | `/vector-ai` | - | `vectorAiClient.ts` | override bằng `VITE_VECTOR_AI_URL` |
+| `VECTOR_AI_HEALTH_TIMEOUT_MS` | number | 3000 | ms | `vectorAiClient.ts` | timeout health |
+| `VECTOR_AI_MODELS_TIMEOUT_MS` | number | 5000 | ms | `vectorAiClient.ts` | timeout danh sách model / tạo run |
+| `VECTOR_AI_ASK_TIMEOUT_MS` | number | 120000 | ms | `vectorAiClient.ts` | timeout toàn bộ lượt hỏi model |
+| `ADVISOR_RADIUS_MIN_KM` / `MAX_KM` | number | 15 / 400 | km | `aiPlacementAdvisor.ts` | kẹp bán kính vùng quan tâm |
+| `ADVISOR_RADIUS_HEIGHT_FACTOR` | number | 0.8 | - | `aiPlacementAdvisor.ts` | **giả định**: bán kính = 0.8 × độ cao camera |
+| `mode` gửi backend | string | `'NORMAL'` | - | `vectorAiClient.askVectorAi` | đúng `ReasoningMode.NORMAL` |
+| `scope` gửi backend | object | `{builtin:true}` | - | `vectorAiClient.askVectorAi` | chỉ dùng tri thức gốc |
+| `score` gợi ý | number | chuẩn hoá [0,1] | - | `parsePlacementAdvice` | **giả định**: model có thể trả thang 0..1 hoặc 0..100 -> >1 thì chia 100 |
+| `altitude` khi đặt tại gợi ý | number | 0 | m (ASL) | `placeEquipmentAtSuggestion` | **giả định**: gợi ý chỉ có lat/lon, cao độ DEM do người dùng chỉnh sau |
+
+### Luồng dữ liệu
+```
+TopBar "AI Gợi ý" -> AiPlacementAdvisorPanel (chọn model + khí tài)
+ -> store.runAiPlacementAnalysis(model)
+    -> checkVectorAiHealth()                              GET  /vector-ai/api/v1/health
+    -> buildPlacementMessages(context)                    (state -> prompt)
+    -> askVectorAi()                                      POST /vector-ai/api/v1/runs -> {run_id}
+                                                          GET  /vector-ai/api/v1/runs/{id}/events (SSE)
+    -> parsePlacementAdvice(text)                         JSON -> suggestions/route đã kiểm tra
+ -> store.aiAdvisorSuggestions / aiAdvisorRoute
+ -> CesiumGlobe effect 6: marker + nhãn điểm + polyline nét đứt cyan
+ -> "Đặt tại đây" -> store.placeEquipmentAtSuggestion -> addEquipment (action sẵn có)
+```
+Chú ý: backend đóng gói nội dung ở `data.content` / `data.final_content` (do `RunEvent.to_dict()`);
+client đọc cả dạng lồng `data` lẫn dạng phẳng.
+
+### Lỗi & cách xử lý
+1. **CORS**: backend chỉ cho origin `http://127.0.0.1:3000` và `http://localhost:1420` (`api.py` dòng 119).
+   Client dùng đường dẫn tương đối `/vector-ai` qua Vite dev proxy -> cùng origin, không dính CORS.
+2. **Bug đã tìm thấy và sửa nhờ harness**: bản đầu `extractDeltaContent`/`extractFinalContent` chỉ đọc
+   `payload.content` / `payload.final_content` ở cấp cao nhất, trong khi backend lồng trong `payload.data`
+   -> SSE trả về "không có nội dung nào". Đã sửa để đọc cả hai dạng; harness chuyển từ FAIL sang PASS.
+3. **Backend không chạy**: Vite proxy log `http proxy error ... connect ECONNREFUSED 127.0.0.1:8000`.
+   Client có timeout riêng nên UI không treo; `checkVectorAiHealth` coi cả `offline` lẫn `timeout` là offline,
+   panel hiển thị "VECTOR AI chưa kết nối (127.0.0.1:8000)".
+
+### Cách kiểm tra
+```bash
+cd vpk
+npx tsc --noEmit && npx tsc -b          # cả hai exit 0
+# Harness client với HTTP/SSE server giả (không cần backend thật):
+npx esbuild docs/verify-vector-ai-client.ts --bundle --platform=node --format=esm \
+  --define:import.meta.env='{"VITE_VECTOR_AI_URL":"http://127.0.0.1:8765"}' \
+  --outfile=docs/.verify-ai-client.mjs && node docs/.verify-ai-client.mjs
+# Kiểm tra thủ công (A): npm run dev -> chọn radar -> panel "Vòm phủ sóng"
+# Kiểm tra thủ công (B): khởi động backend VECTOR AI rồi bấm "AI Gợi ý" -> "Phân tích"
+```
+Kết quả harness client (2026-09-19): `ALL CHECKS PASSED` (8/8), exit code 0.
+
+### Kết luận
+Đã xác nhận: kiểu tĩnh 0 lỗi; client xử lý đúng health/models/SSE (ghép delta, ưu tiên `final_content`,
+event error có kiểu); parser JSON an toàn (loại trùng, kẹp biên, mảng rỗng, JSON hỏng);
+proxy `/vector-ai` được Vite nạp và báo ECONNREFUSED khi backend tắt.
+**Chưa xác minh**: gọi backend VECTOR AI thật (chưa khởi động Ollama/model local) và quan sát
+marker/tuyến trên bản đồ bằng trình duyệt.
+
+
+---
+
+## [2026-09-20] Task C — Không còn trắng trang im lặng khi WebGL không khả dụng (error boundary cho khối bản đồ 3D)
+
+### Triệu chứng người dùng báo
+Chạy `npm run dev` trong `vpk/` (Vite báo ready ở `http://localhost:3000/`) nhưng vùng trang web **trắng trơn**,
+không có bất kỳ thông báo lỗi nào trên giao diện.
+
+### Nguyên nhân
+`new Cesium.Viewer(...)` được gọi trong `useEffect` mount của `src/components/map/CesiumGlobe.tsx` (effect 1).
+Khi trình duyệt/webview không cấp được WebGL context, Cesium ném:
+
+```
+RuntimeError: The browser supports WebGL, but initialization failed.
+  at getWebGLContext (cesium.js)
+  at new CesiumWidget (cesium.js)
+  at new Viewer (cesium.js)
+  at src/components/map/CesiumGlobe.tsx (effect mount)
+  at commitHookEffectListMount (react-dom_client.js)
+```
+
+React 19 **không có error boundary mặc định**, nên lỗi ở pha commit (mount effect) làm gỡ toàn bộ cây component
+của app -> trang trắng hoàn toàn, người dùng không biết lý do.
+
+### Input
+- Trình duyệt/webview **không cấp được WebGL context** (ví dụ Chrome headless chạy với `--disable-webgl`,
+  webview của IDE thiếu GPU acceleration, đã tắt tăng tốc phần cứng, driver GPU lỗi).
+- App đang mount bình thường: `App` -> `CesiumGlobe` (không có ancestor nào bắt lỗi).
+
+### Processing
+1. `CesiumGlobe` mount -> `useEffect` gọi `new Cesium.Viewer(containerRef.current, {...})`.
+2. Bên trong Cesium: `new Viewer` -> `new CesiumWidget` -> `getWebGLContext(...)` ném `RuntimeError`.
+3. React bọc phần chạy effect trong `try/catch` tại `commitHookEffectListMount` rồi gọi
+   `captureCommitPhaseError(finishedWork, finishedWork.return, error)`
+   (`node_modules/react-dom/cjs/react-dom-client.development.js`, catch ở dòng ~13791, hàm ở dòng ~20217).
+4. Vì không có ancestor nào có `getDerivedStateFromError`, React đẩy lỗi lên root -> unmount toàn bộ cây.
+5. **Khắc phục**: thêm class component `MapErrorBoundary` (`getDerivedStateFromError` + `componentDidCatch`)
+   bọc `<CesiumGlobe />` trong `src/App.tsx`. Khi lỗi, `captureCommitPhaseError` gặp ancestor tag 1 (ClassComponent)
+   có `getDerivedStateFromError` -> enqueue `createClassErrorUpdate(2)` -> boundary render fallback thay cho khối bản đồ.
+   React chỉ gỡ subtree bên trong boundary; các component anh em (TopBar, LeftSidebar, RightInspector, các panel)
+   giữ nguyên trạng thái mount và tiếp tục dùng được.
+
+### Output
+- Không còn trang trắng: `#root` giữ nguyên cây UI, chỉ vùng bản đồ thay bằng thông báo tiếng Việt.
+- Thông báo nêu nguyên nhân (WebGL không khả dụng / webview của IDE), 5 bước khắc phục, mã lỗi gốc (`name` + `message`)
+  và nút **"Tải lại trang"** (`window.location.reload()`).
+- Lỗi gốc **không bị nuốt**: `componentDidCatch` gọi `console.error("[MapErrorBoundary] ...", error, errorInfo.componentStack)`.
+
+### Giá trị quan trọng gây lỗi (đo được khi tái hiện)
+| Giá trị | Khi WebGL không khả dụng | Đối chứng khi WebGL khả dụng |
+|---|---|---|
+| `document.getElementById("root").children.length` | **0** | 1 |
+| `document.body.innerHTML.length` | **87** | ~75.000 |
+| `<canvas>` trong DOM | không có | có |
+| exception ghi nhận | `RuntimeError: initialization failed` | 0 |
+
+Điều kiện tái hiện: cùng URL `http://localhost:3000/`, chỉ khác khả năng cấp WebGL context của trình duyệt.
+
+### Files đã thay đổi (chỉ trong `vpk/`)
+| File | Thay đổi |
+|---|---|
+| `src/components/map/MapErrorBoundary.tsx` | **(mới)** class error boundary + fallback UI + nút tải lại trang |
+| `src/App.tsx` | import `MapErrorBoundary` và bọc `<CesiumGlobe />` (thêm 1 cấp component, **không** thêm DOM wrapper) |
+
+Không sửa logic bên trong `CesiumGlobe.tsx`, không đổi state/store, không đổi tên component/API sẵn có,
+không thêm thư viện mới (icon `TriangleAlert`, `RefreshCw` lấy từ `lucide-react` đã có).
+
+### Cách kiểm tra
+```bash
+cd vpk
+npx tsc --noEmit                                   # kỳ vọng exit 0
+npx oxlint src/components/map/MapErrorBoundary.tsx src/App.tsx   # kỳ vọng 0 error
+# Kiểm chứng runtime (do AutoCoder chạy sau): mở Chrome headless với --disable-webgl,
+# tải http://localhost:3000/ -> kỳ vọng thấy thông báo + nút "Tải lại trang", KHÔNG còn trang trắng.
+```
+Kết quả chạy trong phiên này:
+- `npx tsc --noEmit` -> exit code **0** (không có output).
+- `npx oxlint src/components/map/MapErrorBoundary.tsx src/App.tsx` -> `Found 0 warnings and 0 errors.`, exit code **0**.
+
+### Chưa xác minh
+- **Chưa kiểm chứng runtime trên trình duyệt** trong phiên này: không chạy Chrome headless `--disable-webgl`
+  (theo yêu cầu, bước này do AutoCoder thực hiện sau).
+- Chưa xác minh được qua dev server đang chạy: shell của agent không kết nối được ra ngoài
+  (`curl http://localhost:3000/...` trả HTTP 000; `netstat` cho thấy Vite đang listen `[::1]:3000`),
+  nên không có bằng chứng transform module qua Vite — chỉ có bằng chứng tĩnh (tsc + oxlint).
+- Việc Cesium có để lại DOM/GPU resource dở dang trong `containerRef` khi constructor ném lỗi hay không
+  chưa được đo; React vẫn gỡ subtree lỗi nên phần DOM do React tạo bị xoá cùng container.
+
+### Kết luận
+Đã sửa xong ở mức mã nguồn: lỗi khởi tạo WebGL của Cesium giờ bị chặn tại `MapErrorBoundary` thay vì làm sập
+toàn bộ app; UI còn lại giữ nguyên và người dùng nhận được thông báo + hướng khắc phục rõ ràng.
+Kiểm chứng runtime trong trình duyệt **chưa được thực hiện** (xem mục "Chưa xác minh").
+
+---
+
+## [2026-09-20] Sửa dev server bị kẹt khi quét kho bản đồ offline
+
+### Triệu chứng và bằng chứng trước khi sửa
+- `npm run dev` báo ready tại `http://localhost:3000/`, nhưng trang trắng hoặc trình duyệt tải mãi.
+- Tiến trình Vite nhận kết nối TCP, nhưng `GET /` hết thời gian chờ sau 15 giây, nhận **0 byte**.
+- `public/` hiện có **142.357 tệp**. Các thư mục `offline-satellite`, `offline-terrain`,
+  `offline-topo` là dữ liệu bản đồ, không phải nguồn HTML/JSX để tìm class CSS.
+- Dev server cũ dùng khoảng 2–3 GB RAM; build thử trước khi sửa tăng tới khoảng 4 GB và
+  chưa hoàn tất bước transform. Tắt riêng plugin Tailwind trong server đối chứng vẫn chưa
+  đủ để HTTP phản hồi, nên cần kiểm tra cả phạm vi quét/theo dõi tệp của Vite.
+- Server đối chứng giới hạn `optimizeDeps.entries` vào `index.html` và bỏ theo dõi
+  `public/offline-*` trả HTML trong khoảng **0,070 giây**, nhưng `GET /src/index.css`
+  vẫn hết thời gian chờ 5 giây khi giữ cấu hình Tailwind cũ.
+
+### Nguyên nhân và luồng xử lý
+- **Input:** khởi động Vite với kho bản đồ offline lớn nằm trong cùng dự án, sau đó mở trang.
+- **Processing:** Vite tìm entry/theo dõi tệp với phạm vi mặc định; `@import "tailwindcss"`
+  cũng bật tự động tìm nguồn từ thư mục dự án. Kho tệp offline khiến công việc quét quá lớn,
+  chặn quá trình phục vụ trang và sinh CSS. Thử đối chứng ở trên xác định được cả hai bước.
+- **Output trước sửa:** kết nối HTTP treo, ứng dụng chưa nạp đủ tài nguyên để render.
+- Lỗi quan sát ở lần kiểm tra này xảy ra phía dev server, trước khi xác định được trạng thái
+  WebGL. Error boundary đã thêm ở mục trước không xử lý được HTTP/CSS đang bị kẹt.
+
+### Thay đổi và thông số
+| File / thông số | Trước | Sau | Ý nghĩa |
+|---|---|---|---|
+| `src/index.css` / Tailwind source | Tự động tìm từ thư mục dự án | `source(none)`, `@source "./"`, `@source "../index.html"` | Chỉ quét `src/` và HTML đầu vào; đường dẫn tương đối với file CSS |
+| `vite.config.ts` / `optimizeDeps.entries` (`string[]`) | Tự tìm entry | `['index.html']` | Một entry HTML của ứng dụng, tính từ root Vite |
+| `vite.config.ts` / `server.watch.ignored` (`string[]`) | Không loại kho tile | `['**/public/offline-*/**']` | Không tạo watcher HMR cho kho tile; vẫn phục vụ tệp tĩnh bình thường |
+
+Không đổi công thức, dữ liệu bản đồ, logic ứng dụng hay proxy AI đã có.
+Nguồn cú pháp Tailwind: [Detecting classes in source files](https://tailwindcss.com/docs/detecting-classes-in-source-files#disabling-automatic-detection).
+
+### Xác minh sau sửa
+- Khởi động lại tiến trình Vite của dự án tại cổng 3000: ready trong **1.992 ms**.
+- `GET /`: **HTTP 200**, 0,0035 giây.
+- `GET /src/index.css`: **HTTP 200**, 0,0056 giây.
+- `GET /src/main.tsx`: **HTTP 200**, 0,0043 giây.
+- `GET /offline-pack-info.json`: **HTTP 200**, 0,0083 giây.
+- Scanner giới hạn nguồn: **38 tệp**, 2.175 ứng viên class; không có tệp trong `public/`.
+  CSS phục vụ có các class `bg-slate-950`, `w-screen`, `h-screen`, `text-slate-100`.
+  `GET /offline-terrain/layer.json` vẫn trả **HTTP 200**.
+- Đối chứng thêm sau sửa: giữ entry/CSS mới nhưng bật watcher mặc định trên cổng 3002
+  làm cả HTML và CSS lại hết thời gian chờ 5 giây. Đã dừng server đối chứng này;
+  server chính cổng 3000 tiếp tục chạy với cấu hình đã sửa.
+- Vite nhận được log từ client ở bước dựng hình Cesium: cảnh báo outline/heightReference,
+  chứng minh trình duyệt đã nạp và chạy đến phần bản đồ. Các cảnh báo này không phải HTTP bị treo.
+- `git diff --check`: đạt. Các thay đổi có sẵn trong worktree được giữ nguyên.
+- `npm run build` (`tsc -b && vite build`): **exit 0**, 1.901 module; CSS 84,63 kB,
+  JS 452,22 kB. Tổng khoảng 4 phút 59 giây, trong đó `vite:prepare-out-dir`
+  mất 297,4 giây để chuẩn bị đầu ra/sao chép kho `public/`, không còn kẹt transform CSS.
+- Kiểm tra HTTP cuối cùng cho HTML, CSS, entry JS và terrain metadata: cả 4 đều
+  **HTTP 200**, tổng thời gian 187 ms. Dev server cổng 3000 được để chạy.
+- Không xác nhận được ảnh giao diện trực tiếp: kết nối Browser Use không có browser khả dụng,
+  và Computer Use báo native pipe không tồn tại. Kiểm tra HTTP và log client là bằng chứng runtime
+  trong lần sửa này, không phải kiểm tra toàn bộ thao tác tương tác bản đồ.
+
+### Lưu ý vận hành
+Vite lưu danh sách tệp `public/` khi khởi động. Vì không còn theo dõi kho offline,
+sau khi tải thêm hoặc xóa tile bằng các script download trong một phiên dev,
+cần khởi động lại `npm run dev` để cập nhật danh sách tệp tĩnh. Tile đã tồn tại lúc
+khởi động vẫn được phục vụ bình thường; việc build vẫn sao chép toàn bộ dữ liệu offline.
+
+## 7. Khắc phục cảnh báo / lỗi biên dịch TS6133 tại App.tsx
+
+### Mô tả nguyên nhân
+Trình biên dịch TypeScript và linter báo lỗi `error TS6133: 'useTacticalStore' is declared but its value is never read.` tại `src/App.tsx:16`.
+- **Căn nguyên**: File cấu hình `tsconfig.app.json` thiết lập `"noUnusedLocals": true`. Trong các bản cập nhật giao diện trước đó, logic khởi tạo kịch bản (`loadSampleScenario()`) trong `useEffect` của `App.tsx` đã được lược bỏ, và các component con tự kết nối trực tiếp đến store. Dòng `import { useTacticalStore } from "./store/useTacticalStore";` vẫn còn tồn đọng trong `src/App.tsx` mà không có bất kỳ lệnh gọi hay tham chiếu nào trong component `App`.
+- **Input**: `src/App.tsx` chứa dòng 16 `import { useTacticalStore } from "./store/useTacticalStore";`.
+- **Processing**: Loại bỏ dòng import không dùng `useTacticalStore` khỏi `src/App.tsx`.
+- **Output**: `src/App.tsx` không còn import thừa; loại bỏ triệt để cảnh báo/lỗi TS6133.
+- **Giá trị quan trọng gây lỗi**: Mã lỗi TypeScript `TS6133` do cấu hình `"noUnusedLocals": true`.
+- **Xác minh**: Chạy `npx tsc --noEmit --project tsconfig.app.json`, xác nhận `src/App.tsx` hoàn toàn không còn bất kỳ lỗi nào.
+
+## 8. Cải tiến Vòm Radar 3D: Single Source of Truth Detection Volume Engine
+
+### 8.1. Tổng quan tính năng
+Triển khai hệ thống mô hình hoá Vòm Radar 3D (Detection Volume) theo tài liệu chuyên ngành:
+- `Ke_Hoach_Cai_Tien_Vom_Radar_3D.docx` (Kế hoạch cải tiến Vòm Radar 3D)
+- `Kien_thuc_chuyen_nganh_Radar_trang_454_482.docx` (Kiến thức chuyên ngành Radar - Độ cong Trái Đất, Khúc xạ, Che khuất, Vùng mù đỉnh đầu)
+
+Hệ thống xây dựng ma trận dữ liệu trung gian chuẩn hoá:
+`Trục Độ cao (Altitude Bands) × Trục Phương vị (Azimuth Samples) × Trạng thái Khả kiến (Visibility State)`
+làm **Single Source of Truth** dùng chung cho Vòm 3D Mesh, Mặt cắt đứng 2D và Phân tích kiểm tra tác chiến. Chế độ 2D SPx Cambridge Pixel được bảo toàn tuyệt đối không thay đổi.
+
+### 8.2. Bảng thông số kỹ thuật quan trọng
+
+| Tên biến | Type | Giá trị mặc định | Đơn vị | Phạm vi | Nơi khai báo / Nơi sử dụng | Ý nghĩa & Nguồn gốc |
+|---|---|---|---|---|---|---|
+| `altitudeBands` | `number[]` | `[100, 300, 500, 1k, ... 30k]` | mét (m) | `[50, 50000]` | `radarVolumeEngine.ts` / Toàn bộ engine | Danh sách các tầng độ cao khảo sát, kết hợp từ `altitudeDetectionTable` của khí tài và các tầng chuẩn PK |
+| `azimuthSamples` | `number[]` | `[0, 5, 10, ... 355]` (72 hướng) | độ (°) | `[0, 359]` | `radarVolumeEngine.ts` / Toàn bộ engine | Các hướng phương vị lấy mẫu bề mặt vòm 3D (bước nhảy `azimuthStepDeg = 5°`) |
+| `nominalRanges` | `number[][]` | Ma trận `numBands × numAz` | mét (m) | `[1000, 500000]` | `radarVolumeEngine.ts` / Geometry & Store | Cự ly danh nghĩa lý thuyết tại từng tầng cao và từng hướng trước khi chịu tác động của địa hình |
+| `effectiveRanges` | `number[][]` | Ma trận `numBands × numAz` | mét (m) | `[0, nominalRange]` | `radarVolumeEngine.ts` / Geometry & Store | Cự ly hiệu dụng thực tế sau khi bị chướng ngại vật địa hình (DEM) cắt xén |
+| `innerConeRadii` | `number[]` | Mảng theo `altitudeBands` | mét (m) | `[0, maxRange]` | `radarVolumeEngine.ts` / Geometry & Footprint | Bán kính nón mù đỉnh đầu $R_{kh} = \Delta H \cdot \cot(\varepsilon_{max})$ tại từng tầng cao |
+| `radarCenterAltM` | `number` | `altitude + antennaHeightAGL` | mét (m) | `[0, 10000]` | `radarVolumeEngine.ts` | Cao độ tâm bức xạ anten so với mực nước biển (MSL) |
+| `dome3DMode` | `'nominal' \| 'terrain-aware'` | `'terrain-aware'` | Enum | `'nominal'`, `'terrain-aware'` | `useTacticalStore.ts` / `CesiumGlobe.tsx` / `RightInspector.tsx` | Chế độ hiển thị vòm 3D: Danh nghĩa (lý thuyết phẳng) hoặc Cắt địa hình thực tế (LOS) |
+| `selectedAltitudeM` | `number` | `1000` | mét (m) | `[50, 35000]` | `useTacticalStore.ts` / `RightInspector.tsx` | Tầng độ cao đang được chọn để khảo sát nhanh trên bảng điều khiển |
+
+### 8.3. Công thức toán học và nguyên lý vật lý
+
+1. **Giới hạn cự ly đường chân trời quang học / vô tuyến ($k = 4/3$ chuẩn khí quyển quân sự)**:
+   $$D_{nt} = 4.12 \times \left(\sqrt{h_a} + \sqrt{H_{mt}}\right) \times \sqrt{\frac{k}{4/3}} \quad (\text{km})$$
+   với $h_a$ là độ cao tháp anten (m), $H_{mt}$ là độ cao mục tiêu bay (m).
+
+2. **Giới hạn bởi mép dưới cánh sóng radar ($\varepsilon_{min}$)**:
+   Tại cự ly $D$, độ cao mép dưới cánh sóng:
+   $$H_{beam}(D) = h_a + D \cdot \tan(\varepsilon_{min}) + \frac{D^2}{2 k R_E}$$
+   Mục tiêu chỉ nằm trong trường phủ sóng khi $H_{beam}(D) \le H_{mt} \implies D \le \frac{H_{mt} - h_a}{\tan(\varepsilon_{min})}$.
+
+3. **Bán kính nón mù đỉnh đầu (Cone of Silence)**:
+   $$R_{kh} = \Delta H \cdot \cot(\varepsilon_{max}) = \max(0, H_{mt} - H_{radar}) \cdot \frac{1}{\tan(\varepsilon_{max})}$$
+
+4. **Độ phồng Trái Đất (Earth Bulge) & Góc chắn địa hình cực đại**:
+   $$\Delta h(s) = \frac{s^2}{2 k R_E}$$
+   $$\tan \theta_{mask} = \max_{0 < s \le d} \left( \frac{h_{terrain}(s) - H_{radar} + \Delta h(s)}{s} \right)$$
+   Mục tiêu bị che khuất khi $\tan \theta_{target} < \tan \theta_{mask}$.
+
+5. **Toạ độ đỉnh GPU Double Precision (Local ENU)**:
+   Anten radar làm gốc toạ độ $O(0, 0, 0)$:
+   $$X = R_{eff} \cdot \sin(\text{Azimuth})$$
+   $$Y = R_{eff} \cdot \cos(\text{Azimuth})$$
+   $$Z = \max(0, H_{mt} - H_{radar})$$
+   Cesium `GeometryInstance` đặt `modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(radarCartesian)`, GPU tự động khử rung giật số thực ở cự ly hàng trăm kilômét nhờ phân tách High/Low precision.
+
+### 8.4. Lỗi phát sinh & Quá trình sửa chữa trong quá trình triển khai
+
+1. **Lỗi `ReferenceError: radarAltM is not defined`**:
+   - *Nguyên nhân*: Trong `radarVolumeEngine.ts`, biến lưu cao độ anten được đặt tên là `radarCenterAltM` (dòng 175), nhưng ở dòng 194 khi tính `innerConeRadii` lại tham chiếu nhầm tên `radarAltM`.
+   - *Khắc phục*: Thay đổi thành `const deltaH = Math.max(0, altM - radarCenterAltM);`.
+2. **Lỗi tính cự ly danh nghĩa tại độ cao thấp ($H_{mt} < 1000\text{m}$)**:
+   - *Nguyên nhân*: Hàm `calculateNominalRangeAtAltitude` trước đây dùng cự ly ước lượng cố định `maxRangeM * 0.7 = 210km` để tính góc tà $\arcsin(\Delta H / D_{est})$, khiến góc tà rơi xuống $0.02^\circ < \varepsilon_{min} = 0.5^\circ$, dẫn đến việc `getProfileMaxRange` ngắt toàn bộ cự ly về 1km.
+   - *Khắc phục*: Thay bằng thuật toán vật lý kết hợp: giới hạn đường chân trời $D_{nt}$ và góc quét tối thiểu $\Delta H / \tan(\varepsilon_{min})$, giúp cự ly tại 100m đạt 8.59km, 1000m đạt 111.72km, và 10km đạt 290.41km, tăng đơn điệu chính xác.
+3. **Lỗi Type TS2739 trên Cesium `GeometryAttributes`**:
+   - *Nguyên nhân*: Trong `radarVolumeGeometry.ts`, khai báo object literal `{ position, normal, st }` thiếu các thuộc tính tùy chọn `tangent`, `bitangent`, `color` của Cesium interface.
+   - *Khắc phục*: Khởi tạo bằng `const attributes = new Cesium.GeometryAttributes();` rồi gán từng thuộc tính tương tự như `radarDomeGeometry.ts`.
+4. **Lỗi thuộc tính không khớp giữa `RadarCoverageVolume` và UI**:
+   - *Nguyên nhân*: Trong `RightInspector.tsx`, truy cập các trường cũ như `nominalRangeM` thay vì `nominalRangeKm`, `avgEffectiveRangeM` thay vì `averageEffectiveRangeKm`, `totalAzimuths` thay vì `azimuthSamples.length`.
+   - *Khắc phục*: Đồng bộ hoá 100% với `AltitudeBandInfo` và `RadarCoverageVolume` trong `src/types/radarVolume.ts`.
+
+### 8.5. Kết quả xác minh
+- **Biên dịch TypeScript**: `npx tsc -b` hoàn thành với mã thoát 0 (0 error).
+- **Linter**: `oxlint` chạy trên 48 files, 0 errors.
+- **Kiểm thử tự động logic toán học**: Script `verify_radar_volume.ts` chạy qua `npx tsx` đạt **100%** trên 8 hạng mục kiểm thử:
+  1. Trích xuất tầng cao đơn điệu: ĐẠT.
+  2. Cự ly danh nghĩa đường chân trời: ĐẠT.
+  3. Ma trận Altitude × Azimuth (13 × 72 = 936 cells): ĐẠT.
+  4. Bán kính nón mù đỉnh đầu khớp công thức $H \cdot \cot(\varepsilon_{max})$: ĐẠT (50.27 km tại 30km).
+  5. Dựng lưới Mesh Danh Nghĩa (1872 đỉnh, 3744 tam giác, pháp tuyến chuẩn hoá len = 1.0): ĐẠT.
+  6. Dựng lưới Mesh Cắt Địa Hình (1872 đỉnh, 3744 tam giác): ĐẠT.
+  7. Cesium GeometryInstance GPU Double Precision: ĐẠT.
+  8. Cache key và Invalidation: ĐẠT.
+
+---
+
+## 9. Khắc phục lỗi Type Narrowing Discriminated Union & Strict Mode (Vector AI & Tactical Store)
+
+### 9.1. Mô tả nguyên nhân (Root Cause)
+- **Nguyên nhân chính**: Trong cấu hình `tsconfig.app.json`, tuỳ chọn `"strict": true` chưa được bật. Khi không có chế độ nghiêm ngặt (`strictNullChecks: false`), trình kiểm tra kiểu TypeScript hạ cấp kiểu literal boolean `true` / `false` thành kiểu tổng quát `boolean`. Do đó, biểu thức kiểm tra `if (!result.ok)` không thể thu hẹp (narrow) kiểu Discriminated Union `{ ok: true; value: T } | { ok: false; error: VectorAiError }`.
+- **Hệ quả**:
+  1. Trong `src/services/vectorAiClient.ts` (dòng 172, 217, 248, 385): Khi lệnh `return fetched;`, `return health;`, `return result;`, `return startFetched;` được gọi bên trong nhánh `if (!xxx.ok)`, TypeScript không loại bỏ được nhánh `{ ok: true }`, dẫn đến lỗi không tương thích kiểu (mismatched return type, thiếu `value`, hoặc `VectorAiResult<VectorAiHealth>` không gán được cho `VectorAiResult<void>`).
+  2. Trong `src/store/useTacticalStore.ts` (dòng 603, 606, 648, 649, 657): Khi truy cập `health.error`, `answer.error` hoặc `parsed.message`, do biến không được thu hẹp, TypeScript báo lỗi `Property 'error' does not exist on type '{ ok: true; value: ... }'`.
+  3. Trong `src/components/ui/AiPlacementAdvisorPanel.tsx` (dòng 89): Lệnh `const result = started.ok ? await listVectorAiModels() : started;` gộp kiểu của `VectorAiResult<void>` và `VectorAiResult<string[]>`, dẫn đến `result.value` có kiểu `void | string[]`, gây lỗi truy cập mảng ở các dòng sau.
+
+### 9.2. Chi tiết Input - Processing - Output
+
+1. **Vấn đề cấu hình TypeScript (`tsconfig.app.json`)**:
+   - **Input**: `tsconfig.app.json` chỉ có các tuỳ chọn linting `noUnusedLocals`, `noUnusedParameters`, thiếu `"strict": true`.
+   - **Processing**: Bổ sung `"strict": true` vào nhóm cấu hình `compilerOptions`.
+   - **Output**: Kích hoạt `strictNullChecks`, cho phép TypeScript phân biệt chính xác các nhánh discriminated union với thuộc tính cờ `ok: true | false`.
+
+2. **Vấn đề trả về lỗi trong `src/services/vectorAiClient.ts`**:
+   - **Input**: Các lệnh `return fetched;` (dòng 172), `return health;` (dòng 217), `return result;` (dòng 248), `return startFetched;` (dòng 385).
+   - **Processing**: Thay thế bằng việc trả về object lỗi tường minh `{ ok: false, error: ...error }`, đảm bảo kiểu trả về khớp 100% với `VectorAiResult<T>` kể cả trong các môi trường kiểm tra kiểu khác nhau.
+   - **Output**: Triệt tiêu hoàn toàn lỗi không tương thích gán kiểu giữa các kiểu generic `T`, `void`, `string[]`.
+
+3. **Vấn đề chuỗi gọi bất đồng bộ trong `AiPlacementAdvisorPanel.tsx`**:
+   - **Input**: Toán tử 3 ngôi gộp 2 tác vụ `ensureVectorAiReady` (trả về `void`) và `listVectorAiModels` (trả về `string[]`).
+   - **Processing**: Tách riêng biệt: kiểm tra `started.ok` trước, nếu thất bại thoát ngay; sau đó mới gọi `listVectorAiModels` và gán `result.value`.
+   - **Output**: Biến `result.value` được bảo đảm 100% là `string[]`, an toàn truy cập `.includes()` và chỉ số phần tử `[0]`.
+
+### 9.3. Giá trị quan trọng gây lỗi
+- `compilerOptions.strict`: `undefined` (mặc định `false` -> vô hiệu hoá boolean literal discrimination).
+- `VectorAiResult<T>` discriminant key: `ok: true` vs `ok: false`.
+
+### 9.4. Xác minh sau khi sửa
+- **TypeScript build check**:
+  - `npx tsc -p tsconfig.app.json`: Mã thoát 0 (0 error).
+  - `npx tsc -b`: Mã thoát 0 (0 error).
+  - `npx tsc -p tsconfig.app.json --noEmit`: Mã thoát 0 (0 error).
+- **Linter check**:
+  - `npm run lint` (`oxlint`): 0 error.
+- **Harness runtime test**:
+  - `docs/verify-vector-ai-client.ts`: 8/8 test cases PASS (SSE, health, models, error kinds).
+  - `docs/verify-dome-and-advisor.ts`: 22/22 test cases PASS.
+
