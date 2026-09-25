@@ -1272,3 +1272,422 @@ làm **Single Source of Truth** dùng chung cho Vòm 3D Mesh, Mặt cắt đứn
   - `docs/verify-vector-ai-client.ts`: 8/8 test cases PASS (SSE, health, models, error kinds).
   - `docs/verify-dome-and-advisor.ts`: 22/22 test cases PASS.
 
+---
+
+## 10. Sửa lỗi tầm cự ly vùng mù (Blind Zone) không khớp với vòm 3D và Tái thiết kế Tab "3D / LOS Không Gian" (Inspector)
+
+### 10.1. Triệu chứng và Bối cảnh (Symptoms)
+1. **Lỗi vùng mù địa hình (vùng màu đỏ hiển thị trên map) tràn ra ngoài cự ly vòm radar**:
+   - Khi chọn đài radar (ví dụ Đài Radar 36D6 / ST-68UM có bán kính trinh sát `rangeKm = 75km`) và bật hiển thị vùng mù (`showBlindZones`), khu vực bóng râm địa hình (màu đỏ) bị phóng rộng ra tới 112.7 km – tràn ra ngoài biên vòm 37.7 km.
+   - Tại các phương vị chuyển tiếp giữa tia bị che (blocked) và tia thông suốt (unblocked), xuất hiện hiện tượng gai nhọn thụt sâu về tâm đài radar (toạ độ lat/lon của đài, khoảng cách 0m).
+2. **Tab "3D / LOS KHÔNG GIAN" trong Right Inspector bị rối và trùng lặp**:
+   - Hai thanh điều chỉnh độ cao riêng biệt (`Độ cao mục tiêu (H_mt)` và `Khảo sát nhanh tầng cao`) khiến người dùng bị phân tán và không đồng bộ trạng thái.
+   - Header thiếu nút bật/tắt nhanh vùng mù địa hình (`showBlindZones`).
+   - Các tuỳ chỉnh đồ hoạ vòm shader (alpha, rimColor, scan line speed, phân đoạn...) nằm lẫn lộn gây choáng ngợp giao diện tác chiến.
+
+### 10.2. Nguyên nhân gốc rễ (Root Cause)
+1. **Lỗi cự ly vùng mù**:
+   - Hàm `getProfileMaxRange` trong `src/utils/radarMath.ts` đọc giá trị cự ly tối đa từ `coverageProfile.points` (có thể lên tới 300 km) mà không scale hay kẹp (clamp) lại theo tầm cự ly thực tế của đài `instance.rangeKm` (75 km).
+   - Biến `field.maxRangeKm` trong `src/utils/radarLosEngine.ts` nhận giá trị profile 300 km.
+   - Trong `src/utils/radarGeometryBuilder.ts` (`buildRadarCoverageFieldEntities`), cự ly ngoài cùng của bóng râm `destShadowEnd` được tính: `maxDetectionDistanceM = Math.min(profileMaxM, horizonM)`. Với `profileMaxM = 300,000 m` và `horizonM = 112,700 m` (tại $H_{mt} = 500\text{ m}$), cự ly ngoài cùng bị áp theo đường chân trời vô tuyến 112.7 km, vượt xa tầm cự ly thiết kế 75 km của đài.
+   - Khi tia kế tiếp không bị che, toạ độ chuyển tiếp `sOccLat / sOccLon` bị fallback về `(radarLat, radarLon)` (cự ly 0 m), tạo ra tam giác gai nhọn thụt vào tâm.
+
+2. **Giao diện Inspector Tab 3D**:
+   - Tồn tại đồng thời `targetHeightMeters` (dùng cho LOS raycast) và `selectedAltitudeM` (dùng cho ma trận khảo sát) mà không được đồng bộ tập trung.
+   - Các nút chip chọn nhanh độ cao bị lặp lại ở 2 khu vực.
+   - Shader styling chiếm quá nhiều không gian màn hình chính.
+
+### 10.3. Chi tiết Input - Processing - Output & Thông số quan trọng
+1. **Thông số `getProfileMaxRange`**:
+   - **File**: `src/utils/radarMath.ts`
+   - **Biến**: `fallbackRangeKm` (km), `maxProfileKm` (km), `rawRange` (km).
+   - **Giá trị trước**: Không chuẩn hoá theo tỉ lệ `fallbackRangeKm / maxProfileKm`. Giá trị trả về lên tới 300 km.
+   - **Giá trị sau**: Tỉ lệ scale `fallbackRangeKm / maxProfileKm` và kẹp trần `Math.min(fallbackRangeKm, ...)`. Luôn $\le fallbackRangeKm$ (75 km).
+2. **Thông số `globalMaxRangeKm`**:
+   - **File**: `src/utils/radarLosEngine.ts`
+   - **Biến**: `globalMaxRangeKm` (km).
+   - **Giá trị trước**: `Math.max(instance.rangeKm, profileMaxRangeKm)` = 300 km.
+   - **Giá trị sau**: `Math.min(instance.rangeKm, profileMaxRangeKm || instance.rangeKm)` = 75 km.
+3. **Thông số `maxDetectionDistanceM` & `destShadowEnd`**:
+   - **File**: `src/utils/radarGeometryBuilder.ts`
+   - **Biến**: `maxEffectiveRangeM` (m), `maxDetectionDistanceM` (m).
+   - **Giá trị trước**: `Math.min(profileMaxM, horizonM)` = 112,700 m.
+   - **Giá trị sau**: `Math.min(profileMaxM, maxEffectiveRangeM || profileMaxM, horizonM)` = 75,000 m.
+   - **Điểm chuyển tiếp**: Khi tia kế tiếp không bị che, `sOccDistM` lấy bằng `destShadowEnd` (mép ngoài cùng, độ dày bóng râm = 0) thay vì toạ độ tâm đài, loại bỏ hoàn toàn gai nhọn thụt về tâm.
+4. **Liên kết Cesium Map**:
+   - **File**: `src/components/map/CesiumGlobe.tsx`
+   - **Truyền tham số**: `safeRangeKm * 1000` vào tham số `maxEffectiveRangeM` của `buildRadarCoverageFieldEntities`.
+5. **Giao diện RightInspector**:
+   - **File**: `src/components/ui/RightInspector.tsx`
+   - Bổ sung nút chuyển nhanh `VÙNG MÙ: BẬT / TẮT` trên thanh tiêu đề khối LOS.
+   - Hợp nhất điều khiển độ cao mục tiêu $H_{mt}$ với thanh trượt mượt mà (20m - 30.000m) và 11 chip khảo sát nhanh (`50m, 100m, 300m, 500m, 1k, 2k, 3k, 5k, 10k, 20k, 30k`), đồng bộ cùng lúc cả `targetHeightMeters` và `selectedAltitudeM`.
+   - Thu gọn toàn bộ các tuỳ chọn shader chi tiết (alpha, viền sáng, tốc độ quét...) vào Accordion `TÙY BIẾN ĐỒ HỌA VÒM 3D (SHADER)`, mặc định đóng gọn gàng.
+
+### 10.4. Xác minh sau khi sửa
+1. **Kiểm thử tự động toán học & hình học**:
+   - Tạo mới `docs/verify-blind-zone-range.ts` kiểm thử cự ly thực tế và hình học:
+     - `getProfileMaxRange` ở tất cả góc tà: $\le 75\text{ km}$ (PASS).
+     - `computeRadarCoverageField`: `field.maxRangeKm === 75`, tất cả rays $\le 75\text{ km}$ (PASS).
+     - `buildRadarCoverageFieldEntities`: Đỉnh xa nhất của vùng mù = 75.00 km $\le 75\text{ km}$ (PASS).
+     - Kiểm tra không có đỉnh nào thụt về tâm đài (< 100m) khi chuyển tiếp: `hasSpikeToCenter: false` (PASS).
+2. **Kiểm thử biên dịch & linting**:
+   - `npx tsc -b`: PASS (0 error).
+   - `npx tsc -p tsconfig.app.json --noEmit`: PASS (0 error).
+   - `npm run lint` (`oxlint`): PASS (0 error).
+   - `npx tsx docs/verify-dome-and-advisor.ts`: 22/22 tests PASS.
+
+### 10.5. Khắc phục lỗi TypeScript trong verify-blind-zone-range.ts
+- **Mô tả nguyên nhân**: File script kiểm thử `docs/verify-blind-zone-range.ts` truyền nhầm hàm callback giả lập `mockElevationLookup: (_lat: number, _lon: number) => Promise<number>` vào vị trí tham số thứ 2 của hàm `computeRadarCoverageField`. Tuy nhiên chữ ký của hàm `computeRadarCoverageField` trong `src/utils/radarLosEngine.ts` quy định:
+  `computeRadarCoverageField(instance: EquipmentInstance, terrainProvider: Cesium.TerrainProvider | null, params: RadarCalculationParams)`.
+  Điều này khiến IDE TypeScript language server báo lỗi:
+  `Argument of type '(_lat: number, _lon: number) => Promise<number>' is not assignable to parameter of type 'TerrainProvider'.`
+  Đồng thời, tham số cấu hình thứ 3 truyền sai tên trường (`rangeStepKm`, `targetHeightM` thay vì `radialStepMeters`, `targetHeightMeters`).
+- **Input**:
+  - `mockInstance: EquipmentInstance` (Đài 36D6, rangeKm = 75km).
+  - Không có kết nối Cesium Terrain server trong môi trường Node.js CLI script.
+- **Processing**:
+  - Thay thế tham số thứ 2 bằng `null` (trong engine `radarLosEngine.ts`, `terrainProvider = null` được xử lý an toàn bằng cơ chế `flat_fallback` với cao độ 0m).
+  - Chuẩn hoá cấu hình tham số `RadarCalculationParams`:
+    `azimuthStepDeg: 5`, `radialStepMeters: 1000`, `targetHeightMeters: 500`, `kFactor: 1.3333`, `showBlindZones: true`.
+  - Tối ưu trích xuất `hierarchy` của polygon entity tránh cảnh báo `unsafe-optional-chaining`.
+- **Output**:
+  - Khắc phục hoàn toàn lỗi TypeScript TS2345 và cảnh báo linting.
+  - Test harness `verify-blind-zone-range.ts` thực thi trơn tru với 100% test cases PASS.
+- **Giá trị quan trọng gây lỗi**:
+  - Biến `mockElevationLookup` kiểu hàm bất đồng bộ không tương thích với interface `Cesium.TerrainProvider`.
+- **Xác minh**:
+  - `npx tsx docs/verify-blind-zone-range.ts`: ALL BLIND ZONE RANGE CHECKS PASSED!
+  - `npx tsc docs/verify-blind-zone-range.ts --noEmit --skipLibCheck --moduleResolution bundler --target es2023 --module esnext --types node --ignoreConfig`: PASS (0 error).
+  - `npx tsc -b`: PASS (0 error).
+  - `npm run lint`: PASS (0 warning trong `docs/verify-blind-zone-range.ts`).
+
+---
+
+## 11. [2026-09-23] Triển khai Đặc tả Kỹ thuật: Radar 3D Terrain Visibility (Cải tiến Vòm 3D Chắn Địa hình)
+
+### 11.1. Thông tin chung
+- **Ngày**: 2026-09-23
+- **Tính năng/Module**: Radar 3D Terrain Visibility & Tactical Terrain Masking
+- **Vấn đề hoặc mục tiêu**: Triển khai đầy đủ theo Tài liệu Kỹ thuật Version 1.0 (50 mục). Nâng cấp vòm 3D radar từ mô hình co rút bán kính mép ngoài thành mô hình 3D Terrain-Adjusted Coverage chuẩn quân sự:
+  - Tách bạch 4 lớp độc lập: CoverageProfile, TerrainSampler, HorizonAnalyzer/LOS, CoverageMeshBuilder.
+  - Dựng đồng bộ cả **Visible Shell** (vỏ vòm nhìn thấy) và **Occluded Shadow Volume** (khối nêm bóng râm 3D sau núi) với vật liệu bán trong suốt, không che khuất địa hình bên dưới.
+  - Bổ sung 3 Camera Presets tác chiến: Observer Side (từ đài), Behind Terrain (từ sau núi nhìn ngược về đài), Top-Down (từ trên cao nhìn xuống).
+  - Xây dựng bộ test matrix hình học độc lập SyntheticTerrainSampler và script kiểm thử tự động docs/verify-radar-terrain-visibility.ts.
+
+### 11.2. Các file đã thay đổi & tạo mới
+1. `docs/PROJECT_INTEGRATION_NOTE.md` [NEW]: Báo cáo audit hệ thống hiện hữu và phân tích tích hợp.
+2. `src/utils/radarVisibilityEngine.ts` [NEW]: Động cơ phân tích địa hình, Horizon cực đại theta_horizon, kiểm tra LOS và cache kết quả theo WGS-84/ENU.
+3. `src/utils/radarVolumeGeometry.ts` [MODIFY]: Bổ sung hàm dựng 3D khối bóng râm sau núi buildRadarOccludedVolumeGeometry và createRadarOccludedGeometryInstance.
+4. `src/utils/radarDomeMaterial.ts` [MODIFY]: Bổ sung vật liệu shader bán trong suốt màu hổ phách/cam đỏ createRadarOccludedMaterial.
+5. `src/store/useTacticalStore.ts` [MODIFY]: Bổ sung trạng thái showOccludedVolume, toggleOccludedVolume, và action điều khiển triggerRadarCameraPreset.
+6. `src/components/ui/RightInspector.tsx` [MODIFY]: Thêm khối điều khiển Góc nhìn Tác chiến Radar (3 camera presets) và nút bật/tắt khối bóng râm 3D.
+7. `src/components/map/CesiumGlobe.tsx` [MODIFY]: Tích hợp render shadowPrimitive, cập nhật safeHeight cho camera chiến thuật và thêm dependencies.
+8. `docs/verify-radar-terrain-visibility.ts` [NEW]: Ma trận kiểm thử đơn vị toàn diện (14 test cases) theo Mục 36 đặc tả.
+9. `docs/DEBUG_NOTES.md` [MODIFY]: Ghi chép thông số kỹ thuật theo quy định.
+
+### 11.3. Bảng thông số kỹ thuật & Biến quan trọng
+- `maxHorizonAngleRad` (number, radian, [-pi/2, pi/2]): Goc nang cuc dai cua be mat dia hinh doc theo mot huong phuong vi. theta_terrain = atan2((H_t - H_0 + hz), d).
+- `clearanceMeters` (number, mét, [-inf, +inf]): Do chenh lech giua cao do duong ngam LOS va cao do dia hinh tai cu ly khao sat. >0: thong suot, <0: bi chan.
+- `showOccludedVolume` (boolean, mặc định true): Bật/tắt hiển thị khối bóng râm 3D sau núi trên địa cầu Cesium.
+- `boundaryToleranceRad` (number, 0.003 rad ~ 0.17 deg): Biên góc nhận diện trạng thái tiếp giáp Boundary giữa Visible và Occluded.
+- `shadowAlpha` (number, 0.20): Độ mờ của vỏ bóng râm phía sau núi để không làm mất texture địa hình bên dưới.
+
+### 11.4. Công thức toán học & Thuật toán
+1. **Góc nâng địa hình & Chân trời tích lũy**:
+   theta_terrain(d) = atan2(H_terrain(d) - H_radar + hz(d), d)
+   theta_horizon = max_{s <= d} theta_terrain(s)
+2. **Kiểm tra trạng thái quan sát LOS (Line-of-Sight)**:
+   theta_target = atan2(H_target - H_radar + hz(D), D)
+   - Nếu theta_target > theta_horizon + eps => VisibilityState.Visible
+   - Nếu |theta_target - theta_horizon| <= eps => VisibilityState.Boundary
+   - Nếu theta_target < theta_horizon - eps => VisibilityState.Occluded
+3. **Hình học Khối nêm Bóng râm (Occluded Shadow Wedge)**:
+   Nối từ R_eff(Az, H) = effectiveRanges[k][j] (sườn núi) ra R_nom(Az, H) = nominalRanges[k][j] (biên danh nghĩa của vòm).
+
+### 11.5. Kết quả kiểm tra & Xác minh
+1. **Đơn vị hình học (Unit Test Matrix - Mục 36)**:
+   - Chạy lệnh: `npx tsx docs/verify-radar-terrain-visibility.ts`
+   - Kết quả: **14/14 tests PASS (0 failure)**.
+     - Flat terrain: Occluded = 0 (PASS).
+     - Single hill: Xuất hiện shadow hướng 90 deg (PASS).
+     - High mountain: Shadow mở rộng khi núi cao hơn (PASS).
+     - Near vs Far: Núi gần che khuất góc lớn hơn núi xa (PASS).
+     - Multi-mountain: Lấy đúng đỉnh horizon cao nhất (PASS).
+     - Observer height: Nâng anten làm giảm vùng mù (PASS).
+     - Observer moved: Đổi cache key (PASS).
+     - Constant profile: Toàn bộ mẫu đúng 50km (PASS).
+     - Profile changed: Invalidation chính xác (PASS).
+     - State & Clearance: Visible > 0, Boundary ~ 0, Occluded < 0 (PASS).
+     - Cache hit & Invalidation: Đúng 100% (PASS).
+2. **Kiểm tra tương thích ngược với các test cũ**:
+   - `npx tsx docs/verify-blind-zone-range.ts`: ALL BLIND ZONE RANGE CHECKS PASSED.
+   - `npx tsx docs/verify-dome-and-advisor.ts`: ALL CHECKS PASSED.
+3. **Biên dịch & Linter**:
+   - `npx tsc --noEmit`: PASS (0 error).
+   - `npm run lint` (oxlint): PASS (0 error).
+
+### 11.6. Kết luận
+Hệ thống vòm 3D đã được nâng cấp toàn diện theo đúng chuẩn đặc tả kỹ thuật:
+- Chắn đúng địa hình thực tế (Terrain Masking).
+- Trực quan hóa rõ ràng cả phần nhìn thấy lẫn khối bóng râm sau núi với độ trong suốt tối ưu.
+- Cung cấp các góc nhìn tác chiến thuận tiện (`Behind Terrain`, `Observer Side`, `Top-Down`) giúp người chỉ huy lập kế hoạch bố trí trận địa phòng không trực quan và chính xác.
+- Không thực hiện bất kỳ lệnh git commit hay git push nào theo đúng quy tắc dự án.
+
+---
+
+## 12. Debug & Khắc phục lỗi Vòm Radar quét xuyên qua Núi An Khê (Near-field Mountain Masking Blindspot & Earth Bulge Sign Inversion)
+- **Ngày thực hiện**: 2026-09-23
+- **Thực hiện theo**: `/debug` workflow & project-development-rules.md
+- **Người yêu cầu**: Người dùng phản ánh khi đặt đài radar 36D6 ở chân núi An Khê (`16° 2' 4.2" N, 108° 10' 18.2" E`, Đà Nẵng), đứng bên trong quan sát thấy vòm quét 3D không bị núi chắn mà vẫn xuyên thẳng qua núi về phía sau.
+
+### 12.1. Triệu chứng & Tái hiện (Symptom & Reproduction)
+1. **Môi trường & Vị trí đài**:
+   - Đài Radar: 36D6 (ST-68UM) #1
+   - Tọa độ: `lat = 16.0345° N, lon = 108.17172° E` (chân núi An Khê, Đà Nẵng).
+   - Cao độ đài: 40m (MSL), chiều cao anten: 25m (AGL) => Cao độ tâm anten = 65m MSL.
+   - Tầm trinh sát danh nghĩa: 300 km.
+   - Địa hình thực tế: Ngay sát phía Tây đài (hướng 240° - 300°, cự ly 200m - 1.500m) là dãy núi An Khê với đỉnh cao 243m MSL, cao hơn anten radar tới 178m ở cự ly chỉ 1 km (góc che chắn hình học $\theta_{mask} \approx 10.1^\circ$ đến $11.5^\circ$).
+2. **Triệu chứng lỗi**:
+   - Trên địa cầu 3D, vòm quét màu vàng bán trong suốt không bị chặn lại ở sườn núi An Khê mà kéo dài liên tục xuyên qua ngọn núi ra tới hàng chục kilômét (tại tầng 1000m kéo dài tới 43.3 km; tại tầng 100m kéo dài tới 8.6 km).
+   - Trên bảng chỉ số RightInspector:
+     - Tầm danh nghĩa tầng 1000m: `111.7 km`
+     - Tầm hiệu dụng sau núi: `61.4 km` (bị cắt giả tạo ở 61.4 km thay vì 4.58 km sau núi An Khê).
+     - Tỷ lệ che chắn: báo `100.0%` (mọi hướng 360°, kể cả hướng Đông ra biển phẳng không có núi cũng bị báo che chắn tại ~61.4 km).
+
+### 12.2. Phân tích Nguyên nhân gốc rễ (Root Cause Analysis)
+Qua truy vết mã nguồn và dữ liệu thực nghiệm DEM từ `CesiumTerrainProvider`, phát hiện 2 nguyên nhân cốt lõi tác động qua lại:
+
+1. **Bỏ qua địa hình cự ly gần do bước nhảy mẫu quá lớn (Near-field Sampling Blindspot)**:
+   - Trong `src/components/map/CesiumGlobe.tsx`:
+     `radialStepMeters = Math.max(1500, Math.round((inst.rangeKm * 1000) / 45))`
+     Với đài 36D6 tầm 300 km: `radialStepMeters = 300.000 / 45 = 6.667 mét (~6.67 km)`.
+   - Trong `src/utils/radarVolumeEngine.ts`:
+     `const minDist = Math.max(500, radialStepMeters);`
+     `for (let d = minDist; d <= maxRangeM; d += radialStepMeters)`
+     => `minDist = 6.667 mét`!
+     **Điểm lấy mẫu địa hình đầu tiên của mỗi tia quét bắt đầu ở cự ly 6.67 km!**
+   - Núi An Khê nằm hoàn toàn trong phạm vi cự ly $200\text{m} \le d \le 3.000\text{m}$.
+   - Vì lấy mẫu bắt đầu từ 6.67 km, thuật toán hoàn toàn **nhảy cóc qua ngọn núi An Khê cao 243m**. Tại 6.67 km, địa hình đã hạ xuống đồng bằng Cẩm Lệ (cao độ chỉ 7.6m). Do đó ngọn núi An Khê hoàn toàn không tồn tại trong `terrainMap`!
+
+2. **Sai dấu độ cong Trái Đất trong tính toán góc nâng địa hình (Earth Bulge Sign Inversion)**:
+   - Trong `src/utils/radarVolumeEngine.ts` (dòng 283):
+     `const deltaHCurvature = calculateEarthBulgeMeters(dist, kFactor);`
+     `const tanObstacle = (groundAlt - radarCenterAltM + deltaHCurvature) / dist;` (SAI DẤU: `+ deltaHCurvature`)
+   - **Vật lý hình học**: Khi đứng ở anten radar, bề mặt Trái Đất thực tế bị cong sụt xuống dưới mặt phẳng tiếp tuyến một khoảng $\Delta h(d) = \frac{d^2}{2 R_e}$. Do đó, cao độ của mặt đất so với mặt phẳng tiếp tuyến tại anten phải là:
+     $z_{ground}(d) = groundAlt - radarCenterAltM - \Delta h(d)$
+   - Việc cộng nhầm `+ deltaHCurvature` làm mặt đất ở cự ly xa bị đội ngược lên trời!
+     - Tại $d = 61.4$ km: $\Delta h \approx 222$m. Mặt biển phẳng $0$m bị tính thành $0 - 65 + 222 = +157$m!
+     - Tại $d = 100$ km: $\Delta h \approx 588$m. Mặt biển phẳng $0$m bị tính thành $+523$m!
+   - Điều này tạo ra một "ngọn núi ảo cao 222m" bao quanh đài ở cự ly ~60 km trên toàn bộ 360°, khiến tia quét ở mọi hướng (kể cả hướng ra biển Đông) đều bị ngắt ở 61.4 km, gây ra chỉ số `limited = 100.0%` giả tạo.
+
+3. **Sai lệch cự ly ngắt hình học (Discretization Cutoff Step)**:
+   - Khi phát hiện `tanTarget < maxMaskTan`, mã nguồn cũ gán:
+     `effectiveDistM = Math.max(innerConeM, dist - radialStepMeters * 0.5);`
+     Với bước nhảy 6.667m, giá trị ngắt bị giật bậc thô thiển thay vì giải giao tuyến giải tích chính xác của tia quét với đỉnh núi.
+
+### 12.3. Giải pháp & Các thay đổi tối thiểu đã thực hiện
+1. **Phân tầng lấy mẫu địa hình thích ứng (Adaptive Near-field + Far-field Sampling)**:
+   - Trong `src/utils/radarVolumeEngine.ts` & `src/utils/radarLosEngine.ts`:
+     Tích hợp 14 mốc cự ly dày đặc ở cự ly gần:
+     `nearSteps = [200, 400, 600, 800, 1000, 1400, 1800, 2200, 2800, 3500, 4500, 6000, 8000, 10000]` (mét).
+     Sau 10 km, tiếp tục lấy mẫu theo bước đều `farStep = Math.max(2500, radialStepMeters)`.
+   - Tổng số điểm mẫu tăng rất ít (từ 45 lên 58 điểm/tia), không gây áp lực mạng/CPU, nhưng độ phân giải ở chân núi tăng gấp 33 lần (từ 6.670m xuống còn 200m).
+
+2. **Sửa đúng công thức độ sụt cong Trái Đất**:
+   - `tanObstacle = (groundAlt - radarCenterAltM - deltaHCurvature) / dist;`
+   - Nhờ dấu trừ, mặt biển phẳng ($groundAlt = 0$) luôn có $tanObstacle < 0$, không bao giờ che chắn búp sóng radar.
+
+3. **Cắt giao tuyến giải tích chính xác (Analytical Shadow Cutoff)**:
+   - Giải phương trình bậc hai:
+     $a \cdot d^2 + b \cdot d + c = 0$
+     với $a = \frac{1}{2 R_e}$, $b = \max(\tan(minElevation), \theta_{mask})$, $c = -(altM - radarCenterAltM)$.
+   - Tính nghiệm chính xác $d_{cutoff} = \frac{-b + \sqrt{b^2 - 4ac}}{2a}$, cho cự ly mặt cắt vòm mịn màng, ôm khít biên dạng địa hình.
+
+### 12.4. Bảng thông số kỹ thuật & Biến quan trọng
+| Tên biến / Thông số | Kiểu (Type) | Nơi khai báo & Sử dụng | Giá trị trước | Giá trị sau | Ý nghĩa & Đơn vị |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `sampleDistances` (Near-field) | `number[]` | `radarVolumeEngine.ts`, `radarLosEngine.ts` | Bắt đầu từ 6.667m | `[200, 400, 600, 800, 1000, ...]` | Mốc cự ly lấy mẫu địa hình dọc theo tia phương vị (m). |
+| Dấu $\Delta h$ trong `tanObstacle` | Phép toán | `radarVolumeEngine.ts:283` | `+ deltaHCurvature` | `- deltaHCurvature` | Độ sụt bề mặt do độ cong Trái Đất (m), sụt xuống dưới mặt phẳng tiếp tuyến. |
+| Cự ly hiệu dụng tại An Khê (H=100m) | `number` | `effectiveRanges[0][az270]` | `8.594 m` (quét xuyên) | `172 m` (chắn sát chân núi) | Cự ly phát hiện tối đa tại tầng 100m hướng 270° (m). |
+| Cự ly hiệu dụng tại An Khê (H=300m) | `number` | `effectiveRanges[1][az270]` | `16.668 m` (quét xuyên) | `1.152 m` (sau đỉnh núi 243m) | Cự ly phát hiện tối đa tại tầng 300m hướng 270° (m). |
+| Cự ly hiệu dụng tại An Khê (H=1000m) | `number` | `effectiveRanges[3][az270]` | `43.336 m` (quét xuyên) | `4.578 m` (sau bóng râm núi) | Cự ly phát hiện tối đa tại tầng 1000m hướng 270° (m). |
+| Hướng biển 90° (H=1000m) | `number` | `effectiveRanges[3][az90]` | `90.005 m` (bị biển chặn) | `111.724 m` (100% danh nghĩa) | Không còn hiện tượng mặt biển phẳng chắn sóng (m). |
+| Tỷ lệ che chắn tầng 1000m | `number` | `bandInfos[3].terrainLimitedPercent` | `100.0%` (sai) | `64%` (đúng: Tây núi, Đông biển) | Tỷ lệ phần trăm các hướng phương vị bị địa hình che khuất (%). |
+
+### 12.5. Kết quả kiểm tra & Xác minh (Verification)
+1. **Kiểm tra thực tế với địa hình offline Đà Nẵng / Núi An Khê**:
+   - Chạy kiểm thử trực tiếp từ CesiumTerrainProvider thực tế:
+     - Hướng Tây 270° (Núi An Khê): Vòm 3D bị ngắt ngay tại 172m (chân núi) ở tầng 100m, và tại 1.15km ở tầng 300m (sau đỉnh núi 243m). Người dùng đứng bên trong nhìn ra thấy vòm bị chặn áp sát chân núi An Khê, không còn quét xuyên qua núi.
+     - Hướng Đông 90° (Biển Đông): Toàn bộ các tầng đạt 100% tầm danh nghĩa lý thuyết (tầng 1000m đạt 111.7 km, tầng 5000m đạt 300 km).
+     - Tỷ lệ che chắn phản ánh chính xác thực tế địa hình Đà Nẵng: 64% bị chắn phía Tây bởi dãy Trường Sơn / Bà Nà / An Khê; 36% thông thoáng hướng ra biển Đông.
+2. **Kiểm tra hồi quy hệ thống (Regression Tests)**:
+   - `npx tsx docs/verify-radar-terrain-visibility.ts`: **14/14 tests PASS (0 fail)**.
+   - `npx tsx docs/verify-blind-zone-range.ts`: **ALL BLIND ZONE RANGE CHECKS PASSED**.
+   - `npx tsx docs/verify-dome-and-advisor.ts`: **ALL CHECKS PASSED**.
+   - `npx tsc --noEmit`: **PASS (0 lỗi TypeScript)**.
+   - `npm run lint`: **PASS (0 lỗi oxlint)**.
+3. **Quy tắc Git**: Tuyệt đối không tự ý chạy `git commit` hay `git push`.
+
+## 13. Sửa lỗi TypeScript TS1294 (erasableSyntaxOnly) trong radarVisibilityEngine.ts
+
+### 13.1. Mô tả nguyên nhân (Root Cause)
+- **Triệu chứng**: Khi kiểm tra kiểu mã nguồn với cấu hình dự án (`tsconfig.app.json`), trình biên dịch TypeScript báo lỗi TS1294:
+  `src/utils/radarVisibilityEngine.ts(44,13): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.`
+- **Nguyên nhân cốt lõi**: Trong `tsconfig.app.json`, cờ compiler `"erasableSyntaxOnly": true` được kích hoạt (chuẩn TypeScript 5.8+). Chế độ này nghiêm cấm việc sử dụng các cú pháp TypeScript không thể xóa bỏ thuần túy (non-erasable syntax) như `enum`, `namespace`, hoặc constructor parameter properties vì chúng sinh ra mã JavaScript khi transpile.
+- Tại dòng 44 của `src/utils/radarVisibilityEngine.ts`, `VisibilityState` được khai báo bằng `export enum VisibilityState { Visible = 'visible', Boundary = 'boundary', Occluded = 'occluded' }`, gây lỗi TS1294.
+
+### 13.2. Xác định Input, Processing, Output
+- **Input**: Khai báo `export enum VisibilityState` trong `src/utils/radarVisibilityEngine.ts` dòng 44-48.
+- **Processing**:
+  Chuyển đổi khai báo `enum` thành đối tượng hằng số (`as const`) kết hợp với union type:
+  ```typescript
+  export const VisibilityState = {
+    Visible: 'visible',
+    Boundary: 'boundary',
+    Occluded: 'occluded',
+  } as const;
+
+  export type VisibilityState = (typeof VisibilityState)[keyof typeof VisibilityState];
+  ```
+  - Cú pháp `export const VisibilityState = { ... } as const;` là đối tượng JavaScript runtime chuẩn; các phần `as const` và `type` thuần túy được xóa bỏ (erased) lúc compile, tuân thủ 100% luật `erasableSyntaxOnly`.
+  - Bảo toàn 100% tính tương thích ngược cho cả runtime (`VisibilityState.Visible`, `VisibilityState.Boundary`, `VisibilityState.Occluded`) và kiểu tĩnh (`VisibilityState`), không làm thay đổi hành vi logic ở bất kỳ module nào khác.
+- **Output**:
+  - Mã nguồn biên dịch thành công mà không có bất kỳ lỗi TS nào.
+  - Các script kiểm thử hồi quy và logic phân tích tầm nhìn radar hoạt động nguyên vẹn.
+
+### 13.3. Giá trị quan trọng gây lỗi
+- `export enum VisibilityState` tại dòng 44 trong `src/utils/radarVisibilityEngine.ts`.
+
+### 13.4. Kết quả xác minh (Verification)
+- `npx tsc --noEmit -p tsconfig.app.json`: **Mã thoát 0 (0 lỗi)**.
+- `npx tsc -b`: **Mã thoát 0 (0 lỗi)**.
+- `npx tsx docs/verify-radar-terrain-visibility.ts`: **14/14 tests PASS (0 fail)**.
+- `npm run lint`: **0 lỗi oxlint**.
+
+## 14. Cải tiến Panel 3D LOS Radar: Bảng Nút Tầm Theo Độ Cao (RCS), Góc Tà & Đỉnh Mù, Tối Ưu TopBar
+
+### 14.1. Thông tin chung
+- **Ngày**: 23/09/2026
+- **Tính năng / Module**: Mô phỏng 3D LOS Radar, Bảng cự ly theo tầng độ cao và RCS ($S_{mt}$), Góc tà hoạt động, Vùng đỉnh mù (Cone of Silence), Giao diện TopBar & RightInspector.
+- **Vấn đề hoặc mục tiêu**:
+  1. Loại bỏ nút bật/tắt vùng mù (`showBlindZones`) vì khi đặt radar thì hệ thống mặc định luôn hiển thị vòm cắt địa hình thực tế (`dome3DMode = 'terrain-aware'`) và khối bóng râm che khuất sau núi (`showOccludedVolume = true`).
+  2. Đưa bảng tầm theo độ cao (chuẩn tài liệu tác chiến từ ảnh cung cấp: độ cao tính bằng mét, cự ly bắt mục tiêu tính bằng km theo diện tích phản xạ hiệu dụng $S_{mt}$) lên vị trí trung tâm trong Panel 3D LOS Không Gian (RightInspector) ngay sau panel Vị trí & Cao độ.
+  3. Biến các ô cự ly trong bảng thành các nút bấm tương tác: Khi người dùng nhấp chọn cự ly ứng với độ cao, vòm 3D và 2D SPx tự động thay đổi cự ly và độ cao khảo sát tức thời. Loại bỏ slider/chips độ cao tùy tiện để chuẩn hóa theo tài liệu.
+  4. Bổ sung bảng cự ly theo độ cao chuẩn cho Radar 36D6 (ST-68UM) với các tầng độ cao từ 100m đến 30.000m theo RCS $S_{mt} = 0,1m^2$ và $S_{mt} \ge 1m^2$.
+  5. Đổi góc tà trên ($\epsilon_{max}$): Vùng đỉnh mù (Cone of Silence) tự động co giãn và tính toán lại ngay trên vòm 3D và giao diện với bán kính $R_{kh} = H_{mt} \cdot \cot(\epsilon_{max})$.
+  6. Vẫn hiển thị đầy đủ các thông số cần thiết của radar cho người chỉ huy (chân trời vô tuyến, đỉnh mù, tầm hiệu dụng sau núi, tỷ lệ che chắn, camera presets, mặt cắt 2D).
+  7. Loại bỏ nút "SPx Vùng Phủ 2D" trên TopBar vì bảng chỉnh thông số đã có đầy đủ trong RightInspector khi đặt khí tài.
+
+### 14.2. File đã thay đổi
+- `src/components/ui/TopBar.tsx`: Bỏ nút SPx 2D và dọn dẹp import / state.
+- `src/data/equipmentTemplates.ts`: Bổ sung `altitudeDetectionTable` cho `radar_36d6` và `radar_p18_terek`.
+- `src/utils/radarVolumeEngine.ts`: Thêm `minElevationDeg` và `maxElevationDeg` vào `generateVolumeCacheKey`.
+- `src/components/ui/RightInspector.tsx`: Tích hợp Bảng các nút tầm theo độ cao (RCS $S_{mt}$) vào panel 3D LOS, loại bỏ slider tự do, cập nhật chỉ số đỉnh mù $R_{kh}$, bỏ nút bật/tắt vùng mù đỏ và xóa Accordion 2 trùng lặp ở chân trang.
+- `src/store/useTacticalStore.ts`: Đặt mặc định `showBlindZones: false` (tránh xung đột tia đỏ cũ với shadow terrain 3D).
+- `docs/verify-3d-los-and-detection-table.ts`: Tập lệnh kiểm thử tự động xác minh toàn diện.
+
+### 14.3. Tên thông số / biến quan trọng
+| Tên biến | Type | Giá trị mặc định | Đơn vị | Ý nghĩa |
+| :--- | :--- | :--- | :--- | :--- |
+| `altitudeDetectionTable` | `AltitudeDetectionTable` | Có sẵn cho P-18, 55Zh6, VRS-2DM, 36D6 | - | Bảng cự ly phát hiện mục tiêu theo tầng độ cao và RCS |
+| `targetHeightMeters` | `number` | `300` (hoặc theo hàng được chọn) | Mét (m) | Độ cao mục tiêu khảo sát |
+| `rangeKm` | `number` | Theo khí tài (đổi khi chọn nút cự ly) | Kilômét (km) | Cự ly trinh sát tối đa của đài radar |
+| `maxElevationDeg` | `number` | `25° - 70°` | Độ (°) | Góc tà quét trên của đài radar |
+| `coneRadiusKmAtTarget` | `number` | Tự động tính | Kilômét (km) | Bán kính vùng đỉnh mù: $R_{kh} = H_{mt} \cdot \cot(\epsilon_{max}) / 1000$ |
+| `showBlindZones` | `boolean` | `false` | Boolean | Vùng mù dạng tia cũ (mặc định tắt vì đã có shadow terrain 3D) |
+| `showOccludedVolume` | `boolean` | `true` | Boolean | Khối bóng râm che khuất sau núi 3D (mặc định luôn bật) |
+| `dome3DMode` | `string` | `'terrain-aware'` | - | Chế độ vòm cắt theo địa hình thực tế LOS |
+
+### 14.4. Công thức & Logic liên quan
+- **Bán kính nón mù đỉnh đầu (Cone of Silence)**:
+  $$R_{kh} = H_{mt} \cdot \cot(\epsilon_{max}) = \frac{H_{mt}}{\tan(\epsilon_{max})} \text{ (m)}$$
+- **Chân trời vô tuyến radar**:
+  $$D_{nt} = 4.12 \cdot (\sqrt{h_a} + \sqrt{H_{mt}}) \text{ (km)}$$
+- **Đồng bộ khi người dùng nhấp chọn nút cự ly trong bảng**:
+  ```typescript
+  updateEquipment(selected.instanceId, { rangeKm: targetKm });
+  updateSelectedSpx({ endRangeM: targetKm * 1000 });
+  setTargetHeightMeters(row.altitudeM);
+  setSelectedAltitudeM(row.altitudeM);
+  ```
+
+### 14.5. Kết quả kiểm tra & Xác minh (Verification)
+- `npx tsc -b`: **Mã thoát 0 (0 lỗi)**.
+- `npx tsc --noEmit -p tsconfig.app.json`: **Mã thoát 0 (0 lỗi)**.
+- `npm run lint`: **0 lỗi oxlint**.
+- `npx tsx docs/verify-3d-los-and-detection-table.ts`: **13/13 assertions PASS**.
+- `npx tsx docs/verify-radar-terrain-visibility.ts`: **14/14 tests PASS**.
+- `npx tsx docs/verify-blind-zone-range.ts`: **ALL BLIND ZONE RANGE CHECKS PASSED**.
+- `npx tsx docs/verify-dome-and-advisor.ts`: **ALL CHECKS PASSED**.
+- **Quy tắc Git**: Tuyệt đối không tự ý chạy `git commit` hay `git push`.
+
+## 15. Sửa lỗi Vòm Radar 3D bị kẹt ở tầng độ cao cao nhất (30km) thay vì cắt theo độ cao được chọn
+
+### 15.1. Triệu chứng & Cách tái hiện
+- **Triệu chứng**:
+  - Khi người dùng nhấp chọn bất kỳ tầng độ cao nào tương ứng tầm cự ly trong bảng "BẢNG TẦM THEO ĐỘ CAO (RCS S_mt)" ở thanh Inspector bên phải (ví dụ: $H = 300\text{ m}$ hoặc $H = 500\text{ m}$):
+  - Tầm trinh sát (bán kính cự ly ngang) đã cập nhật chính xác (ví dụ $60\text{ km}$ tại $500\text{m}$).
+  - Tuy nhiên, độ cao của vòm 3D (vỏ khối quét radar) trên bản đồ Cesium vẫn vút lên tới tầng cao nhất trong bảng ($H = 30,000\text{ m} = 30\text{ km}$), cao hơn các dãy núi bên dưới (đỉnh Bà Nà $\sim 1487\text{m}$, Sơn Trà $\sim 696\text{m}$) tới hàng chục lần, không phản ánh đúng tầng mục tiêu bay thấp đang khảo sát.
+- **Cách tái hiện**:
+  1. Triển khai đài Radar 36D6 (ST-68UM) tại Đà Nẵng trên bản đồ 3D.
+  2. Mở Inspector bên phải, chuyển sang tab 3D LOS.
+  3. Trong bảng "BẢNG TẦM THEO ĐỘ CAO (RCS S_mt)", nhấp chọn tầng $300\text{m}$ (cự ly $45\text{km}$) hoặc $500\text{m}$ (cự ly $60\text{km}$).
+  4. Quan sát vòm 3D: Bán kính co về $45\text{km}$ hoặc $60\text{km}$, nhưng đỉnh vòm cao $30\text{km}$ chọc trời, lỗ nón mù đỉnh đầu rộng tới $11\text{km}$.
+
+### 15.2. Nguyên nhân gốc rễ (Root Cause & Code Evidence)
+1. **`src/utils/radarVolumeGeometry.ts`**:
+   - Hàm `buildRadarVolumeGeometry(volume, options)` và `buildRadarOccludedVolumeGeometry(volume, options)` duyệt toàn bộ mảng `altitudeBands` từ $k = 0$ tới $k = numBands - 1$.
+   - Mảng `volume.altitudeBands` chứa tất cả các tầng kỹ thuật lên đến trần cao nhất $30,000\text{m}$ của đài.
+   - Dù interface `VolumeMeshOptions` có khai báo `selectedAltitudeM?: number | null`, hai hàm dựng hình học này hoàn toàn **bỏ qua thuộc tính này**. Do đó, nắp trên (`showTopCap`) và đỉnh nón mù (`showInnerCone`) luôn luôn được dựng ở tầng $30,000\text{m}$.
+2. **`src/components/map/CesiumGlobe.tsx`**:
+   - Khi gọi `buildRadarVolumeGeometry(volume, { mode: dome3DMode, showInnerCone: showConeOfSilence })` và `buildRadarOccludedVolumeGeometry`, không truyền tham số `selectedAltitudeM`.
+   - Nhánh fallback `buildRadarDomeGeometry` cũng dùng nguyên `coverageHeightKm` ($30\text{km}$) thay vì lấy theo tầng độ cao đang chọn.
+3. **`src/types/equipment.ts` & `src/components/ui/RightInspector.tsx`**:
+   - `EquipmentInstance` chưa lưu trường `targetAltitudeM?: number`. Khi người dùng nhấp chọn hàng trong bảng, chỉ cập nhật `rangeKm`, chưa lưu độ cao khảo sát vào đài, và chưa truyền đồng bộ tới vòm 3D.
+
+### 15.3. Xử lý (Processing & Implementation)
+1. **Cập nhật Interface `EquipmentInstance` (`src/types/equipment.ts`)**:
+   - Bổ sung trường `targetAltitudeM?: number; // Độ cao mục tiêu khảo sát riêng của đài (m)`.
+2. **Thuật toán cắt lát tầng độ cao thông minh `getSlicedBands` (`src/utils/radarVolumeGeometry.ts`)**:
+   - Tiếp nhận `selectedAltitudeM` từ `options`:
+     - Nếu $selectedAltitudeM > 0$: Lọc các tầng $\le selectedAltitudeM$.
+     - Nếu `selectedAltitudeM` nằm giữa 2 tầng (ví dụ $400\text{m}$ nằm giữa $300\text{m}$ và $500\text{m}$), tự động nội suy tuyến tính một tầng đỉnh chính xác tại `selectedAltitudeM` (cả cự ly ngoài búp sóng và bán kính nón mù đỉnh đầu $R_{kh} = H_{mt} \cdot \cot(\epsilon_{max})$).
+     - Đảm bảo luôn trả về ít nhất 2 tầng để dựng vỏ 3D và nắp trên/đáy khép kín.
+   - Áp dụng `slicedBands` cho cả `buildRadarVolumeGeometry` và `buildRadarOccludedVolumeGeometry`:
+     - Nắp trên `showTopCap` được đậy đúng tại tầng đỉnh $selectedAltitudeM$.
+     - Nón mù đỉnh đầu ở tầng đỉnh có bán kính chính xác theo độ cao mục tiêu.
+     - `apexHeightM = Math.max(0, targetAltM - radarAltM)`.
+3. **Cập nhật `extractAltitudeBands` (`src/utils/radarVolumeEngine.ts`)**:
+   - Thêm tầng `50` vào `standardAltitudes` để khi chọn tầng thấp nhất $100\text{m}$, luôn có tầng dưới làm đáy vòm.
+4. **Cập nhật `CesiumGlobe.tsx`**:
+   - Xác định `effectiveAltitudeM = inst.targetAltitudeM ?? (isSelected ? (targetHeightMeters || selectedAltitudeM) : (selectedAltitudeM || targetHeightMeters));`
+   - Truyền `selectedAltitudeM: effectiveAltitudeM` vào `buildRadarVolumeGeometry` và `buildRadarOccludedVolumeGeometry`.
+   - Trong nhánh fallback `buildRadarDomeGeometry`, gán `fallbackDomeInstance.coverageHeightKm = effectiveAltitudeM / 1000`.
+5. **Cập nhật `RightInspector.tsx`**:
+   - Khi nhấp chọn nút độ cao hoặc ô cự ly trong bảng, truyền `targetAltitudeM: row.altitudeM` vào `updateEquipment`.
+   - Hiển thị active highlight chính xác dựa trên `(selected.targetAltitudeM ?? targetHeightMeters) === row.altitudeM`.
+
+### 15.4. Thông số / Biến quan trọng
+| Tên biến | Type | Giá trị trước | Giá trị sau | Đơn vị | Ý nghĩa |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `selectedAltitudeM` | `number` | Bị bỏ qua khi dựng mesh | Truyền vào `buildRadarVolumeGeometry` | Mét (m) | Độ cao lát cắt trần vòm 3D |
+| `targetAltitudeM` | `number` | Chưa có trong `EquipmentInstance` | Lưu trên từng đài | Mét (m) | Độ cao khảo sát riêng của từng khí tài |
+| `volGeom.apexHeightM` | `number` | Cố định $\approx 29,832\text{m}$ | $H_{mt} - H_{radar}$ (ví dụ $132\text{m}$ tại $H=300\text{m}$) | Mét (m) | Độ cao đỉnh vòm so với tâm đài radar |
+| Nắp trên (`showTopCap`) | Mesh quad | Nằm ở tầng $30,000\text{m}$ | Nằm chính xác ở $H_{mt}$ ($300\text{m}$, $500\text{m}$...) | - | Nắp trên đậy kín vòm tại độ cao mục tiêu |
+
+### 15.5. Kết quả xác minh (Verification)
+1. **Kiểm thử tự động chuyên biệt `docs/verify-radar-dome-altitude-slice.ts`**:
+   - Khi $H = 300\text{m}$: `apexHeightM = 132m`, toàn bộ đỉnh $\le 132\text{m}$ (thấp hơn nhiều so với Sơn Trà $696\text{m}$, Bà Nà $1487\text{m}$).
+   - Khi $H = 500\text{m}$: `apexHeightM = 332m`, toàn bộ đỉnh $\le 332\text{m}$ (kết thúc chính xác ở $500\text{m}$ MSL).
+   - Khi $H = 100\text{m}$: Dựng thành công 288 tam giác, khối 3D khép kín.
+   - Khi không truyền `selectedAltitudeM`: Đạt trần tối đa $30,000\text{m}$ như thiết kế kỹ thuật.
+   - **Kết quả: 5/5 assertions PASS**.
+2. **Kiểm tra hồi quy hệ thống**:
+   - `npx tsc -b`: **Mã thoát 0 (0 lỗi)**.
+   - `npx tsx docs/verify-3d-los-and-detection-table.ts`: **13/13 assertions PASS**.
+   - `npx tsx docs/verify-radar-terrain-visibility.ts`: **14/14 tests PASS**.
+   - `npx tsx docs/verify-blind-zone-range.ts`: **ALL BLIND ZONE RANGE CHECKS PASSED**.
+3. **Quy tắc Git**: Tuyệt đối không tự ý chạy `git commit` hay `git push`.
+
+
+

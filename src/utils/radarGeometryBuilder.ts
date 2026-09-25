@@ -37,7 +37,8 @@ export function buildRadarCoverageFieldEntities(
   showBlindZones: boolean = true,
   themeColorHex: string = '#06b6d4',
   isSelected: boolean = false,
-  showConeOfSilence: boolean = true
+  showConeOfSilence: boolean = true,
+  maxEffectiveRangeM?: number
 ): RadarVisualizationEntities {
   const visibleEntities: Cesium.Entity[] = [];
   const blindEntities: Cesium.Entity[] = [];
@@ -63,10 +64,15 @@ export function buildRadarCoverageFieldEntities(
   const cotgMaxElev = maxElev > 0 && maxElev < 90 ? 1 / Math.tan(maxElevRad) : 0;
   const coneRadiusM = Math.max(0, targetH * cotgMaxElev);
 
-  // 2. Cự ly tối đa phát hiện mục tiêu ở độ cao H_mt theo chân trời vô tuyến và giản đồ profile
+  // 2. Cự ly tối đa phát hiện mục tiêu ở độ cao H_mt:
+  // Luôn bị giới hạn trên bởi tầm cự ly thực tế của đài/vòm (maxEffectiveRangeM hoặc maxRangeKm)
   const horizonM = (radarHorizonKm || 4.12 * (Math.sqrt(field.antennaHeightAGL || 15) + Math.sqrt(targetH))) * 1000;
   const profileMaxM = (maxRangeKm || 100) * 1000;
-  const maxDetectionDistanceM = Math.min(profileMaxM, horizonM);
+  const effectiveDomeRadiusM =
+    typeof maxEffectiveRangeM === 'number' && Number.isFinite(maxEffectiveRangeM) && maxEffectiveRangeM > 0
+      ? Math.min(profileMaxM, maxEffectiveRangeM)
+      : profileMaxM;
+  const maxDetectionDistanceM = Math.min(effectiveDomeRadiusM, horizonM);
 
   const azimuths = Object.keys(azimuthRays)
     .map(Number)
@@ -107,13 +113,22 @@ export function buildRadarCoverageFieldEntities(
       radarAltM + targetH
     );
 
+    // Điểm mép ngoài cự ly xa nhất của vòm tại phương vị này
+    const destShadowEnd = destinationPoint(radarLat, radarLon, maxDetectionDistanceM, az);
+    const pShadowEnd = Cesium.Cartesian3.fromDegrees(
+      destShadowEnd.lon,
+      destShadowEnd.lat,
+      radarAltM + targetH
+    );
+
     // Kiểm tra chắn địa hình
     let effectiveDistM = maxDetectionDistanceM;
     let outerAltM = radarAltM + targetH;
     let isBlocked = false;
-    let sOccDistM = 0;
-    let sOccLat = radarLat;
-    let sOccLon = radarLon;
+    // Mặc định khi không bị chắn: cự ly bắt đầu bóng râm = điểm kết thúc (độ dày bóng râm = 0, không kéo về tâm)
+    let sOccDistM = maxDetectionDistanceM;
+    let sOccLat = destShadowEnd.lat;
+    let sOccLon = destShadowEnd.lon;
 
     if (botRay && botRay.hasOcclusion && botRay.occlusionPoint) {
       const occDistM = botRay.occlusionPoint.distanceM;
@@ -129,13 +144,6 @@ export function buildRadarCoverageFieldEntities(
 
     const destOuter = destinationPoint(radarLat, radarLon, effectiveDistM, az);
     const pOuter = Cesium.Cartesian3.fromDegrees(destOuter.lon, destOuter.lat, outerAltM);
-
-    const destShadowEnd = destinationPoint(radarLat, radarLon, maxDetectionDistanceM, az);
-    const pShadowEnd = Cesium.Cartesian3.fromDegrees(
-      destShadowEnd.lon,
-      destShadowEnd.lat,
-      radarAltM + targetH
-    );
 
     azDataList.push({
       az,

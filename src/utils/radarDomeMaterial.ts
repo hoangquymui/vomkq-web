@@ -191,3 +191,18 @@ export function resolveDomeColorHex(
   if (templateDomeColor) return templateDomeColor;
   return instanceColor;
 }
+
+/**
+ * Vật liệu riêng cho Khối bóng râm che khuất địa hình (Occluded / Shadow Volume)
+ * Bán trong suốt màu cam đỏ (#ef4444) với viền phát quang (#fb7185) để không che khuất địa hình
+ */
+export function createRadarOccludedMaterial(alpha: number = 0.22): Cesium.Material {
+  return createRadarDomeMaterial({
+    baseColor: Cesium.Color.fromCssColorString('#ef4444').withAlpha(alpha),
+    rimColor: Cesium.Color.fromCssColorString('#fb7185'),
+    rimPower: 2.2,
+    scanLineCount: 0,
+    scanLineSpeed: 0,
+  });
+}
+

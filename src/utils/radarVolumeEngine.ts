@@ -11,6 +11,7 @@ import {
   calculateEarthBulgeMeters,
   calculateRadarHorizonDistanceKm,
   DEFAULT_K_FACTOR,
+  EARTH_RADIUS_METERS,
   getProfileMaxRange,
 } from './radarMath';
 import { destinationPoint } from './radarLosEngine';
@@ -42,9 +43,9 @@ export function extractAltitudeBands(instance: EquipmentInstance): number[] {
     });
   }
 
-  // 2. Thêm các tầng tác chiến tiêu chuẩn phòng không
+  // 2. Thêm các tầng tác chiến tiêu chuẩn phòng không (50m: mục tiêu bay thấp/hành trình)
   const standardAltitudes = [
-    100, 300, 500, 1000, 2000, 3000, 5000, 7000, 10000, 15000, 20000, 25000, 30000,
+    50, 100, 300, 500, 1000, 2000, 3000, 5000, 7000, 10000, 15000, 20000, 25000, 30000,
   ];
   standardAltitudes.forEach((alt) => {
     if (alt <= maxAltitudeM) {
@@ -141,8 +142,9 @@ export function generateVolumeCacheKey(
   const k = (params.kFactor || DEFAULT_K_FACTOR).toFixed(3);
   const altKey = params.customAltitudeBands?.join(',') || 'auto';
   const profileKey = instance.coverageProfile?.points.map((p) => `${p.elevationDeg}:${p.maxRangeKm}`).join('-') || 'def';
+  const elevKey = `${instance.minElevationDeg ?? 0}_${instance.maxElevationDeg ?? 30}`;
 
-  return `vol_${instance.instanceId}_${instance.latitude.toFixed(4)}_${instance.longitude.toFixed(4)}_${instance.altitude}_${instance.antennaHeightAGL}_${instance.rangeKm}_${instance.coverageHeightKm}_${azStep}_${radStep}_${k}_${altKey}_${profileKey}`;
+  return `vol_${instance.instanceId}_${instance.latitude.toFixed(4)}_${instance.longitude.toFixed(4)}_${instance.altitude}_${instance.antennaHeightAGL}_${instance.rangeKm}_${instance.coverageHeightKm}_${elevKey}_${azStep}_${radStep}_${k}_${altKey}_${profileKey}`;
 }
 
 /**
@@ -202,9 +204,18 @@ export async function computeRadarCoverageVolume(
   });
 
   // 5. Chuẩn bị lưới lấy mẫu địa hình DEM từ Cesium
+  // Phân tầng thích ứng:
+  // - Cự ly gần (200m - 10km): Mẫu dày đặc để bắt trọn mọi sườn núi, ngọn đồi sát đài (ví dụ: núi An Khê 200m-1.5km)
+  // - Cự ly xa (> 10km): Bước lấy mẫu đều đặn theo cự ly tối đa của đài
   const sampleDistances: number[] = [];
-  const minDist = Math.max(500, radialStepMeters);
-  for (let d = minDist; d <= maxRangeM; d += radialStepMeters) {
+  const nearSteps = [200, 400, 600, 800, 1000, 1400, 1800, 2200, 2800, 3500, 4500, 6000, 8000, 10000];
+  nearSteps.forEach((d) => {
+    if (d <= maxRangeM) sampleDistances.push(d);
+  });
+
+  const farStep = Math.max(2500, radialStepMeters);
+  const startFar = sampleDistances.length > 0 ? sampleDistances[sampleDistances.length - 1] + farStep : farStep;
+  for (let d = startFar; d <= maxRangeM; d += farStep) {
     sampleDistances.push(d);
   }
   if (sampleDistances.length === 0 || sampleDistances[sampleDistances.length - 1] < maxRangeM) {
@@ -271,26 +282,37 @@ export async function computeRadarCoverageVolume(
 
   // 6. Phân tích góc chắn địa hình tích lũy theo từng phương vị
   // Tại phương vị az, theo dõi tan(theta_mask)(d) = max_{s <= d} [ (h_terr(s) - h_antenna - delta_h(s)) / s ]
-  const maxMaskTanByAzDist = new Map<string, number>();
+  const maxMaskInfoByAzDist = new Map<string, { maxTan: number; peakDist: number; peakAlt: number }>();
 
   azimuthSamples.forEach((az) => {
     let currentMaxTan = -Number.MAX_VALUE;
+    let peakDist = 0;
+    let peakAlt = 0;
 
     sampleDistances.forEach((dist) => {
       const groundAlt = terrainMap.get(`${az}_${dist}`) || 0;
       const deltaHCurvature = calculateEarthBulgeMeters(dist, kFactor);
-      // Góc nhìn từ anten tới bề mặt địa hình tại khoảng cách dist
-      const tanObstacle = (groundAlt - radarCenterAltM + deltaHCurvature) / dist;
+      // Góc nhìn từ anten tới bề mặt địa hình tại khoảng cách dist:
+      // Bề mặt Trái Đất sụt xuống theo độ cong (- deltaHCurvature),
+      // do đó cao độ so với mặt phẳng tiếp tuyến chân anten là (groundAlt - radarCenterAltM - deltaHCurvature)
+      const tanObstacle = (groundAlt - radarCenterAltM - deltaHCurvature) / dist;
 
       if (tanObstacle > currentMaxTan) {
         currentMaxTan = tanObstacle;
+        peakDist = dist;
+        peakAlt = groundAlt;
       }
-      maxMaskTanByAzDist.set(`${az}_${dist}`, currentMaxTan);
+      maxMaskInfoByAzDist.set(`${az}_${dist}`, { maxTan: currentMaxTan, peakDist, peakAlt });
     });
   });
 
   // 7. Xây dựng ma trận nominalRanges, effectiveRanges, visibilityStates
   // Kích thước: [altitudeBands.length][azimuthSamples.length]
+  const minElevDeg = instance.minElevationDeg !== undefined ? instance.minElevationDeg : 0;
+  const tanMinElev = Math.tan((minElevDeg * Math.PI) / 180);
+  const rEquiv = EARTH_RADIUS_METERS * kFactor;
+  const aQuad = 1 / (2 * rEquiv);
+
   const nominalRanges: number[][] = [];
   const effectiveRanges: number[][] = [];
   const visibilityStates: VolumeVisibilityState[][] = [];
@@ -330,15 +352,26 @@ export async function computeRadarCoverageVolume(
         if (dist <= innerConeM) continue;
 
         // Góc nhìn tới mục tiêu ở độ cao altM tại khoảng cách dist:
+        const groundAlt = terrainMap.get(`${az}_${dist}`) || 0;
         const deltaH = calculateEarthBulgeMeters(dist, kFactor);
         const tanTarget = (altM - radarCenterAltM - deltaH) / dist;
-        const maxMaskTan = maxMaskTanByAzDist.get(`${az}_${dist}`) ?? -Number.MAX_VALUE;
+        const maskInfo = maxMaskInfoByAzDist.get(`${az}_${dist}`);
+        const maxMaskTan = maskInfo ? maskInfo.maxTan : -Number.MAX_VALUE;
 
-        // Nếu góc nhìn tới mục tiêu nhỏ hơn góc chắn của núi ở phía trước -> bị khuất sau núi!
-        if (tanTarget < maxMaskTan) {
-          // Bị chắn tại mốc cự ly này
-          effectiveDistM = Math.max(innerConeM, dist - radialStepMeters * 0.5);
+        // Bị chắn nếu mục tiêu nằm dưới mặt đất cục bộ hoặc bị khuất sau góc chắn của núi
+        if (altM < groundAlt || (maxMaskTan > tanMinElev && tanTarget < maxMaskTan)) {
           isBlocked = true;
+          // Giải phương trình giao tuyến giải tích giữa tia quét và góc chắn núi
+          const bQuad = Math.max(tanMinElev, maxMaskTan);
+          const cQuad = -(altM - radarCenterAltM);
+          const disc = bQuad * bQuad - 4 * aQuad * cQuad;
+          if (disc >= 0 && altM > radarCenterAltM) {
+            const dCutoff = (-bQuad + Math.sqrt(disc)) / (2 * aQuad);
+            effectiveDistM = Math.min(dist, Math.max(innerConeM, dCutoff));
+          } else {
+            // Độ cao mục tiêu thấp hơn hoặc bằng cao độ anten/núi -> chắn tại sườn núi
+            effectiveDistM = Math.min(dist, Math.max(innerConeM, maskInfo ? maskInfo.peakDist : dist));
+          }
           break;
         }
       }

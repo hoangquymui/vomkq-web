@@ -24,6 +24,7 @@ import type {
 } from '../utils/aiPlacementAdvisor';
 import type { RadarCoverageVolume } from '../types/radarVolume';
 import { invalidateVolumeCache } from '../utils/radarVolumeEngine';
+import { destinationPoint } from '../utils/radarLosEngine';
 
 /**
  * Trạng thái cố vấn vị trí đặt khí tài (VECTOR AI local).
@@ -105,10 +106,13 @@ interface TacticalState {
   dome3DMode: 'nominal' | 'terrain-aware';
   selectedAltitudeM: number;
   isCalculatingVolume: boolean;
+  showOccludedVolume: boolean;
   setCoverageVolume: (instanceId: string, volume: RadarCoverageVolume) => void;
   setDome3DMode: (mode: 'nominal' | 'terrain-aware') => void;
   setSelectedAltitudeM: (altM: number) => void;
   setIsCalculatingVolume: (calculating: boolean) => void;
+  toggleOccludedVolume: () => void;
+  triggerRadarCameraPreset: (preset: 'observer' | 'behind-terrain' | 'top-down') => void;
   clearCoverageVolumes: () => void;
 
   // === Kiểu vòm phủ sóng tham chiếu (port từ Unity Defense/RadarDome) ===
@@ -434,7 +438,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 
   // Radar Coverage Initial State & Actions
   targetHeightMeters: 300, // Độ cao mục tiêu khảo sát mặc định 300m
-  showBlindZones: true, // Mặc định hiển thị vùng mù (màu Đỏ)
+  showBlindZones: false, // Mặc định tắt vùng mù dạng tia đỏ cũ vì đã có shadow terrain 3D
   showConeOfSilence: true,
   azimuthStepDeg: 5, // 5 độ quét 72 hướng cực nhanh và mượt mà
   elevationStepDeg: 3, // Bước góc tà 3 độ
@@ -452,6 +456,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   dome3DMode: 'terrain-aware',
   selectedAltitudeM: 1000,
   isCalculatingVolume: false,
+  showOccludedVolume: true,
   setCoverageVolume: (instanceId, volume) =>
     set((state) => ({
       coverageVolumes: { ...state.coverageVolumes, [instanceId]: volume },
@@ -462,7 +467,100 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     set((state) =>
       state.isCalculatingVolume === calculating ? state : { isCalculatingVolume: calculating }
     ),
+  toggleOccludedVolume: () => set((state) => ({ showOccludedVolume: !state.showOccludedVolume })),
   clearCoverageVolumes: () => set({ coverageVolumes: {} }),
+
+  triggerRadarCameraPreset: (preset) => {
+    const state = get();
+    const inst = state.instances.find((i) => i.instanceId === state.selectedInstanceId);
+    if (!inst) return;
+
+    const azDeg = state.selectedAzimuthDeg || 0;
+    const field = state.coverageFields[inst.instanceId];
+    const volume = state.coverageVolumes[inst.instanceId];
+
+    if (preset === 'top-down') {
+      const rangeKm = inst.rangeKm || 100;
+      const targetHeight = Math.max(30000, rangeKm * 2200);
+      set({
+        flyToTarget: {
+          id: `top-down-${inst.instanceId}`,
+          name: `Nhìn thẳng từ trên xuống - ${inst.name}`,
+          latitude: inst.latitude,
+          longitude: inst.longitude,
+          height: targetHeight,
+          heading: 0,
+          pitch: -89.5,
+        },
+      });
+      return;
+    }
+
+    if (preset === 'observer') {
+      // Đặt camera hơi lùi về phía sau đài (ngược hướng azDeg 180 độ), nhìn theo hướng azDeg
+      const offsetDistM = 1500;
+      const backAz = (azDeg + 180) % 360;
+      const camPos = destinationPoint(inst.latitude, inst.longitude, offsetDistM, backAz);
+      const camAltM = (inst.altitude || 0) + (inst.antennaHeightAGL || 15) + 350;
+
+      set({
+        flyToTarget: {
+          id: `observer-${inst.instanceId}`,
+          name: `Quan sát từ đài radar - ${inst.name}`,
+          latitude: camPos.lat,
+          longitude: camPos.lon,
+          height: camAltM,
+          heading: azDeg,
+          pitch: -12,
+        },
+      });
+      return;
+    }
+
+    if (preset === 'behind-terrain') {
+      // Tìm điểm cản trên hướng azDeg
+      let occDistM = (inst.rangeKm || 100) * 1000 * 0.45;
+      let occAltM = (inst.altitude || 0) + 900;
+
+      // Tra cứu từ field hoặc volume
+      const rays = field?.azimuthRays?.[azDeg] || [];
+      const botRay = rays[0];
+      if (botRay && botRay.hasOcclusion && botRay.occlusionPoint) {
+        occDistM = botRay.occlusionPoint.distanceM;
+        occAltM = botRay.occlusionPoint.terrainAltM;
+      } else if (volume && volume.effectiveRanges && volume.nominalRanges) {
+        const azIdx = Math.min(
+          volume.azimuthSamples.length - 1,
+          Math.max(0, Math.floor((azDeg / 360) * volume.azimuthSamples.length))
+        );
+        const eff = volume.effectiveRanges[0]?.[azIdx];
+        const nom = volume.nominalRanges[0]?.[azIdx];
+        if (eff && nom && nom - eff > 200) {
+          occDistM = eff;
+        }
+      }
+
+      // Đặt camera ở phía sau điểm cản (xa hơn điểm cản dọc theo tia azDeg)
+      const camDistM = occDistM + Math.max(3000, occDistM * 0.3);
+      const camPos = destinationPoint(inst.latitude, inst.longitude, camDistM, azDeg);
+      const camAltM = Math.max(occAltM + 1200, (inst.altitude || 0) + 1800);
+      // Ống kính quay ngược lại về phía núi và radar
+      const lookBackHeading = (azDeg + 180) % 360;
+
+      set({
+        flyToTarget: {
+          id: `behind-terrain-${inst.instanceId}`,
+          name: `Quan sát từ phía sau núi - ${inst.name}`,
+          latitude: camPos.lat,
+          longitude: camPos.lon,
+          height: camAltM,
+          heading: lookBackHeading,
+          pitch: -22,
+        },
+      });
+      return;
+    }
+  },
 
   // Kiểu vòm tham chiếu (xem DOME_STYLE_DEFAULTS)
   ...DOME_STYLE_DEFAULTS,

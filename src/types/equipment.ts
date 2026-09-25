@@ -83,6 +83,7 @@ export interface EquipmentInstance {
   frequencyRangeGhz?: string;
   networkGroupId?: string;
   spxConfig?: Partial<import('./spxRadarCoverage').SpxRadarCoverageConfig>;
+  targetAltitudeM?: number; // Độ cao mục tiêu khảo sát riêng của đài (m)
 }
 
 export const CATEGORY_META: Record<

@@ -1,7 +1,9 @@
+
+
 /**
- * Các công thức toán học & vật lý radar chuyên dụng
- * Được tổng hợp và kiểm chứng từ giáo trình / tài liệu kỹ thuật tác chiến radar quân sự
- */
+* Các công thức toán học & vật lý radar chuyên dụng
+* Được tổng hợp và kiểm chứng từ giáo trình / tài liệu kỹ thuật tác chiến radar quân sự
+*/
 
 export const EARTH_RADIUS_METERS = 6371000; // Bán kính Trái Đất chuẩn (m)
 export const DEFAULT_K_FACTOR = 4 / 3; // Hệ số khúc xạ khí quyển chuẩn k = 4/3
@@ -224,27 +226,43 @@ export function getProfileMaxRange(
   }
 
   const pts = profile.points;
+  let rawRange = 0;
   if (elevationDeg <= pts[0].elevationDeg) {
-    return pts[0].maxRangeKm;
-  }
-  if (elevationDeg >= pts[pts.length - 1].elevationDeg) {
-    return pts[pts.length - 1].maxRangeKm;
-  }
-
-  // Tìm đoạn chứa elevationDeg và nội suy tuyến tính
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    if (elevationDeg >= p1.elevationDeg && elevationDeg <= p2.elevationDeg) {
-      const deltaElev = p2.elevationDeg - p1.elevationDeg;
-      if (deltaElev <= 0) return p1.maxRangeKm;
-      const t = (elevationDeg - p1.elevationDeg) / deltaElev;
-      const range = p1.maxRangeKm + t * (p2.maxRangeKm - p1.maxRangeKm);
-      return Math.max(0, range);
+    rawRange = pts[0].maxRangeKm;
+  } else if (elevationDeg >= pts[pts.length - 1].elevationDeg) {
+    rawRange = pts[pts.length - 1].maxRangeKm;
+  } else {
+    // Tìm đoạn chứa elevationDeg và nội suy tuyến tính
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      if (elevationDeg >= p1.elevationDeg && elevationDeg <= p2.elevationDeg) {
+        const deltaElev = p2.elevationDeg - p1.elevationDeg;
+        if (deltaElev <= 0) {
+          rawRange = p1.maxRangeKm;
+          break;
+        }
+        const t = (elevationDeg - p1.elevationDeg) / deltaElev;
+        rawRange = p1.maxRangeKm + t * (p2.maxRangeKm - p1.maxRangeKm);
+        break;
+      }
     }
   }
 
-  return fallbackRangeKm;
+  // Tỉ lệ scale theo fallbackRangeKm (tầm cự ly thực tế của đài)
+  let maxProfileKm = 0;
+  for (let i = 0; i < pts.length; i++) {
+    if (pts[i].maxRangeKm > maxProfileKm) {
+      maxProfileKm = pts[i].maxRangeKm;
+    }
+  }
+
+  if (maxProfileKm > 0 && fallbackRangeKm > 0) {
+    const scale = fallbackRangeKm / maxProfileKm;
+    return Math.min(fallbackRangeKm, Math.max(0, rawRange * scale));
+  }
+
+  return Math.min(fallbackRangeKm, Math.max(0, rawRange));
 }
 
 /**

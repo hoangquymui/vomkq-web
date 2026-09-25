@@ -37,10 +37,13 @@ import {
 } from '../../utils/radarVolumeEngine';
 import {
   buildRadarVolumeGeometry,
+  buildRadarOccludedVolumeGeometry,
   createRadarVolumeGeometryInstance,
+  createRadarOccludedGeometryInstance,
 } from '../../utils/radarVolumeGeometry';
 import {
   createRadarDomeMaterial,
+  createRadarOccludedMaterial,
   releaseRadarDomeMaterial,
   resolveDomeColorHex,
   updateRadarDomeMaterials,
@@ -247,6 +250,7 @@ export const CesiumGlobe: React.FC = () => {
     coverageVolumes,
     setCoverageVolume,
     dome3DMode,
+    showOccludedVolume,
     selectedAltitudeM,
     setIsCalculatingVolume,
   } = useTacticalStore();
@@ -496,9 +500,9 @@ export const CesiumGlobe: React.FC = () => {
       return;
     }
 
-    // Giữ độ cao tối thiểu 85.000m để có tầm nhìn bao quát toàn bộ vòm radar và núi non
+    // Tôn trọng độ cao chiến thuật nếu preset chỉ định độ cao quan sát cụ thể (< 80.000m)
     const rawHeight = typeof flyToTarget.height === 'number' && !isNaN(flyToTarget.height) ? flyToTarget.height : 95000;
-    const safeHeight = Math.max(85000, rawHeight);
+    const safeHeight = Math.max(100, rawHeight);
 
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(
@@ -1409,14 +1413,24 @@ export const CesiumGlobe: React.FC = () => {
           coverageHeightKm: safeCoverageHeightKm,
         };
 
+        const effectiveAltitudeM =
+          inst.targetAltitudeM ??
+          (isSelected
+            ? (targetHeightMeters || selectedAltitudeM)
+            : (selectedAltitudeM || targetHeightMeters));
+
         let domePrimitive: Cesium.Primitive | null = null;
         let baseRadiusM = safeRangeKm * 1000;
-        let apexHeightM = safeCoverageHeightKm * 1000;
+        let apexHeightM =
+          effectiveAltitudeM && effectiveAltitudeM > 0
+            ? Math.max(0, effectiveAltitudeM - safeAlt)
+            : safeCoverageHeightKm * 1000;
 
         if (volume) {
           const volGeom = buildRadarVolumeGeometry(volume, {
             mode: dome3DMode,
             showInnerCone: showConeOfSilence,
+            selectedAltitudeM: effectiveAltitudeM,
           });
 
           if (volGeom) {
@@ -1454,9 +1468,52 @@ export const CesiumGlobe: React.FC = () => {
             viewer.scene.primitives.add(domePrimitive);
             domeResourcesRef.current.push({ primitive: domePrimitive, material });
           }
+
+          // Dựng khối bóng râm che khuất sau núi (Occluded / Shadow Volume) khi ở chế độ terrain-aware
+          if (dome3DMode === 'terrain-aware' && showOccludedVolume) {
+            const occGeom = buildRadarOccludedVolumeGeometry(volume, {
+              mode: 'terrain-aware',
+              selectedAltitudeM: effectiveAltitudeM,
+            });
+            if (occGeom) {
+              const shadowMaterial = createRadarOccludedMaterial(0.2);
+              const shadowPrimitive = new Cesium.Primitive({
+                geometryInstances: createRadarOccludedGeometryInstance(occGeom, inst.instanceId),
+                appearance: new Cesium.MaterialAppearance({
+                  material: shadowMaterial,
+                  flat: true,
+                  faceForward: false,
+                  closed: false,
+                  translucent: true,
+                  renderState: {
+                    cull: { enabled: false },
+                    depthTest: { enabled: true },
+                    depthMask: false,
+                    blending: Cesium.BlendingState.ALPHA_BLEND,
+                  },
+                }),
+                asynchronous: false,
+                allowPicking: false,
+                compressVertices: false,
+              });
+
+              viewer.scene.primitives.add(shadowPrimitive);
+              domeResourcesRef.current.push({ primitive: shadowPrimitive, material: shadowMaterial });
+            }
+          }
         } else {
           // Fallback dựng vòm danh nghĩa khi volume đang tính toán
-          const domeGeometry = buildRadarDomeGeometry(domeInstance, field, {
+          const fallbackCoverageHeightKm =
+            effectiveAltitudeM && effectiveAltitudeM > 0
+              ? effectiveAltitudeM / 1000
+              : safeCoverageHeightKm;
+
+          const fallbackDomeInstance = {
+            ...domeInstance,
+            coverageHeightKm: fallbackCoverageHeightKm,
+          };
+
+          const domeGeometry = buildRadarDomeGeometry(fallbackDomeInstance, field, {
             azimuthSegments: domeAzimuthSegments,
             elevationRings: domeElevationRings,
             terrainMasked: domeTerrainMasked,
@@ -1600,7 +1657,8 @@ export const CesiumGlobe: React.FC = () => {
             true,
             domeColorHex,
             isSelected,
-            false // không dựng lại phễu nón mù / vành khuyết của bản cũ
+            false, // không dựng lại phễu nón mù / vành khuyết của bản cũ
+            safeRangeKm * 1000 // Tầm cự ly của vòm (m)
           );
           blindEntities.forEach((entity) => viewer.entities.add(entity));
         }
@@ -2000,6 +2058,7 @@ export const CesiumGlobe: React.FC = () => {
     aiAdvisorRoute,
     coverageVolumes,
     dome3DMode,
+    showOccludedVolume,
     selectedAltitudeM,
     releaseDomeResources,
   ]);

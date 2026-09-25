@@ -123,15 +123,23 @@ export async function computeRadarCoverageField(
     if (rKm > globalMaxRangeKm) globalMaxRangeKm = rKm;
   });
   if (globalMaxRangeKm <= 0) globalMaxRangeKm = instance.rangeKm || 100;
+  globalMaxRangeKm = Math.min(instance.rangeKm || 100, globalMaxRangeKm);
   const globalMaxRangeM = globalMaxRangeKm * 1000;
 
   // 4. Tạo các bước cự ly lấy mẫu địa hình dọc theo mặt đất
+  // Phân tầng thích ứng: cự ly gần dày đặc để bắt chướng ngại vật sát đài (200m - 10km)
   const sampleDistances: number[] = [];
-  const minSampleDist = Math.max(800, radialStepMeters);
-  for (let d = minSampleDist; d <= globalMaxRangeM; d += radialStepMeters) {
+  const nearSteps = [200, 400, 600, 800, 1000, 1400, 1800, 2200, 2800, 3500, 4500, 6000, 8000, 10000];
+  nearSteps.forEach((d) => {
+    if (d <= globalMaxRangeM) sampleDistances.push(d);
+  });
+
+  const farStep = Math.max(2500, radialStepMeters);
+  const startFar = sampleDistances.length > 0 ? sampleDistances[sampleDistances.length - 1] + farStep : farStep;
+  for (let d = startFar; d <= globalMaxRangeM; d += farStep) {
     sampleDistances.push(d);
   }
-  if (sampleDistances[sampleDistances.length - 1] !== globalMaxRangeM) {
+  if (sampleDistances.length === 0 || sampleDistances[sampleDistances.length - 1] !== globalMaxRangeM) {
     sampleDistances.push(globalMaxRangeM);
   }
 
@@ -263,8 +271,9 @@ export async function computeRadarCoverageField(
         }
 
         // Tính độ cao của tia sóng có xét độ cong Trái Đất và khúc xạ
+        // Mặt đất cong sụt xuống khiến cao độ tia sóng so với mực nước biển (MSL) tăng lên: + hz
         const hz = calculateEarthBulgeMeters(dist, kFactor);
-        const rayAlt = radarCenterAltM + dist * Math.tan(elRad) - hz;
+        const rayAlt = radarCenterAltM + dist * Math.tan(elRad) + hz;
 
         if (rayAlt < minHeightFound) minHeightFound = rayAlt;
         if (rayAlt > maxHeightFound) maxHeightFound = rayAlt;

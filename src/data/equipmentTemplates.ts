@@ -31,6 +31,20 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
         { elevationDeg: 30.0, maxRangeKm: 40 },
       ],
     },
+    altitudeDetectionTable: {
+      headers: ['Độ cao (m)', 'S_mt = 0,1m² (km)', 'S_mt > 1m² (km)'],
+      rows: [
+        { altitudeM: 100, val1: 30, val2: 42 },
+        { altitudeM: 300, val1: 45, val2: 65 },
+        { altitudeM: 500, val1: 60, val2: 85 },
+        { altitudeM: 1000, val1: 80, val2: 115 },
+        { altitudeM: 3000, val1: 115, val2: 175 },
+        { altitudeM: 6000, val1: 140, val2: 230 },
+        { altitudeM: 10000, val1: 165, val2: 280 },
+        { altitudeM: 20000, val1: 175, val2: 300 },
+        { altitudeM: 30000, val1: 175, val2: 300 },
+      ],
+    },
   },
   {
     id: 'radar_p18',
@@ -202,6 +216,21 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
       points: [
         { elevationDeg: 0, maxRangeKm: 20 },
         { elevationDeg: 70, maxRangeKm: 20 },
+      ],
+    },
+    altitudeDetectionTable: {
+      headers: ['Độ cao mục tiêu (m)', 'Cự ly phát hiện (km) [S_mt > 1m²]'],
+      rows: [
+        { altitudeM: 200, val1: 30 },
+        { altitudeM: 300, val1: 40 },
+        { altitudeM: 500, val1: 50 },
+        { altitudeM: 1000, val1: 65 },
+        { altitudeM: 3000, val1: 110 },
+        { altitudeM: 5000, val1: 145 },
+        { altitudeM: 7000, val1: 165 },
+        { altitudeM: 10000, val1: 175 },
+        { altitudeM: 15000, val1: 200 },
+        { altitudeM: 20000, val1: 230 },
       ],
     },
   },
