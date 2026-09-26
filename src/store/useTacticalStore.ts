@@ -57,6 +57,21 @@ export const DOME_STYLE_DEFAULTS = {
   domeColorOverride: null as string | null,
 } as const;
 
+/**
+ * Điểm khảo sát chấm trên mặt cắt đứng 2D để đồng bộ ra vị trí 3D trên quả cầu Cesium.
+ */
+export interface CrossSectionProbePoint {
+  instanceId: string;
+  azimuthDeg: number;
+  distM: number;
+  distKm: number;
+  altM: number;
+  terrainAltM?: number;
+  status: string;
+  lat: number;
+  lon: number;
+}
+
 interface TacticalState {
   // Battlefield Entities
   instances: EquipmentInstance[];
@@ -100,6 +115,7 @@ interface TacticalState {
   showRadarFieldModal: boolean;
   showCrossSection: boolean; // Bật/tắt bảng Mặt cắt ngang 2D
   selectedAzimuthDeg: number; // Góc phương vị đang khảo sát mặt cắt ngang (0-359)
+  crossSectionProbePoint: CrossSectionProbePoint | null; // Điểm khảo sát được chấm trên mặt cắt 2D để đồng bộ ra 3D
 
   // === 3D Radar Coverage Volume (Chuẩn hóa vòm 3D theo Địa hình & Danh nghĩa) ===
   coverageVolumes: Record<string, RadarCoverageVolume>;
@@ -114,6 +130,13 @@ interface TacticalState {
   toggleOccludedVolume: () => void;
   triggerRadarCameraPreset: (preset: 'observer' | 'behind-terrain' | 'top-down') => void;
   clearCoverageVolumes: () => void;
+
+  // === 3D SAM Engagement Volume & Tác chiến Tên Lửa ===
+  samVolumes: Record<string, import('../utils/missileVolumeEngine').SamEngagementVolume>;
+  samEngagementModes: Record<string, import('../utils/missileVolumeEngine').SamEngagementMode>;
+  setSamVolume: (instanceId: string, volume: import('../utils/missileVolumeEngine').SamEngagementVolume) => void;
+  setSamEngagementMode: (instanceId: string, mode: import('../utils/missileVolumeEngine').SamEngagementMode) => void;
+  clearSamVolumes: () => void;
 
   // === Kiểu vòm phủ sóng tham chiếu (port từ Unity Defense/RadarDome) ===
   domeAlpha: number; // Độ đục màu nền vòm | 0.05–0.9 | mặc định 0.30
@@ -227,6 +250,8 @@ interface TacticalState {
   setShowCrossSection: (show: boolean) => void;
   toggleCrossSection: () => void;
   setSelectedAzimuthDeg: (azimuthDeg: number) => void;
+  setCrossSectionProbePoint: (point: CrossSectionProbePoint | null) => void;
+  clearCrossSectionProbePoint: () => void;
   clearCoverageResults: () => void;
 
   addMeasurePoint: (point: { lat: number; lon: number; height: number }) => void;
@@ -390,11 +415,13 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   },
 
   selectEquipment: (instanceId) =>
-    set({
+    set((state) => ({
       selectedInstanceId: instanceId,
       activeTool: 'select',
       pendingTemplate: null,
-    }),
+      crossSectionProbePoint:
+        state.selectedInstanceId === instanceId ? state.crossSectionProbePoint : null,
+    })),
 
   setActiveTool: (tool) =>
     set(() => {
@@ -450,6 +477,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   showRadarFieldModal: false,
   showCrossSection: false,
   selectedAzimuthDeg: 45,
+  crossSectionProbePoint: null,
 
   // 3D Radar Coverage Volume Initial State & Actions
   coverageVolumes: {},
@@ -469,6 +497,39 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     ),
   toggleOccludedVolume: () => set((state) => ({ showOccludedVolume: !state.showOccludedVolume })),
   clearCoverageVolumes: () => set({ coverageVolumes: {} }),
+
+  // 3D SAM Engagement Volume Initial State & Actions
+  samVolumes: {},
+  samEngagementModes: {},
+  setSamVolume: (instanceId, volume) =>
+    set((state) => ({
+      samVolumes: { ...state.samVolumes, [instanceId]: volume },
+    })),
+  setSamEngagementMode: (instanceId, mode) =>
+    set((state) => {
+      const inst = state.instances.find((i) => i.instanceId === instanceId);
+      if (!inst) return state;
+      const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === inst.templateId);
+      const profile = (inst.samProfiles || tmpl?.samProfiles)?.[mode];
+      const nextInstances = state.instances.map((i) => {
+        if (i.instanceId !== instanceId) return i;
+        return {
+          ...i,
+          samEngagementMode: mode,
+          rangeKm: profile ? profile.dMaxKm : i.rangeKm,
+          minEngagementRangeKm: profile ? profile.dMinKm : i.minEngagementRangeKm,
+          maxEngagementAltitudeM: profile ? profile.hMaxM : i.maxEngagementAltitudeM,
+          minEngagementAltitudeM: profile ? profile.hMinM : i.minEngagementAltitudeM,
+          maxTargetSpeedMps: profile ? profile.vMaxMps : i.maxTargetSpeedMps,
+          maxTargetParamKm: profile ? profile.pGhKm : i.maxTargetParamKm,
+        };
+      });
+      return {
+        instances: nextInstances,
+        samEngagementModes: { ...state.samEngagementModes, [instanceId]: mode },
+      };
+    }),
+  clearSamVolumes: () => set({ samVolumes: {} }),
 
   triggerRadarCameraPreset: (preset) => {
     const state = get();
@@ -641,6 +702,8 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     set((state) => ({ showCrossSection: !state.showCrossSection })),
   setSelectedAzimuthDeg: (azimuthDeg) =>
     set({ selectedAzimuthDeg: ((azimuthDeg % 360) + 360) % 360 }),
+  setCrossSectionProbePoint: (point) => set({ crossSectionProbePoint: point }),
+  clearCrossSectionProbePoint: () => set({ crossSectionProbePoint: null }),
   clearCoverageResults: () =>
     set({ coverageResults: {}, coverageFields: {} }),
 
@@ -1068,6 +1131,39 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         showDome: true,
         showSweep: false,
         coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_spyder')?.coverageProfile,
+      },
+      {
+        instanceId: 'eq_sam_c125_sontay',
+        shortId: 'SAM-03',
+        templateId: 'sam_c125_2tm',
+        name: 'Trận Địa Tên Lửa C-125-2TM Pechora Sơn Tây',
+        category: 'TenLuaPhongKhong',
+        latitude: 21.135,
+        longitude: 105.495,
+        altitude: 35,
+        antennaHeightAGL: 6,
+        rangeKm: 35.4,
+        minEngagementRangeKm: 3.5,
+        maxEngagementAltitudeM: 25000,
+        minEngagementAltitudeM: 20,
+        optimalAltitudeM: 6000,
+        maxTargetSpeedMps: 900,
+        maxTargetParamKm: 25.0,
+        reactionTimeSeconds: 5,
+        deployTimeMinutes: 25,
+        guidanceMethodVi: 'Lệnh vô tuyến bám qua đạn (Command Guidance) & Quang truyền hình Karat',
+        scanSpeed: 0,
+        minElevationDeg: 6.0,
+        maxElevationDeg: 65.0,
+        coverageHeightKm: 25,
+        status: 'Active',
+        commandedByInstanceId: c2Id,
+        color: '#f43f5e',
+        showDome: true,
+        showSweep: false,
+        samEngagementMode: 'head_on',
+        samProfiles: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_c125_2tm')?.samProfiles,
+        coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_c125_2tm')?.coverageProfile,
       },
     ];
 

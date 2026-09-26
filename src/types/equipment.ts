@@ -46,8 +46,26 @@ export interface EquipmentTemplate {
   altitudeDetectionTable?: AltitudeDetectionTable;
   minEngagementRangeKm?: number; // Cự ly xạ giới tối thiểu (km) cho Tên Lửa / Pháo
   maxEngagementAltitudeM?: number; // Trần bắn tiêu diệt tối đa (m)
+  minEngagementAltitudeM?: number; // Độ cao tiêu diệt tối thiểu (m), ví dụ 20m cho C-125
+  maxTargetSpeedMps?: number; // Vận tốc mục tiêu tối đa có thể tiêu diệt (m/s)
+  maxTargetParamKm?: number; // Tham số đường bay giới hạn P_gh (km)
+  optimalAltitudeM?: number; // Độ cao tối ưu khí động học đạt tầm xa cực đại H_opt (m)
   reactionTimeSeconds?: number; // Thời gian phản ứng xạ kích (giây)
+  deployTimeMinutes?: number; // Thời gian triển khai/thu hồi (phút)
   guidanceMethodVi?: string; // Phương thức dẫn bắn (Radar TVM, Hồng ngoại IIR, Lệnh vô tuyến...)
+  samEngagementMode?: 'head_on' | 'tail_chase' | 'jamming_passive' | 'jamming_active' | 'tbk_optical';
+  samProfiles?: Record<
+    string,
+    {
+      modeVi: string;
+      dMinKm: number;
+      dMaxKm: number;
+      hMinM: number;
+      hMaxM: number;
+      vMaxMps: number;
+      pGhKm: number;
+    }
+  >;
   frequencyRangeGhz?: string; // Dải tần số trinh sát điện từ (GHz) cho trạm thụ động ESM
   networkGroupId?: string; // Định danh nhóm mạng cảm biến TDoA
 }
@@ -78,8 +96,26 @@ export interface EquipmentInstance {
   altitudeDetectionTable?: AltitudeDetectionTable;
   minEngagementRangeKm?: number;
   maxEngagementAltitudeM?: number;
+  minEngagementAltitudeM?: number;
+  maxTargetSpeedMps?: number;
+  maxTargetParamKm?: number;
+  optimalAltitudeM?: number;
   reactionTimeSeconds?: number;
+  deployTimeMinutes?: number;
   guidanceMethodVi?: string;
+  samEngagementMode?: 'head_on' | 'tail_chase' | 'jamming_passive' | 'jamming_active' | 'tbk_optical';
+  samProfiles?: Record<
+    string,
+    {
+      modeVi: string;
+      dMinKm: number;
+      dMaxKm: number;
+      hMinM: number;
+      hMaxM: number;
+      vMaxMps: number;
+      pGhKm: number;
+    }
+  >;
   frequencyRangeGhz?: string;
   networkGroupId?: string;
   spxConfig?: Partial<import('./spxRadarCoverage').SpxRadarCoverageConfig>;

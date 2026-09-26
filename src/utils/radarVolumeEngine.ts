@@ -203,108 +203,17 @@ export async function computeRadarCoverageVolume(
     return calculateNominalRangeAtAltitude(instance, altM, kFactor);
   });
 
-  // 5. Chuẩn bị lưới lấy mẫu địa hình DEM từ Cesium
-  // Phân tầng thích ứng:
-  // - Cự ly gần (200m - 10km): Mẫu dày đặc để bắt trọn mọi sườn núi, ngọn đồi sát đài (ví dụ: núi An Khê 200m-1.5km)
-  // - Cự ly xa (> 10km): Bước lấy mẫu đều đặn theo cự ly tối đa của đài
-  const sampleDistances: number[] = [];
-  const nearSteps = [200, 400, 600, 800, 1000, 1400, 1800, 2200, 2800, 3500, 4500, 6000, 8000, 10000];
-  nearSteps.forEach((d) => {
-    if (d <= maxRangeM) sampleDistances.push(d);
-  });
-
-  const farStep = Math.max(2500, radialStepMeters);
-  const startFar = sampleDistances.length > 0 ? sampleDistances[sampleDistances.length - 1] + farStep : farStep;
-  for (let d = startFar; d <= maxRangeM; d += farStep) {
-    sampleDistances.push(d);
-  }
-  if (sampleDistances.length === 0 || sampleDistances[sampleDistances.length - 1] < maxRangeM) {
-    sampleDistances.push(maxRangeM);
-  }
-
-  interface SampleMeta {
-    az: number;
-    dist: number;
-    lat: number;
-    lon: number;
-  }
-
-  const sampleMetas: SampleMeta[] = [];
-  const cartographics: Cesium.Cartographic[] = [];
-
-  azimuthSamples.forEach((az) => {
-    sampleDistances.forEach((dist) => {
-      const dest = destinationPoint(radarLat, radarLon, dist, az);
-      sampleMetas.push({ az, dist, lat: dest.lat, lon: dest.lon });
-      cartographics.push(Cesium.Cartographic.fromDegrees(dest.lon, dest.lat));
-    });
-  });
-
-  let sampledHeights: number[] = new Array(cartographics.length).fill(0);
-  let terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error' = 'flat_fallback';
-
-  if (terrainProvider) {
-    try {
-      const targetLevel = maxRangeKm <= 60 ? 11 : maxRangeKm <= 160 ? 10 : 9;
-      const batchSize = 350;
-      for (let i = 0; i < cartographics.length; i += batchSize) {
-        const chunk = cartographics.slice(i, i + batchSize);
-        try {
-          await Cesium.sampleTerrain(terrainProvider, targetLevel, chunk, false);
-        } catch {
-          try {
-            await Cesium.sampleTerrain(terrainProvider, Math.max(8, targetLevel - 1), chunk, false);
-          } catch {
-            // bỏ qua lỗi cục bộ
-          }
-        }
-        for (let j = 0; j < chunk.length; j++) {
-          const h = chunk[j].height;
-          sampledHeights[i + j] = h !== undefined && !isNaN(h) && isFinite(h) ? Math.max(0, h) : 0;
-        }
-        if (i + batchSize < cartographics.length) {
-          await new Promise((resolve) => setTimeout(resolve, 6));
-        }
-      }
-      terrainStatus = 'loaded';
-    } catch {
-      sampledHeights = cartographics.map(() => 0);
-      terrainStatus = 'sampling_error';
-    }
-  }
-
-  // Tra cứu nhanh độ cao mặt đất: terrainMap.get(`${az}_${dist}`)
-  const terrainMap = new Map<string, number>();
-  for (let i = 0; i < sampleMetas.length; i++) {
-    const meta = sampleMetas[i];
-    terrainMap.set(`${meta.az}_${meta.dist}`, sampledHeights[i] || 0);
-  }
-
-  // 6. Phân tích góc chắn địa hình tích lũy theo từng phương vị
-  // Tại phương vị az, theo dõi tan(theta_mask)(d) = max_{s <= d} [ (h_terr(s) - h_antenna - delta_h(s)) / s ]
-  const maxMaskInfoByAzDist = new Map<string, { maxTan: number; peakDist: number; peakAlt: number }>();
-
-  azimuthSamples.forEach((az) => {
-    let currentMaxTan = -Number.MAX_VALUE;
-    let peakDist = 0;
-    let peakAlt = 0;
-
-    sampleDistances.forEach((dist) => {
-      const groundAlt = terrainMap.get(`${az}_${dist}`) || 0;
-      const deltaHCurvature = calculateEarthBulgeMeters(dist, kFactor);
-      // Góc nhìn từ anten tới bề mặt địa hình tại khoảng cách dist:
-      // Bề mặt Trái Đất sụt xuống theo độ cong (- deltaHCurvature),
-      // do đó cao độ so với mặt phẳng tiếp tuyến chân anten là (groundAlt - radarCenterAltM - deltaHCurvature)
-      const tanObstacle = (groundAlt - radarCenterAltM - deltaHCurvature) / dist;
-
-      if (tanObstacle > currentMaxTan) {
-        currentMaxTan = tanObstacle;
-        peakDist = dist;
-        peakAlt = groundAlt;
-      }
-      maxMaskInfoByAzDist.set(`${az}_${dist}`, { maxTan: currentMaxTan, peakDist, peakAlt });
-    });
-  });
+  // 5 & 6. Lấy mẫu độ cao địa hình DEM và tính góc che chắn tích lũy
+  const { terrainMap, maxMaskInfoByAzDist, sampleDistances, terrainStatus } = await sampleTerrainGridAndMasks(
+    radarLat,
+    radarLon,
+    radarCenterAltM,
+    maxRangeM,
+    azimuthSamples,
+    radialStepMeters,
+    terrainProvider,
+    kFactor
+  );
 
   // 7. Xây dựng ma trận nominalRanges, effectiveRanges, visibilityStates
   // Kích thước: [altitudeBands.length][azimuthSamples.length]
@@ -463,4 +372,127 @@ export function invalidateVolumeCache(instanceId?: string) {
       volumeCache.delete(key);
     }
   }
+}
+
+export interface TerrainGridSamplingResult {
+  terrainMap: Map<string, number>;
+  maxMaskInfoByAzDist: Map<string, { maxTan: number; peakDist: number; peakAlt: number }>;
+  sampleDistances: number[];
+  terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error';
+}
+
+/**
+ * LẤY MẪU ĐỘ CAO ĐỊA HÌNH DEM VÀ TÍNH TOÁN GÓC CHE KHUẤT TÍCH LŨY (REUSABLE)
+ * Dùng chung cho cả Radar Cảnh Giới và Tên Lửa Phòng Không (SAM)
+ */
+export async function sampleTerrainGridAndMasks(
+  centerLat: number,
+  centerLon: number,
+  centerAltM: number,
+  maxRangeM: number,
+  azimuthSamples: number[],
+  radialStepMeters: number,
+  terrainProvider: Cesium.TerrainProvider | null,
+  kFactor: number = DEFAULT_K_FACTOR
+): Promise<TerrainGridSamplingResult> {
+  const maxRangeKm = maxRangeM / 1000;
+  const sampleDistances: number[] = [];
+  const nearSteps = [200, 400, 600, 800, 1000, 1400, 1800, 2200, 2800, 3500, 4500, 6000, 8000, 10000];
+  nearSteps.forEach((d) => {
+    if (d <= maxRangeM) sampleDistances.push(d);
+  });
+
+  const farStep = Math.max(2500, radialStepMeters);
+  const startFar = sampleDistances.length > 0 ? sampleDistances[sampleDistances.length - 1] + farStep : farStep;
+  for (let d = startFar; d <= maxRangeM; d += farStep) {
+    sampleDistances.push(d);
+  }
+  if (sampleDistances.length === 0 || sampleDistances[sampleDistances.length - 1] < maxRangeM) {
+    sampleDistances.push(maxRangeM);
+  }
+
+  interface SampleMeta {
+    az: number;
+    dist: number;
+    lat: number;
+    lon: number;
+  }
+
+  const sampleMetas: SampleMeta[] = [];
+  const cartographics: Cesium.Cartographic[] = [];
+
+  azimuthSamples.forEach((az) => {
+    sampleDistances.forEach((dist) => {
+      const dest = destinationPoint(centerLat, centerLon, dist, az);
+      sampleMetas.push({ az, dist, lat: dest.lat, lon: dest.lon });
+      cartographics.push(Cesium.Cartographic.fromDegrees(dest.lon, dest.lat));
+    });
+  });
+
+  let sampledHeights: number[] = new Array(cartographics.length).fill(0);
+  let terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error' = 'flat_fallback';
+
+  if (terrainProvider) {
+    try {
+      const targetLevel = maxRangeKm <= 60 ? 11 : maxRangeKm <= 160 ? 10 : 9;
+      const batchSize = 350;
+      for (let i = 0; i < cartographics.length; i += batchSize) {
+        const chunk = cartographics.slice(i, i + batchSize);
+        try {
+          await Cesium.sampleTerrain(terrainProvider, targetLevel, chunk, false);
+        } catch {
+          try {
+            await Cesium.sampleTerrain(terrainProvider, Math.max(8, targetLevel - 1), chunk, false);
+          } catch {
+            // bỏ qua lỗi cục bộ
+          }
+        }
+        for (let j = 0; j < chunk.length; j++) {
+          const h = chunk[j].height;
+          sampledHeights[i + j] = h !== undefined && !isNaN(h) && isFinite(h) ? Math.max(0, h) : 0;
+        }
+        if (i + batchSize < cartographics.length) {
+          await new Promise((resolve) => setTimeout(resolve, 6));
+        }
+      }
+      terrainStatus = 'loaded';
+    } catch {
+      sampledHeights = cartographics.map(() => 0);
+      terrainStatus = 'sampling_error';
+    }
+  }
+
+  const terrainMap = new Map<string, number>();
+  for (let i = 0; i < sampleMetas.length; i++) {
+    const meta = sampleMetas[i];
+    terrainMap.set(`${meta.az}_${meta.dist}`, sampledHeights[i] || 0);
+  }
+
+  const maxMaskInfoByAzDist = new Map<string, { maxTan: number; peakDist: number; peakAlt: number }>();
+
+  azimuthSamples.forEach((az) => {
+    let currentMaxTan = -Number.MAX_VALUE;
+    let peakDist = 0;
+    let peakAlt = 0;
+
+    sampleDistances.forEach((dist) => {
+      const groundAlt = terrainMap.get(`${az}_${dist}`) || 0;
+      const deltaHCurvature = calculateEarthBulgeMeters(dist, kFactor);
+      const tanObstacle = (groundAlt - centerAltM - deltaHCurvature) / dist;
+
+      if (tanObstacle > currentMaxTan) {
+        currentMaxTan = tanObstacle;
+        peakDist = dist;
+        peakAlt = groundAlt;
+      }
+      maxMaskInfoByAzDist.set(`${az}_${dist}`, { maxTan: currentMaxTan, peakDist, peakAlt });
+    });
+  });
+
+  return {
+    terrainMap,
+    maxMaskInfoByAzDist,
+    sampleDistances,
+    terrainStatus,
+  };
 }

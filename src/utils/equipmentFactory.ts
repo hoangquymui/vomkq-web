@@ -52,5 +52,16 @@ export function createEquipmentFromTemplate(
     showDome: true,
     showSweep: (template.defaultScanSpeed || 0) > 0,
     coverageProfile: template.coverageProfile,
+    minEngagementRangeKm: template.minEngagementRangeKm,
+    maxEngagementAltitudeM: template.maxEngagementAltitudeM,
+    minEngagementAltitudeM: template.minEngagementAltitudeM,
+    optimalAltitudeM: template.optimalAltitudeM,
+    maxTargetSpeedMps: template.maxTargetSpeedMps,
+    maxTargetParamKm: template.maxTargetParamKm,
+    reactionTimeSeconds: template.reactionTimeSeconds,
+    deployTimeMinutes: template.deployTimeMinutes,
+    guidanceMethodVi: template.guidanceMethodVi,
+    samProfiles: template.samProfiles,
+    samEngagementMode: template.samEngagementMode || 'head_on',
   };
 }

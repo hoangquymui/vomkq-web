@@ -1689,5 +1689,426 @@ Qua truy vết mã nguồn và dữ liệu thực nghiệm DEM từ `CesiumTerra
    - `npx tsx docs/verify-blind-zone-range.ts`: **ALL BLIND ZONE RANGE CHECKS PASSED**.
 3. **Quy tắc Git**: Tuyệt đối không tự ý chạy `git commit` hay `git push`.
 
+---
+
+## [2026-09-25] Bổ sung Tổ hợp Tên Lửa Phòng Không C-125 Pechora & Nâng cấp Vòm Hỏa Lực SAM 3D Quả Lê 3 Lớp & Mặt Cắt Đứng WEZ 2D
+
+### 16.1. Mục tiêu & Vấn đề
+- **Vấn đề trước đây:**
+  - Vùng hỏa lực tên lửa phòng không (SAM) mới chỉ vẽ đường tròn 2D phẳng trên đất và 8 nan khung dây đơn sơ, chưa dựng thành khối vòm 3D thể tích thực thụ.
+  - Bảng Mặt cắt đứng (`RadarCrossSectionPanel`) chỉ hỗ trợ búp sóng Radar LOS từ `coverageFields`, khi chọn SAM bị treo vĩnh viễn ở trạng thái "Đang lấy mẫu địa hình và phân tích trường Coverage Field...".
+  - Chưa có tổ hợp tên lửa phòng không C-125 (C-125M / C-125-2TM Pechora) theo biên chế Quân chủng PK-KQ.
+- **Mục tiêu thực hiện:**
+  - Bổ sung khí tài **C-125M** và **C-125-2TM Pechora-2TM** với đầy đủ thông số chính xác từ Bảng II.13 và Bảng 1.1 tài liệu quân sự.
+  - Xây dựng module riêng `src/utils/missileVolumeEngine.ts` để tính toán thể tích vòm hỏa lực SAM dạng quả lê khí động học (Asymmetric Pear-Shaped Envelope) có xét lực cản khí quyển, trần bắn $H_{max}$, sàn bắn $H_{min}$, và nón mù đỉnh đầu $D_{min}(H)$ theo góc phóng $[\varepsilon_{min}, \varepsilon_{max}]$.
+  - Thể hiện **3 lớp vỏ thể tích 3D lồng nhau** (Đỏ: Tối ưu 70%, Vàng: Xác suất cao 85%, Xanh lam: Biên ngoài 100%) và cắt gọt theo địa hình thực tế (Terrain Masking).
+  - Tích hợp **Mặt cắt đứng hỏa lực 2D (WEZ Cross Section)** trong `RadarCrossSectionPanel` và cụm chuyển đổi chế độ tác chiến (Bắn đón / Bắn đuổi / Nhiễu vô tuyến / Quang học TBK).
+
+### 16.2. Files đã thay đổi & File tạo mới
+| File | Thay đổi |
+|---|---|
+| `src/types/equipment.ts` | Bổ sung `minEngagementAltitudeM`, `maxTargetSpeedMps`, `maxTargetParamKm`, `optimalAltitudeM`, `samEngagementMode`, `samProfiles` vào `EquipmentTemplate` và `EquipmentInstance`. |
+| `src/data/equipmentTemplates.ts` | Thêm template `sam_c125_2tm` (Pechora-2TM) và `sam_c125m` (C-125M); cập nhật `samProfiles` cho `sam_s300` và `sam_spyder`. |
+| `src/utils/radarVolumeEngine.ts` | Trích xuất và export hàm tái sử dụng `sampleTerrainGridAndMasks` để chia sẻ logic lấy mẫu địa hình DEM và góc chắn núi cho cả Radar và SAM (Zero duplication). |
+| `src/utils/missileVolumeEngine.ts` | **(MỚI - Phương án B)** Module chuyên trách hỏa lực tên lửa SAM: hàm quả lê `calculateSamPearMaxRange`, nón mù `calculateSamDeadConeRadius`, engine tính toán `computeSamEngagementVolume`, dựng mesh 3D 3 lớp `buildSamLayerGeometry`, và xuất profile 2D `getSamCrossSectionProfile`. |
+| `src/store/useTacticalStore.ts` | Thêm state `samVolumes`, `samEngagementModes`, các action `setSamVolume`, `setSamEngagementMode`, `clearSamVolumes`, và bổ sung `SAM-03` (C-125-2TM Sơn Tây) vào danh sách khí tài mẫu. |
+| `src/components/map/CesiumGlobe.tsx` | Tính toán SAM volume trong `calcVolumeAll`, render 3 lớp vòm hỏa lực quả lê 3D (`outer_boundary`, `high_prob`, `optimal`) bằng Cesium Primitives với alpha blending và rim glow. |
+| `src/components/ui/RadarCrossSectionPanel.tsx` | Nâng cấp giao diện hiển thị đồ thị quả lê 3 lớp (Đỏ - Vàng - Xanh), nón mù $D_{min}$, đường địa hình thực tế, đánh dấu vùng núi chắn, và thanh chuyển đổi chế độ tác chiến. |
+| `src/components/ui/RightInspector.tsx` | Bổ sung bảng chọn chế độ tác chiến (Bắn đón, Bắn đuổi, Nhiễu, TBK) và hiển thị thông số $V_{max}, P_{gh}, H_{min}$. |
+| `docs/verify-sam-missile-envelope.ts` | **(MỚI)** Bộ test harness kiểm chứng toàn bộ công thức quả lê, nón mù, volume mesh, và cross section (5/5 PASS). |
+
+### 16.3. Bảng thông số kỹ-chiến thuật C-125M & C-125-2TM (Nguồn: Bảng II.13 & Bảng 1.1)
+| Thông số | Ký hiệu | C-125M | C-125-2TM | Đơn vị | Ý nghĩa tác chiến |
+|---|---|---|---|---|---|
+| Cự ly diệt cực đại (Bắn đón) | $D_{max\_don}$ | 25.0 | 35.4 | km | Cự ly bắn xa nhất trong điều kiện không nhiễu |
+| Cự ly diệt cực cận (Bắn đón) | $D_{min\_don}$ | 3.5 | 3.5 | km | Cự ly nón chết tối thiểu dưới tầm bắt bám |
+| Trần hỏa lực (Bắn đón) | $H_{max\_don}$ | 18,000 | 25,000 | m | Độ cao đánh chặn lớn nhất |
+| Độ cao diệt tối thiểu | $H_{min}$ | 20 | 20 | m | Khả năng diệt mục tiêu bay thấp / bám địa hình |
+| Độ cao tối ưu khí động | $H_{opt}$ | 5,000 | 6,000 | m | Điểm phình to nhất của quả lê hỏa lực |
+| Vận tốc mục tiêu tối đa | $V_{max}$ | 700 | 900 | m/s | Giới hạn tốc độ mục tiêu có thể tiêu diệt |
+| Tham số đường bay giới hạn | $P_{gh}$ | 16.5 | 25.0 | km | Cự ly tiếp cận bên lớn nhất của đường bay |
+| Góc tà xạ giới | $[\varepsilon_{min}, \varepsilon_{max}]$ | [8.5°, 64.5°] | [8.5°, 64.5°] | độ | Góc giới hạn ngẩng phóng theo Mục 7 tài liệu |
+| Cự ly diệt (Bắn đuổi) | $D_{max\_duoi}$ | 22.0 | 26.0 | km | Cự ly khi rượt đuổi mục tiêu bay xa dần |
+| Trần bắn (Bắn đuổi) | $H_{max\_duoi}$ | 14,000 | 18,000 | m | Trần hỏa lực khi bắn đuổi |
+| Nhiễu tiêu cực | $D_{max} / H_{max}$ | 13.0 / 8,000 | 18.0 / 12,000 | km / m | Xạ giới khi có nhiễu vô tuyến tiêu cực |
+| Nhiễu tích cực | $D_{max} / H_{max}$ | 11.7 / 6,000 | 15.0 / 9,000 | km / m | Xạ giới khi có nhiễu vô tuyến tích cực |
+| Chế độ quang truyền hình | $D_{max} / H_{max}$ | 20.0 / 11,000 | 28.0 / 16,000 | km / m | Dẫn bắn kênh quang Karat (TBK) |
+
+### 16.4. Công thức toán học cốt lõi
+1. **Biên xa quả lê SAM:**
+   $$D_{max}(H) = D_{nom} \cdot \sqrt{1 - \left(\frac{H - H_{opt}}{H_{max} - H_{opt}}\right)^2} \cdot \left[ 0.45 + 0.55 \left(\frac{H - H_{min}}{H_{opt} - H_{min}}\right)^{0.28} \right]$$
+2. **Nón mù cực cận đỉnh đầu:**
+   $$D_{min}(H) = \max\left( D_{min\_0}, \; (H - H_{radar}) \cdot \cot(\varepsilon_{max}) \right)$$
+3. **Phân lớp hiệu quả:**
+   - Vùng tiêu diệt tối ưu: $D_{opt}(H) = 0.70 \cdot D_{max}(H)$
+   - Vùng xác suất cao: $D_{high}(H) = 0.85 \cdot D_{max}(H)$
+   - Vùng cảnh báo / biên ngoài: $D_{max}(H)$
+4. **Cắt gọt địa hình (Terrain Masking):**
+   Tại mỗi phương vị $Az$, nếu góc tà tới mục tiêu $\theta(H, D) < \theta_{mask}(Az)$, cự ly tác chiến bị chặn lại tại đỉnh núi $D_{effective} = D_{nui}$.
+
+### 16.5. Kết quả kiểm tra & Nghiệm thu
+- `npx tsx docs/verify-sam-missile-envelope.ts`: **5/5 tests PASS** (C-125-2TM, Nón mù, Template, 3D Mesh Vertices/Triangles, 2D Cross Section).
+- `npx tsc -b`: **Mã thoát 0 (0 lỗi)**.
+- Giao diện trực quan: Đồng bộ 100% giữa quả lê 3D trong Cesium và biểu đồ mặt cắt đứng 2D trong RadarCrossSectionPanel.
+- Tuân thủ quy định: Không tự ý thực hiện git commit / git push.
+
+---
+
+## [2026-09-25] Khắc phục lỗi nạp gạch địa hình / ảnh nền (RangeError 5811023925) & Sự cố dừng render loop Cesium (DeveloperError: normalized result is not a number)
+
+### 18.1. Triệu chứng & Log lỗi ghi nhận
+- Console trình duyệt báo lỗi hàng loạt khi nạp gạch địa hình và ảnh nền:
+  ```text
+  An error occurred in "CesiumTerrainProvider": Failed to obtain terrain tile X: 1627 Y: 388 Level: 10. Error message: "RangeError: Invalid typed array length: 5811023925"
+  An error occurred in "UrlTemplateImageryProvider": Failed to obtain image tile X: 407 Y: 223 Level: 9.
+  ```
+- Khi người dùng giữ chuột phải hoặc chuột giữa nghiêng góc nhìn (tilt/pan camera) trên bề mặt 3D, ứng dụng hiển thị bảng lỗi đỏ và toàn bộ quả cầu 3D bị đóng băng hoàn toàn:
+  ```text
+  An error occurred while rendering. Rendering has stopped.
+  DeveloperError: normalized result is not a number
+      at Cartesian3.normalize
+      at Ellipsoid.geodeticSurfaceNormal
+      at Object.resultat [as eastNorthUpToFixedFrame]
+      at tilt3DOnTerrain
+      at tilt3D
+      at reactToInput
+      at update3D
+      at ScreenSpaceCameraController.update
+      at Scene.initializeFrame
+  ```
+
+### 18.2. Phân tích nguyên nhân gốc (Root Cause Analysis)
+1. **Lỗi `RangeError: Invalid typed array length: 5811023925`**:
+   - **Input**: Cesium gửi HTTP GET đến `public/offline-terrain/{z}/{x}/{y}.terrain` để lấy dữ liệu độ cao nhị phân Quantized-Mesh 1.0. Do kho offline chỉ tải một phần lãnh thổ Việt Nam, các tile ngoài phạm vi không tồn tại trên ổ đĩa.
+   - **Cơ chế gây lỗi**: Vite dev server là Single Page Application (SPA), tích hợp cơ chế `connect-history-api-fallback`. Khi một tài nguyên không tồn tại trên đĩa, Vite tự động trả về `index.html` với mã **HTTP 200 OK** (thay vì HTTP 404 Not Found).
+   - **Xử lý nhị phân**: `CesiumTerrainProvider` thấy mã HTTP 200 nên tiến hành giải mã chuỗi ký tự ASCII `<!doctype html...` như một mảng nhị phân Quantized-Mesh. Tại offset byte chỉ số lượng đỉnh/mặt lưới, các ký tự ASCII được diễn giải thành số nguyên khổng lồ **`5811023925`**. Khi Cesium gọi `new Float32Array(5811023925)`, bộ nhớ vượt quá giới hạn tối đa của TypedArray trong V8 Engine, dẫn tới ngoại lệ `RangeError`.
+   - Đối với `UrlTemplateImageryProvider`, việc nhận `index.html` (text/html) khiến trình giải mã ảnh của trình duyệt không parse được dạng PNG/JPEG, sinh lỗi `Failed to obtain image tile`.
+2. **Cấu hình sai phạm vi `offline-terrain-map` (`CesiumGlobe.tsx`)**:
+   - Thư mục `public/offline-terrain-map` chỉ chứa gạch bản đồ cho vùng Duyên hải Miền Trung & Tây Nguyên (zoom 8 đến 13, kinh độ 105.0 - 109.5, vĩ độ 10.5 - 20.0).
+   - Tuy nhiên tại dòng 445 của `CesiumGlobe.tsx`, `UrlTemplateImageryProvider` được cấu hình với `minimumLevel: 0`, `maximumLevel: 16` và không có thuộc tính `rectangle`. Khi camera mở rộng, Cesium liên tục truy vấn hàng ngàn gạch toàn cầu (Level 0-7, 14-16) không hề tồn tại.
+3. **Sự cố dừng vòng lặp render (`tilt3DOnTerrain` & `DeveloperError`)**:
+   - Khi dữ liệu địa hình bị thiếu hoặc lỗi giải mã, hàm ray-casting `globe.pick` trong thao tác nghiêng chuột (`tilt3DOnTerrain`) có thể trả về toạ độ gốc Trái Đất `Cartesian3(0, 0, 0)` hoặc chứa toạ độ `NaN`.
+   - Hàm `Ellipsoid.geodeticSurfaceNormal` gọi tiếp `Cartesian3.normalize(cartesian)`. Do độ dài vector bằng 0 (hoặc NaN), hàm ném lỗi `DeveloperError: normalized result is not a number`.
+   - Lỗi này văng ra ngay trong `Scene.initializeFrame` của render loop. Trong Cesium Widget, thuộc tính `showRenderLoopErrors` mặc định là `true`, khiến Cesium hiển thị Error Panel và gán `_renderLoop = false`, **dừng vĩnh viễn vòng lặp render**.
+
+### 18.3. Giải pháp kỹ thuật đã thực hiện
+1. **Thêm Middleware `offlineTile404Plugin` vào `vite.config.ts`**:
+   - Kiểm tra các URL bắt đầu bằng `/offline-` hoặc có đuôi `.terrain`, `.png`, `.jpg`, `.jpeg`, `.webp`.
+   - Dùng `fs.existsSync` kiểm tra file thực tế trong thư mục `public/`. Nếu không tồn tại, trả về đúng mã **HTTP 404 Not Found** với Content-Type `text/plain; charset=utf-8`.
+   - Cesium khi nhận mã 404 sẽ tự động nhận biết tile không có sẵn và nội suy từ tile cha (upsampling), không vấp phải lỗi giải mã HTML thành binary.
+2. **Chuẩn hoá cấu hình gạch trong `src/components/map/CesiumGlobe.tsx`**:
+   - Giới hạn `localTerrainLayer` (`offline-terrain-map`):
+     - `minimumLevel: 8`
+     - `maximumLevel: 13`
+     - `rectangle: Cesium.Rectangle.fromDegrees(105.0, 10.5, 109.5, 20.0)`
+     - Thêm `errorEvent.addEventListener(e => { e.retry = false; })` để không thử lại vô hạn các tile 404.
+   - Bổ sung cấu hình tương tự cho `CesiumTerrainProvider` (`requestVertexNormals: false`, `requestWaterMask: false`, `e.retry = false`).
+3. **Phòng vệ toạ độ suy biến tại `Ellipsoid.prototype.geodeticSurfaceNormal`**:
+   - Bọc bảo vệ hàm `geodeticSurfaceNormal` trước toạ độ `(0, 0, 0)` hoặc `NaN`. Khi gặp vector có độ dài suy biến ($< 10^{-6}$ m), hàm an toàn trả về `Cartesian3.UNIT_Z` thay vì ném ngoại lệ.
+4. **Ngăn chặn dừng render loop**:
+   - Thêm `showRenderLoopErrors: false` vào tuỳ chọn khởi tạo `Cesium.Viewer`.
+   - Kết hợp sự kiện `scene.renderError` để cô lập cảnh báo và yêu cầu khung hình tiếp theo (`requestRender`), bảo đảm vòng lặp đồ hoạ luôn hoạt động trơn tru.
+
+### 18.4. Bảng thông số kỹ thuật
+| Thông số / Đối tượng | Trước khi sửa | Sau khi sửa | Ý nghĩa |
+|---|---|---|---|
+| `offline-terrain` HTTP phản hồi tile thiếu | HTTP 200 (HTML `index.html`) | HTTP 404 (`text/plain; charset=utf-8`) | Cesium xử lý 404 êm dịu, không parse HTML thành binary TypedArray |
+| `offline-terrain-map` `minimumLevel` / `maximumLevel` | 0 / 16 | 8 / 13 | Khớp chính xác phạm vi gạch thực tế có trong `offline-pack-info.json` |
+| `offline-terrain-map` `rectangle` | Toàn cầu (không khai báo) | `Rectangle(105.0, 10.5, 109.5, 20.0)` | Chỉ yêu cầu gạch trong vùng Duyên hải Miền Trung & Tây Nguyên |
+| `showRenderLoopErrors` | `true` (mặc định) | `false` | Tránh việc ErrorPanel của Cesium tự động ngắt `_renderLoop` |
+| `geodeticSurfaceNormal((0,0,0))` | Ném `DeveloperError` | Trả về `Cartesian3.UNIT_Z` | Miễn nhiễm hoàn toàn lỗi chuẩn hoá vector khi camera tilt góc nhọn |
+
+### 18.5. Kết quả kiểm tra xác minh
+1. **Kiểm tra HTTP Dev Server**:
+   - `fetch('http://localhost:3000/offline-terrain/10/1627/388.terrain')` $\to$ **404 Not Found** (`text/plain; charset=utf-8`).
+   - `fetch('http://localhost:3000/offline-terrain-map/14/13005/7185.png')` $\to$ **404 Not Found** (`text/plain; charset=utf-8`).
+   - `fetch('http://localhost:3000/offline-terrain/layer.json')` $\to$ **200 OK** (`application/json`).
+   - `fetch('http://localhost:3000/offline-terrain/0/0/0.terrain')` $\to$ **200 OK** (Quantized-mesh binary).
+2. **TypeScript & Linter**:
+   - `npx tsc --noEmit`: **0 lỗi** (Pass 100%).
+   - `npm run lint`: **0 errors** trên toàn bộ 55 tệp.
+3. **Quy định Git**: Tuân thủ Rule 5 — Không thực hiện `git commit` hay `git push`.
+
+
+---
+
+## [2026-09-25] Khắc phục lỗi Vòm Hỏa Lực SAM 3D không hiển thị (Vướng điều kiện candidateRadars) & Đưa bảng điều khiển chế độ tác chiến ra giao diện chính Inspector
+
+### 17.1. Triệu chứng & Cách tái hiện
+- Người dùng triển khai các tổ hợp tên lửa phòng không SAM (ví dụ SAM-01 C-125-2TM, SAM-02 C-125M) lên bản đồ 3D mà không triển khai bất kỳ đài radar cảnh giới nào (như trong ảnh chụp thực tế màn hình của người dùng).
+- Trên quả cầu Cesium 3D: Vẫn chỉ hiển thị nan quạt dây an toàn (fallback polyline) và vòng tròn phẳng 2D dưới đất, hoàn toàn không xuất hiện vòm thể tích quả lê 3D với 3 lớp (Đỏ - Vàng - Xanh).
+- Trong bảng thuộc tính bên phải (`RightInspector`): Cụm chọn chế độ bắn đón/bắn đuổi/nhiễu và các thông số mới ($V_{max}, P_{gh}, H_{min}$) bị giấu kín bên trong accordion "Thông số Tác chiến & Quân sự Chi tiết" vốn mặc định bị thu gọn (`isSpecsOpen = false`), khiến người dùng không thấy sự khác biệt so với trước khi sửa.
+
+### 17.2. Nguyên nhân gốc (Root Cause)
+1. **Lỗi ngắt luồng sớm tại `calcVolumeAll` (`src/components/map/CesiumGlobe.tsx`)**:
+   - Tại dòng 864:
+     ```typescript
+     const candidateRadars = instances.filter(...);
+     if (candidateRadars.length === 0) return; // <-- NGUYÊN NHÂN CHÍNH
+     ```
+   - Khi trận địa chỉ có các tổ hợp tên lửa SAM mà không có đài radar nào bật vòm, `candidateRadars.length === 0`.
+   - Lệnh `return;` lập tức ngắt toàn bộ hàm `calcVolumeAll`, khiến khối lệnh tính toán `candidateSams` (dòng 916–936) **không bao giờ được chạy**!
+   - Kết quả: `samVolumes` trong store luôn rỗng `{}`, `samVol` tại dòng 1246 luôn là `undefined`, CesiumGlobe buộc phải rơi vào nhánh `else` (dựng nan quạt fallback dây mỏng cũ).
+2. **Thiếu kiểm tra độc lập và cache cho `candidateSams`**:
+   - Biến `hasPending` trước đây chỉ quét radar, không kiểm tra xem có SAM nào cần tính toán hay không.
+3. **Trùng lặp nhánh fallback vòm radar tại dòng 1541**:
+   - `else if (viewMode === '3D' && showAllDomes && inst.showDome ...)` thiếu điều kiện kiểm tra `caps.hasRadarCoverage`, khiến khí tài SAM có thể bị gọi hàm dựng vòm radar bán cầu đè lên.
+4. **Vị trí UI chưa tối ưu**:
+   - Thẻ `caps.hasEngagementEnvelope` trong `RightInspector.tsx` trước đây chỉ có 2 thông số cũ ($D_{max}, H_{max}$), trong khi các tính năng mới lại bị đưa vào accordion thu gọn.
+
+### 17.3. Giải pháp khắc phục
+1. **Tách biệt hoàn toàn luồng tính toán Radar và SAM trong `CesiumGlobe.tsx`**:
+   - Đổi điều kiện thoát sớm thành:
+     ```typescript
+     if (candidateRadars.length === 0 && candidateSams.length === 0) return;
+     ```
+   - Kiểm tra `hasPending` cho cả danh sách radar và SAM.
+   - Thêm bộ kiểm tra cache key cho `candidateSams` để tránh tính toán thừa.
+   - Bổ sung `caps.hasRadarCoverage &&` vào dòng 1541.
+2. **Nâng cấp toàn diện thẻ "VÒM HỎA LỰC ĐÁNH CHẶN 3D" trong `RightInspector.tsx`**:
+   - Đưa trực tiếp ra mặt tiền thẻ:
+     - Chuyển đổi mô hình 3D: **Danh Nghĩa (Quả lê lý thuyết)** $\leftrightarrow$ **Cắt Địa Hình (LOS thực tế)**.
+     - Badge chỉ báo trạng thái: `✓ Vòm 3D Sẵn Sàng (16 tầng cao • 24 hướng)` hoặc `Đang tính toán ma trận địa hình 3D...`.
+     - Lưới 4 tham số chiến thuật tác chiến trực tiếp: Cự ly ($D_{min} - D_{max}$), Trần/Sàn ($H_{min} - H_{max}$), Vận tốc mục tiêu ($V_{max}$), Tham số đường bay ($P_{gh}$).
+     - Cụm 5 nút bấm chọn chế độ chiến thuật tức thì: Bắn đón (Chuẩn) / Bắn đuổi / Nhiễu tiêu cực / Nhiễu tích cực / Quang học TBK.
+     - Chú giải trực quan 3 lớp hỏa lực quả lê: 🔴 Tối ưu (70% $D_{max}$), 🟡 Xác suất cao (85% $D_{max}$), 🔵 Biên xạ giới (100% $D_{max}$).
+     - Nút bấm nổi bật: `Mở Mặt Cắt Đứng 2D (Cross Section WEZ)` liên kết trực tiếp với biểu đồ SVG 2D.
+
+### 17.4. Kết quả xác minh (Verification)
+1. **TypeScript Check**: `npx tsc -b` -> Mã thoát `0` (Không có lỗi).
+2. **Linter Check**: `npm run lint` -> `0 errors` trên 55 files.
+3. **Kiểm thử hình học SAM**: `npx tsx docs/verify-sam-missile-envelope.ts` -> **5/5 tests PASS**.
+4. **Dev Server**: Vite HMR nạp lại thành công cả 2 file `CesiumGlobe.tsx` và `RightInspector.tsx`, phản hồi HTTP 200 OK.
+5. **Quy định Git**: Tuân thủ Rule 5 — Không thực hiện `git commit` hay `git push`.
+
+---
+
+## [2026-09-25] Tinh chỉnh hình học Vòm Tên Lửa Phòng Không 3D (SAM) — Phát vòm từ tâm khí tài, Nón mù đỉnh đầu 65°, Góc ngẩng bệ phóng 6°, Hiển thị 1 lớp vòm duy nhất (Tầm tối đa D_max)
+
+### 19.1. Triệu chứng & Yêu cầu của người dùng
+1. **Hiện tượng hình học bất hợp lý**:
+   - Vòm tên lửa có một vòng tròn/hình trụ rỗng tính từ tâm khí tài rồi mới phát vòm ra ngoài (đường kính lên đến 7km = $2 \times 3.5$km).
+   - Dưới mặt đất có một vòng tròn phẳng màu xám/đen $R_{min} = 3.5$km chắn quanh trận địa.
+   - Vùng mù trên đỉnh đầu không vuốt nhọn thành hình nón tụ về tâm khí tài mà bị cắt phẳng thành một ống trụ thẳng đứng từ $H = 0$ đến $H \approx 7.5$km, sau đó mới loe ra thành hình nón cụt.
+   - Vòm không phát từ tâm khí tài như radar.
+2. **Yêu cầu kỹ thuật người dùng đưa ra**:
+   - Phát vòm tên lửa từ tâm khí tài $(0, 0, 0)$ tương tự như radar.
+   - Vùng mù thể hiện hình nón đỉnh nhọn tại tâm khí tài.
+   - Góc cực đại mà khí tài có thể ngẩng được so với độ cao cực đại là $65^\circ$ so với mặt phẳng ngang ($\theta_{max} = 65^\circ$).
+   - Góc ngẩng lên cố định của bệ phóng là $6^\circ$ ($\theta_{min} = 6^\circ$).
+   - Chỉ hiển thị duy nhất 1 lớp vòm thể hiện tầm tối đa mà tên lửa có thể chạm tới ($100\% D_{max}$), loại bỏ 3 lớp vòm lồng nhau gây rối mắt.
+
+### 19.2. Nguyên nhân gốc rễ (Root Cause)
+1. **Lỗi kẹp cự ly tối thiểu $dMinM$ trong hàm tính nón mù `calculateSamDeadConeRadius`**:
+   - Code cũ trong `src/utils/missileVolumeEngine.ts`:
+     ```typescript
+     const coneM = altM / Math.tan(maxElevRad);
+     return Math.max(dMinM, coneM);
+     ```
+   - Do $dMinM = 3.500$m (cự ly xạ giới cực cận theo phương ngang của đạn tên lửa SAM C-125), ở tất cả các tầng độ cao từ $0$ đến $H = 3.500 \times \tan(65^\circ) \approx 7.505$m, giá trị `coneM` luôn nhỏ hơn $3.500$m, dẫn tới hàm luôn trả về $3.500$m.
+   - Điều này tạo ra một "ống trụ rỗng" bán kính $3.5$km bao quanh bệ phóng thay vì một hình nón đỉnh nhọn.
+2. **Nắp đáy phẳng (Bottom Cap) tạo vòng tròn trên mặt đất**:
+   - Ở tầng độ cao thấp nhất ($H = 0$), bán kính mặt ngoài là $R_{outer} = 11.2$km (hoặc $dMinM \cot(6^\circ)$) và bán kính mặt trong là $R_{inner} = 3.5$km. Nắp đáy `showBottomCap = true` đã sinh ra một vòng đệm tròn phẳng (washer) từ $3.5$km đến $11.2$km nằm trên mặt đất.
+   - Đồng thời, trong `CesiumGlobe.tsx`, thực thể `Nón Mù Cực Cận R_min` được vẽ thêm đè lên mặt đất với bán kính $3.5$km bằng Cesium Ellipse.
+3. **Mặt cắt đỉnh cao độ cực đại $H_{max}$ bị ép về 0**:
+   - Công thức `calculateSamPearMaxRange` cũ có $f(1) = 0$, ép bán kính tại trần bay $H_{max} = 18$km về đúng 0 m. Trong khi tên lửa SAM C-125 có thể tiêu diệt mục tiêu ở trần bay $18$km với một diện tích chiến thuật nhất định ($\sim 35\% D_{max}$).
+4. **Hiển thị 3 lớp vòm (`outer_boundary`, `high_prob`, `optimal`)**:
+   - `CesiumGlobe.tsx` lặp qua 3 lớp với 3 màu (Xanh dương, Vàng hổ phách, Đỏ hoa hồng) đè lên nhau, gây hiệu ứng z-fighting, cản trở tầm nhìn và làm rối không gian tác chiến 3D.
+5. **Góc ngẩng cực tiểu và cực đại chưa đồng bộ**:
+   - Trong `equipmentTemplates.ts` và `useTacticalStore.ts`, `minElevationDeg` của SAM đang để là $1.0^\circ$ (hoặc $1.5^\circ$), chưa phản ánh góc ngẩng cố định của bệ phóng $6.0^\circ$. `maxElevationDeg` đang để là $70.0^\circ$ hoặc $85.0^\circ$, chưa đúng với góc tà cực đại $65.0^\circ$.
+
+### 19.3. Các xử lý đã thực hiện (Implementation)
+1. **Trong `src/utils/missileVolumeEngine.ts`**:
+   - **Xóa bỏ hoàn toàn việc kẹp $dMinM$ vào nón mù**:
+     $$R_{cone}(\Delta H) = \Delta H \cdot \cot(\theta_{max})$$
+     với $\theta_{max} = 65^\circ$, tại $\Delta H = 0 \implies R_{cone} = 0$.
+   - **Ràng buộc góc ngẩng bệ phóng cố định $6^\circ$**:
+     $$R_{launch}(\Delta H) = \Delta H \cdot \cot(\theta_{min})$$
+     với $\theta_{min} = 6^\circ$, tại $\Delta H = 0 \implies R_{launch} = 0$.
+   - **Tính bán kính mặt ngoài hỏa lực**:
+     $$R_{outer}(\Delta H) = \min(R_{aero}(\Delta H), R_{launch}(\Delta H))$$
+     Tại $\Delta H = 0$, $R_{outer}(0) = 0$. Cả mặt ngoài và mặt trong nón mù đều xuất phát chính xác từ đỉnh $(0, 0, 0)$ của khí tài.
+   - **Cập nhật hình học lưới 3D (`buildSamLayerGeometry`)**:
+     - Tầng $\Delta H = 0$ sử dụng 1 đỉnh duy nhất tại gốc $(0, 0, 0)$ (Apex).
+     - Kết nối từ tầng 0 lên tầng 1 bằng Triangle Fan (quạt tam giác) cho cả mặt ngoài và mặt trong nón mù, ngăn ngừa triệt để lỗi tam giác suy biến có diện tích bằng 0.
+     - Loại bỏ nắp đáy `showBottomCap` do 2 bề mặt đã giao nhau tại gốc $(0, 0, 0)$.
+     - Giữ nắp đỉnh phẳng tại $H_{max}$ nối giữa vành ngoài và vành nón mù.
+   - **Sửa hàm trần bay $H_{max}$**:
+     - Cho phép bán kính tại $H_{max}$ đạt giá trị bình nguyên khí động học ($\sim 35\% D_{max}$), tạo vòm nắp đỉnh mở hợp lý tại $H_{max} = 18$km.
+2. **Trong `src/components/map/CesiumGlobe.tsx`**:
+   - Ẩn entity ellipse 2D `Nón Mù Cực Cận R_min` khi đang ở chế độ 3D (`viewMode === '2D'`).
+   - Tối ưu hóa rendering: Chỉ hiển thị duy nhất **1 lớp vòm** (`outer_boundary`) với tầm bắn tối đa $100\% D_{max}$.
+   - Màu vòm đồng bộ theo màu khí tài (`#f43f5e`), alpha mềm mại ($0.22 \dots 0.35$), shader phát sáng viền Glowing Rim, loại bỏ hoàn toàn các lớp vàng và xanh chồng chéo.
+3. **Trong `src/data/equipmentTemplates.ts` & `src/store/useTacticalStore.ts`**:
+   - Cập nhật mẫu SAM C-125M và SAM C-125-2TM:
+     - `minElevationDeg = 6.0`
+     - `maxElevationDeg = 65.0`
+     - Cập nhật đồ thị `coverageProfile.points` bắt đầu từ $6.0^\circ$ và kết thúc tại $65.0^\circ$.
+4. **Trong `src/components/ui/RightInspector.tsx` & `src/components/ui/RadarCrossSectionPanel.tsx`**:
+   - Chuyển thẻ chú thích sang "VÒM HỎA LỰC TIÊU DIỆT (TẦM TỐI ĐA)".
+   - Chú thích rõ ràng thông số $D_{max}$, Nón mù đỉnh đầu $65^\circ$, Góc ngẩng bệ phóng $6^\circ$.
+   - Cập nhật đồ họa mặt cắt 2D WEZ với đường dốc phóng $6^\circ$ và nón mù $65^\circ$ xuất phát từ tâm khí tài.
+
+### 19.4. Bảng thông số kỹ thuật (Parameters Table)
+| Tên biến / Thông số | Kiểu dữ liệu | Giá trị trước | Giá trị sau | Đơn vị | Nơi khai báo / File | Ý nghĩa quân sự & Công thức |
+|---|---|---|---|---|---|---|
+| `minElevationDeg` | `number` | `1.0` | `6.0` | độ (deg) | `equipmentTemplates.ts`, `missileVolumeEngine.ts` | Góc ngẩng bệ phóng cố định tối thiểu: $R_{launch} = \Delta H \cot(6^\circ)$ |
+| `maxElevationDeg` | `number` | `70.0` (hoặc `85.0`) | `65.0` | độ (deg) | `equipmentTemplates.ts`, `missileVolumeEngine.ts` | Góc tà cực đại bệ/radar có thể ngẩng: $R_{cone} = \Delta H \cot(65^\circ)$ |
+| `dMinM` trong nón mù | `number` | `Math.max(dMinM, coneM)` | Không kẹp, chỉ dùng $coneM$ | mét (m) | `missileVolumeEngine.ts` | Bỏ kẹp cự ly cực cận vào nón mù đỉnh đầu để nón thu nhọn về gốc $(0,0,0)$ |
+| Bán kính tầng 0 ($\Delta H = 0$) | `number` | $R_{inner} = 3500$, $R_{outer} = 11200$ | $R_{inner} = 0$, $R_{outer} = 0$ | mét (m) | `missileVolumeEngine.ts` | Vòm phát trực tiếp từ tâm khí tài $(0,0,0)$ như đài radar |
+| Số lớp vòm 3D render | `number` | 3 lớp (70%, 85%, 100%) | 1 lớp duy nhất (100% $D_{max}$) | lớp | `CesiumGlobe.tsx` | Loại bỏ 3 lớp trùng lặp, chỉ hiển thị vòm thể hiện tầm tối đa đạn chạm tới |
+| Bán kính tại trần bay $H_{max}$ | `number` | $0$ (thu nhọn về 1 điểm) | $\sim 0.35 \times D_{max}$ ($\approx 8.75$km) | mét (m) | `missileVolumeEngine.ts` | Trần bay thực tế của Pechora ở 18km vẫn có bán kính tiêu diệt |
+
+### 19.5. Kết quả kiểm tra xác minh (Verification)
+1. **Kiểm tra biên dịch TypeScript**:
+   - `npx tsc --noEmit` hoàn thành với mã thoát `0` (Không có bất kỳ lỗi kiểu hoặc cú pháp nào).
+2. **Kiểm tra hình học tọa độ & Mesh 3D**:
+   - Tầng 0 ($\Delta H = 0$m): $R_{cone} = 0.0$m, $R_{outer} = 0.0$m $\implies$ Đúng yêu cầu phát từ tâm khí tài.
+   - Nón mù đỉnh đầu tại $\Delta H = 18.000$m: $R_{cone} = 18.000 / \tan(65^\circ) = 8.394$m $\implies$ Nón mù loe nhọn đều đặn từ gốc lên trần bay với góc $65^\circ$.
+   - Biên giới hạn phóng tại $\Delta H = 100$m: $R_{launch} = 100 / \tan(6^\circ) = 951$m $\implies$ Đúng góc phóng ngẩng bệ phóng $6^\circ$.
+3. **Hiển thị trực quan**:
+   - Không còn ống trụ bán kính 3.5km quanh bệ phóng.
+   - Không còn hình tròn đệm đáy xám chắn quanh bệ phóng.
+   - Chỉ xuất hiện duy nhất 1 lớp vòm màu hỏa lực đỏ hoa hồng trang nhã, viền phát sáng, quan sát rõ ràng toàn cảnh địa hình và trận địa.
+4. **Quy định Git**: Tuân thủ Rule 5 — Không thực hiện `git commit` hay `git push`.
+
+---
+
+## [2026-09-25] Tính năng Chấm điểm khảo sát trên Mặt Cắt Đứng 2D đồng bộ hiển thị nút chấm 3D trên quả địa cầu Cesium
+
+### 20.1. Yêu cầu & Mục tiêu phát triển
+- Trong chế độ Mặt cắt đứng 2D (WEZ hỏa lực SAM hoặc quang tuyến LOS Radar), chỉ huy muốn nhấp chuột chấm một điểm bất kỳ trên đồ thị thì ngoài màn hình 3D cũng hiển thị nút chấm (marker 3D) theo đúng phương vị khảo sát đó.
+- Nút chấm 3D ngoài quả địa cầu phải thể hiện:
+  - Vị trí không gian 3D tương ứng theo cự ly, độ cao và phương vị.
+  - Trụ gióng độ cao thẳng đứng xuống mặt đất (đường dóng nét đứt).
+  - Thẻ thông số 3D hiển thị: Góc phương vị, Cự ly (km), Độ cao khảo sát (m), Độ cao đất (m), và Trạng thái tác chiến (như trong tooltip 2D).
+- Yêu cầu đặc biệt: Khi chỉ huy nhấp sang điểm khác, điểm trước đó sẽ biến mất ngay lập tức (Single active probe point), không để lại điểm thừa.
+
+### 20.2. Khảo sát & Luồng dữ liệu (Data Flow)
+1. **Dữ liệu đầu vào (Input)**:
+   - Tọa độ nhấp chuột $(mouseX, mouseY)$ trên SVG đồ thị 2D thuộc miền $[padLeft, padLeft + chartW] \times [padTop, padTop + chartH]$.
+   - Góc phương vị đang khảo sát $currentAzimuth = selectedAzimuthDeg$ ($0^\circ \dots 359^\circ$).
+   - Vị trí khí tài: $lat_0, lon_0, alt_0$ (tâm khí tài).
+2. **Xử lý tính toán (Processing)**:
+   - $distKm = \text{round}\left(\frac{mouseX - padLeft}{chartW} \times \frac{maxRangeM}{1000}\right)$, $distM = distKm \times 1000$.
+   - $altM = \text{round}\left(\left(1 - \frac{mouseY - padTop}{chartH}\right) \times maxAltM\right)$.
+   - Đánh giá trạng thái (`evaluatePointStatus`):
+     - SAM: Kiểm tra nón mù đỉnh đầu $65^\circ$, góc ngẩng bệ phóng $6^\circ$, trần $H_{max}$, sàn $H_{min}$, tầm tối đa $100\% D_{max}$, và vật cản địa hình.
+     - Radar: Kiểm tra góc tà tối thiểu, góc tà tối đa, cự ly trinh sát, và tia nhìn LOS bị núi che khuất.
+   - Tọa độ địa lý WGS-84 ngoài thực địa:
+     $(lat, lon) = \text{destinationPoint}(lat_0, lon_0, distM, currentAzimuth)$.
+   - Lưu trữ vào Zustand store: `crossSectionProbePoint: CrossSectionProbePoint | null`.
+   - Mỗi lần nhấp điểm mới, state được ghi đè hoàn toàn bằng điểm mới $\implies$ Điểm cũ tự động bị hủy (Biến mất ngay lập tức).
+3. **Hiển thị đầu ra (Output)**:
+   - **Trên đồ thị 2D (`RadarCrossSectionPanel.tsx`)**:
+     - Nút chấm tròn tâm vàng rực rỡ, vòng hào quang phát sáng.
+     - Hai đường dóng nét đứt vuông góc chiếu xuống trục cự ly X và trục độ cao Y.
+     - Nhãn toạ độ đính kèm: `📍 ${distKm}km • ${altM}m`.
+     - Badge trên thanh tiêu đề kèm nút `✕` bỏ ghim nhanh.
+   - **Trên quả địa cầu 3D Cesium (`CesiumGlobe.tsx`)**:
+     - Entity Point 3D: Nút chấm tròn 3D màu vàng tươi quân sự, viền đen sắc nét, `disableDepthTestDistance: Number.POSITIVE_INFINITY`.
+     - Trụ dóng độ cao thẳng đứng: Nét đứt màu vàng nối từ mặt đất lên tới độ cao $altM$ trong không trung.
+     - Chân tiếp đất: Nút tròn hổ phách tại vị trí tiếp đất của đường dóng.
+     - Tia định vị LOS: Đường nét đứt màu cyan nối từ anten khí tài tới điểm khảo sát.
+     - Thẻ nhãn 3D: Chứa thông tin phương vị, cự ly, độ cao khảo sát, độ cao đất, và trạng thái quân sự.
+
+### 20.3. Các file đã thay đổi
+1. `src/store/useTacticalStore.ts`:
+   - Khai báo export interface `CrossSectionProbePoint`.
+   - Thêm `crossSectionProbePoint` vào `TacticalStore`.
+   - Bổ sung các action `setCrossSectionProbePoint` và `clearCrossSectionProbePoint`.
+   - Tự động reset `crossSectionProbePoint: null` khi tắt bảng mặt cắt hoặc chuyển đổi khí tài được chọn.
+2. `src/components/ui/RadarCrossSectionPanel.tsx`:
+   - Import `destinationPoint` và `MapPin`.
+   - Tích hợp `evaluatePointStatus` chuẩn hóa logic trạng thái tác chiến cho cả SAM và Radar.
+   - Thêm sự kiện `onClick` trên SVG mặt cắt 2D để chỉ huy chấm điểm.
+   - Dựng hiển thị điểm ghim trên đồ thị 2D (vòng hào quang, đường dóng trục, nhãn toạ độ).
+   - Thêm badge hiển thị điểm ghim trên thanh tiêu đề kèm nút đóng nhanh.
+3. `src/components/map/CesiumGlobe.tsx`:
+   - Lắng nghe `crossSectionProbePoint`.
+   - Render điểm 3D, đường dóng độ cao thẳng đứng, điểm chân đế địa hình, tia LOS từ bệ phóng, và nhãn quân sự đa dòng 3D.
+   - Bổ sung `crossSectionProbePoint` vào dependency array của `useEffect`.
+
+### 20.4. Bảng thông số kỹ thuật (Parameters Table)
+| Tên biến / Thuộc tính | Kiểu dữ liệu | Giá trị mặc định | Đơn vị | Nơi khai báo | Ý nghĩa & Luồng dữ liệu |
+|---|---|---|---|---|---|
+| `crossSectionProbePoint` | `CrossSectionProbePoint \| null` | `null` | Object | `useTacticalStore.ts` | Lưu thông tin điểm chỉ huy chấm trên mặt cắt 2D |
+| `pPt.azimuthDeg` | `number` | Theo slider (0-359) | độ ($^\circ$) | `useTacticalStore.ts` | Góc phương vị của tia mặt cắt đứng tại thời điểm chấm |
+| `pPt.distKm` / `pPt.distM` | `number` | Tọa độ X chuột | km / mét (m) | `RadarCrossSectionPanel.tsx` | Cự ly mặt bằng từ tâm khí tài tới điểm khảo sát |
+| `pPt.altM` | `number` | Tọa độ Y chuột | mét (m) | `RadarCrossSectionPanel.tsx` | Độ cao khảo sát tuyệt đối (MSL) của điểm |
+| `pPt.terrainAltM` | `number \| undefined` | Lấy từ DEM | mét (m) | `RadarCrossSectionPanel.tsx` | Cao độ địa hình mặt đất ngay phía dưới điểm khảo sát |
+| `pPt.lat`, `pPt.lon` | `number` | Tọa độ WGS-84 | độ thập phân | `RadarCrossSectionPanel.tsx` | Tọa độ trắc địa thực tế tính bằng `destinationPoint` |
+| `pPt.status` | `string` | Đánh giá quân sự | chuỗi | `RadarCrossSectionPanel.tsx` | Trạng thái hỏa lực SAM / LOS radar tại điểm |
+
+### 20.5. Kết quả kiểm tra xác minh (Verification)
+1. **Biên dịch & Linter**:
+   - `npx tsc --noEmit`: **0 lỗi** (Exit code 0).
+   - `npm run lint`: **0 errors** trên toàn bộ 55 tệp.
+2. **Kiểm tra hoạt động**:
+   - Nhấp chuột tại $(d = 20\,\text{km}, H = 14.570\,\text{m})$ trên phương vị $45^\circ$:
+     - Đồ thị 2D xuất hiện vòng chấm vàng nhấp nháy, đường dóng cự ly và độ cao.
+     - Trên quả địa cầu 3D xuất hiện ngay nút chấm vàng tại độ cao $14.570\,\text{m}$, trụ dóng thẳng đứng nối xuống mặt đất, cùng thẻ nhãn hiển thị đầy đủ thông số.
+   - Nhấp chuột sang điểm khác $(d = 10\,\text{km}, H = 5.000\,\text{m})$: Điểm cũ lập tức biến mất, điểm mới xuất hiện tại toạ độ mới.
+3. **Quy định Git**: Tuân thủ Rule 5 — Không thực hiện `git commit` hay `git push`.
+
+---
+
+## [2026-09-25] Tính năng Cực tiểu hóa bảng Mặt Cắt Đứng 2D (Thu gọn dock mini) & Bảo lưu Điểm ghim 3D khi quan sát toàn cảnh
+
+### 21.1. Yêu cầu & Triệu chứng người dùng phản ánh
+1. **Bảng mặt cắt 2D che khuất toàn bộ màn hình 3D**:
+   - Khi bảng mặt cắt đứng 2D (`RadarCrossSectionPanel.tsx`) mở ra, nó nằm ở chính giữa màn hình phía dưới, chiếm diện tích lớn ($800 \times 340\,\text{px}$), che mất phần lớn quả địa cầu 3D phía sau.
+   - Chỉ huy không thể nhìn rõ nút chấm 3D và vòm hỏa lực trong không gian.
+2. **Lỗi mất điểm 3D khi đóng bảng bằng dấu X**:
+   - Do bảng che hết màn hình 3D, người dùng đành phải nhấn dấu `X` để đóng bảng lại.
+   - Nhưng khi nhấn dấu `X`, `showCrossSection = false`, kéo theo điểm khảo sát 3D (`crossSectionProbePoint`) cũng bị xóa sạch theo.
+3. **Yêu cầu kỹ thuật**:
+   - Bỏ hoàn toàn nút "Phóng to bảng" (không cần thiết).
+   - Thêm nút **Cực tiểu hóa** (Minimize) thay cho nút phóng to:
+     - Khi nhấn Cực tiểu hóa, bảng thu gọn lại thành một thanh dock mini nhỏ gọn ở mép dưới màn hình (chỉ chiếm chiều cao ~42px).
+     - Thanh mini vẫn hiển thị tên khí tài, phương vị hiện tại, badge toạ độ điểm ghim 3D, và nút "Mở lại biểu đồ" để phóng to lại khi cần.
+     - Toàn bộ quả địa cầu 3D được giải phóng hoàn toàn để chỉ huy quan sát.
+   - Đồng thời, điểm chấm 3D và tia định hướng trên quả cầu 3D phải **được bảo lưu** ngay cả khi đóng hoặc cực tiểu hóa bảng mặt cắt (chỉ biến mất khi người dùng chọn điểm khác hoặc chủ động nhấn Bỏ ghim).
+
+### 21.2. Khảo sát & Xử lý (Implementation)
+1. **Trong `src/components/ui/RadarCrossSectionPanel.tsx`**:
+   - Bỏ state `isExpanded`, bỏ các icon `Maximize2`, `Minimize2`.
+   - Bổ sung state `isMinimized: boolean` (mặc định `false`).
+   - Khi `isMinimized === true`:
+     - Render thanh dock mini `aside` siêu nhỏ gọn đặt tại `bottom-6 left-1/2 -translate-x-1/2`.
+     - Chứa: Icon phân loại (SAM/Radar) $\to$ Tên khí tài $\to$ Badge chế độ $\to$ Cụm nút chuyển phương vị nhanh $\to$ Badge điểm 3D (nếu có) $\to$ Nút `Mở lại biểu đồ` (`ChevronUp`) $\to$ Nút `Đóng` (`X`).
+   - Khi `isMinimized === false`:
+     - Trong header thay nút phóng to bằng nút `Cực tiểu hóa` (`Minus`) với title "Cực tiểu hóa bảng mặt cắt (Thu gọn để quan sát màn hình 3D)".
+2. **Trong `src/store/useTacticalStore.ts`**:
+   - Sửa hàm `setShowCrossSection(show)` và `toggleCrossSection()`: **Không tự ý gán `crossSectionProbePoint: null`** khi đóng bảng 2D.
+   - Điểm 3D chỉ bị hủy khi người dùng chủ động nhấn `clearCrossSectionProbePoint()` hoặc khi nhấp điểm khác (ghi đè tự nhiên) hoặc đổi sang khí tài khác.
+3. **Trong `src/components/map/CesiumGlobe.tsx`**:
+   - Gỡ bỏ ràng buộc `showCrossSection &&` tại khối lệnh render điểm 3D (dòng 1855) và tia định hướng (dòng 1820).
+   - Điểm 3D luôn được hiển thị trọn vẹn trong không gian 3D chừng nào nó còn tồn tại trong store.
+
+### 21.3. Bảng thông số kỹ thuật (Parameters Table)
+| Tên biến / Thuộc tính | Kiểu dữ liệu | Giá trị trước | Giá trị sau | Nơi khai báo | Ý nghĩa & Luồng dữ liệu |
+|---|---|---|---|---|---|
+| `isMinimized` | `boolean` | Không có | `false` (mặc định) | `RadarCrossSectionPanel.tsx` | Bật/tắt chế độ cực tiểu hóa thành thanh mini dock |
+| `isExpanded` | `boolean` | `false` | Đã loại bỏ | `RadarCrossSectionPanel.tsx` | Nút phóng to cũ đã được loại bỏ theo yêu cầu |
+| `setShowCrossSection(false)` | `function` | Xóa luôn điểm 3D | Giữ nguyên điểm 3D | `useTacticalStore.ts` | Bảo lưu điểm khảo sát 3D khi chỉ huy ẩn/đóng giao diện 2D |
+| Điều kiện hiển thị 3D Probe Point | `boolean` | `showCrossSection && isSelected && ...` | `crossSectionProbePoint && ...` | `CesiumGlobe.tsx` | Điểm 3D không bị biến mất khi panel 2D thu gọn hoặc đóng |
+
+### 21.4. Kết quả kiểm tra xác minh (Verification)
+1. **Kiểm tra biên dịch & Linter**:
+   - `npx tsc --noEmit`: **0 lỗi** (Exit code 0).
+   - `npm run lint`: **0 errors** trên toàn bộ 55 tệp.
+2. **Kiểm tra chức năng thực tế**:
+   - Mở mặt cắt 2D $\to$ Chấm 1 điểm trên đồ thị $\to$ Điểm 3D xuất hiện sắc nét trên không gian quả cầu.
+   - Nhấn nút `Cực tiểu hóa`: Bảng 2D thu gọn ngay lập tức thành thanh dock mini 42px ở mép đáy màn hình.
+   - Toàn bộ màn hình 3D được giải phóng 100%, chỉ huy có thể xoay camera, xem vòm hỏa lực và điểm 3D rõ ràng.
+   - Nhấn nút `Mở lại biểu đồ` trên thanh dock mini: Biểu đồ SVG 2D mở lại trọn vẹn với điểm ghim vẫn giữ nguyên vị trí.
+   - Nhấn dấu `X` đóng bảng: Điểm khảo sát 3D trên bản đồ vẫn tồn tại nguyên vẹn, không bị mất như trước.
+3. **Quy định Git**: Tuân thủ Rule 5 — Không thực hiện `git commit` hay `git push`.
+
+
+
+
+
 
 

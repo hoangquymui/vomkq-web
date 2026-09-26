@@ -4,9 +4,58 @@ import cesium from 'vite-plugin-cesium'
 import tailwindcss from '@tailwindcss/vite'
 import { vectorAiLauncher } from './scripts/vectorAiLauncher.ts'
 
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+/**
+ * Plugin chặn request các tile bản đồ/địa hình offline không tồn tại trong thư mục public.
+ * Tránh trường hợp SPA fallback của Vite trả về index.html (HTTP 200), khiến trình giải mã
+ * Quantized-Mesh của CesiumTerrainProvider và UrlTemplateImageryProvider bị lỗi RangeError
+ * hoặc không decode được ảnh.
+ */
+function offlineTile404Plugin() {
+  return {
+    name: 'offline-tile-404',
+    configureServer(server: any) {
+      server.middlewares.use((req: any, res: any, next: any) => {
+        const rawUrl = req.url?.split('?')[0] || ''
+        if (
+          rawUrl.startsWith('/offline-') ||
+          rawUrl.endsWith('.terrain') ||
+          rawUrl.includes('/offline-terrain/') ||
+          rawUrl.includes('/offline-terrain-map/') ||
+          rawUrl.includes('/offline-satellite/')
+        ) {
+          try {
+            const decodedPath = decodeURIComponent(rawUrl)
+            const publicFilePath = path.join(__dirname, 'public', decodedPath)
+            if (!fs.existsSync(publicFilePath) || fs.statSync(publicFilePath).isDirectory()) {
+              res.statusCode = 404
+              res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+              res.end('404 Not Found')
+              return
+            }
+          } catch {
+            res.statusCode = 404
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+            res.end('404 Not Found')
+            return
+          }
+        }
+        next()
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
+    offlineTile404Plugin(),
     vectorAiLauncher(),
     react(),
     // @ts-ignore

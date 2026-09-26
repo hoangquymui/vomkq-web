@@ -138,6 +138,9 @@ export const RightInspector: React.FC = () => {
     showOccludedVolume,
     toggleOccludedVolume,
     triggerRadarCameraPreset,
+    samVolumes,
+    samEngagementModes,
+    setSamEngagementMode,
   } = useTacticalStore();
 
   const [coordFormat, setCoordFormat] = useState<'decimal' | 'dms'>('dms');
@@ -1019,7 +1022,70 @@ export const RightInspector: React.FC = () => {
                         </span>
                       </div>
                     )}
+
+                    {/* V_max mục tiêu & Tham số đường bay P_gh */}
+                    {(selected.maxTargetSpeedMps || selected.maxTargetParamKm || selected.minEngagementAltitudeM) && (
+                      <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-slate-800 text-[9.5px]">
+                        {selected.minEngagementAltitudeM !== undefined && (
+                          <div>
+                            <span className="text-slate-500 block">Sàn H_min:</span>
+                            <span className="text-emerald-400 font-bold">{selected.minEngagementAltitudeM}m</span>
+                          </div>
+                        )}
+                        {selected.maxTargetSpeedMps !== undefined && (
+                          <div>
+                            <span className="text-slate-500 block">V_max mục tiêu:</span>
+                            <span className="text-amber-300 font-bold">{selected.maxTargetSpeedMps} m/s</span>
+                          </div>
+                        )}
+                        {selected.maxTargetParamKm !== undefined && (
+                          <div>
+                            <span className="text-slate-500 block">Tham số P_gh:</span>
+                            <span className="text-cyan-300 font-bold">{selected.maxTargetParamKm} km</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
+
+                  {/* Cụm chọn chế độ tác chiến hỏa lực SAM (Bắn đón / Bắn đuổi / Nhiễu / TBK) */}
+                  {selected.category === 'TenLuaPhongKhong' && (
+                    <div className="space-y-1.5 pt-1.5 border-t border-slate-800/80">
+                      <span className="text-[10px] text-slate-400 font-mono block font-semibold">
+                        Chế độ bắn & điều kiện tác chiến:
+                      </span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {(
+                          [
+                            { id: 'head_on', label: 'Bắn đón (Không nhiễu)' },
+                            { id: 'tail_chase', label: 'Bắn đuổi (Không nhiễu)' },
+                            { id: 'jamming_passive', label: 'Nhiễu tiêu cực' },
+                            { id: 'jamming_active', label: 'Nhiễu tích cực' },
+                            { id: 'tbk_optical', label: 'Quang học (TBK)' },
+                          ] as const
+                        ).map((m) => {
+                          const currentMode =
+                            selected.samEngagementMode ||
+                            samEngagementModes[selected.instanceId] ||
+                            'head_on';
+                          const isActive = currentMode === m.id;
+                          return (
+                            <button
+                              key={m.id}
+                              onClick={() => setSamEngagementMode(selected.instanceId, m.id)}
+                              className={`px-2 py-1 text-[10px] font-mono rounded border transition-all text-left truncate ${
+                                isActive
+                                  ? 'bg-rose-950/80 border-rose-500 text-rose-300 font-bold shadow-sm'
+                                  : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                              }`}
+                            >
+                              {m.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1748,50 +1814,195 @@ export const RightInspector: React.FC = () => {
               )}
 
               {/* Trường hợp 2: Tên Lửa Phòng Không (SAM) & Pháo Phòng Không (AAA) */}
-              {caps.hasEngagementEnvelope && (
-                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-rose-500/40 space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-                    <span className="text-[10px] font-bold text-rose-300 font-mono flex items-center gap-1">
-                      <Target className="w-3.5 h-3.5 text-rose-400" />
-                      VÒM HỎA LỰC ĐÁNH CHẶN 3D
-                    </span>
+              {caps.hasEngagementEnvelope && (() => {
+                const activeSamMode = selected.samEngagementMode || samEngagementModes[selected.instanceId] || 'head_on';
+                const samTmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === selected.templateId);
+                const samProfile = (selected.samProfiles || samTmpl?.samProfiles)?.[activeSamMode];
+                const dMaxKm = samProfile?.dMaxKm || selected.rangeKm || samTmpl?.defaultRangeKm || 25;
+                const dMinKm = samProfile?.dMinKm || selected.minEngagementRangeKm || samTmpl?.minEngagementRangeKm || 3.5;
+                const hMaxM = samProfile?.hMaxM || selected.maxEngagementAltitudeM || samTmpl?.maxEngagementAltitudeM || 18000;
+                const hMinM = samProfile?.hMinM || selected.minEngagementAltitudeM || samTmpl?.minEngagementAltitudeM || 20;
+                const vMaxMps = samProfile?.vMaxMps || selected.maxTargetSpeedMps || samTmpl?.maxTargetSpeedMps || 700;
+                const pGhKm = samProfile?.pGhKm || selected.maxTargetParamKm || samTmpl?.maxTargetParamKm || 16.5;
+                const activeSamVolume = samVolumes[selected.instanceId];
+
+                return (
+                  <div className="bg-slate-900/60 p-2.5 rounded-xl border border-rose-500/40 space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                      <span className="text-[10px] font-bold text-rose-300 font-mono flex items-center gap-1">
+                        <Target className="w-3.5 h-3.5 text-rose-400" />
+                        VÒM HỎA LỰC ĐÁNH CHẶN 3D
+                      </span>
+                      <button
+                        onClick={() =>
+                          updateEquipment(selected.instanceId, {
+                            showDome: !selected.showDome,
+                          })
+                        }
+                        className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          selected.showDome
+                            ? 'bg-rose-950 text-rose-300 border-rose-500/60 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
+                            : 'bg-slate-950 text-slate-500 border-slate-800'
+                        }`}
+                      >
+                        {selected.showDome ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        <span>{selected.showDome ? 'Đang bật' : 'Đang ẩn'}</span>
+                      </button>
+                    </div>
+
+                    {/* Trạng thái tính toán thể tích 3D */}
+                    {activeSamVolume ? (
+                      <div className="flex items-center justify-between text-[9px] font-mono text-slate-400 bg-slate-950/70 px-2 py-1 rounded border border-emerald-500/30">
+                        <span className="text-emerald-400 font-bold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Vòm 3D Sẵn Sàng
+                        </span>
+                        <span>{activeSamVolume.altitudeBands.length} tầng cao • {activeSamVolume.azimuthSamples.length} hướng</span>
+                      </div>
+                    ) : isCalculatingVolume ? (
+                      <div className="flex items-center gap-1.5 text-[9px] font-mono text-cyan-300 bg-cyan-950/40 px-2 py-1 rounded border border-cyan-800/40 animate-pulse">
+                        <Activity className="w-3 h-3 animate-spin" />
+                        <span>Đang tính toán ma trận địa hình 3D...</span>
+                      </div>
+                    ) : null}
+
+                    {/* Chuyển đổi chế độ mô hình 3D (Lý thuyết / Cắt địa hình) */}
+                    <div className="grid grid-cols-2 gap-1 p-1 bg-slate-950 rounded-lg border border-slate-800">
+                      <button
+                        onClick={() => setDome3DMode('nominal')}
+                        className={`py-1 px-1.5 rounded-md font-mono text-[10px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${
+                          dome3DMode === 'nominal'
+                            ? 'bg-rose-900/60 text-rose-200 border border-rose-500/80 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                        }`}
+                      >
+                        <span>DANH NGHĨA</span>
+                        <span className="text-[8.5px] font-normal text-slate-400">(Quả lê lý thuyết)</span>
+                      </button>
+                      <button
+                        onClick={() => setDome3DMode('terrain-aware')}
+                        className={`py-1 px-1.5 rounded-md font-mono text-[10px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${
+                          dome3DMode === 'terrain-aware'
+                            ? 'bg-emerald-900/60 text-emerald-200 border border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                        }`}
+                      >
+                        <span>CẮT ĐỊA HÌNH</span>
+                        <span className="text-[8.5px] font-normal text-emerald-400/80">(Thực tế LOS)</span>
+                      </button>
+                    </div>
+
+                    {/* Bảng tham số chiến thuật tác chiến trực tiếp */}
+                    <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
+                      <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                        <span className="text-slate-400 block text-[9px]">CỰ LY TIÊU DIỆT</span>
+                        <strong className="text-rose-400">
+                          {dMinKm} - {dMaxKm} km
+                        </strong>
+                      </div>
+                      <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                        <span className="text-slate-400 block text-[9px]">TRẦN / SÀN HỎA LỰC</span>
+                        <strong className="text-rose-400">
+                          {hMinM}m - {(hMaxM / 1000).toFixed(0)}km
+                        </strong>
+                      </div>
+                      <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                        <span className="text-slate-400 block text-[9px]">V_max MỤC TIÊU</span>
+                        <strong className="text-amber-300">
+                          {vMaxMps} m/s
+                        </strong>
+                      </div>
+                      <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                        <span className="text-slate-400 block text-[9px]">THAM SỐ P_gh</span>
+                        <strong className="text-cyan-300">
+                          {pGhKm} km
+                        </strong>
+                      </div>
+                    </div>
+
+                    {/* Cụm 5 nút chọn chế độ chiến thuật SAM */}
+                    {selected.category === 'TenLuaPhongKhong' && (
+                      <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9.5px] text-slate-400 font-mono font-semibold">
+                            CHẾ ĐỘ TÁC CHIẾN HỎA LỰC:
+                          </span>
+                          <span className="text-[9px] text-rose-300 font-mono font-bold bg-rose-950/80 px-1.5 py-0.5 rounded border border-rose-500/40">
+                            {activeSamMode === 'head_on' && 'BẮN ĐÓN'}
+                            {activeSamMode === 'tail_chase' && 'BẮN ĐUỔI'}
+                            {activeSamMode === 'jamming_passive' && 'NHIỄU TIÊU CỰC'}
+                            {activeSamMode === 'jamming_active' && 'NHIỄU TÍCH CỰC'}
+                            {activeSamMode === 'tbk_optical' && 'QUANG HỌC TBK'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1">
+                          {(
+                            [
+                              { id: 'head_on', label: 'Bắn đón (Chuẩn)' },
+                              { id: 'tail_chase', label: 'Bắn đuổi' },
+                              { id: 'jamming_passive', label: 'Nhiễu tiêu cực' },
+                              { id: 'jamming_active', label: 'Nhiễu tích cực' },
+                              { id: 'tbk_optical', label: 'Quang học (TBK)' },
+                            ] as const
+                          ).map((m) => {
+                            const isActive = activeSamMode === m.id;
+                            return (
+                              <button
+                                key={m.id}
+                                onClick={() => setSamEngagementMode(selected.instanceId, m.id)}
+                                className={`px-2 py-1 text-[9.5px] font-mono rounded border transition-all text-left truncate cursor-pointer ${
+                                  isActive
+                                    ? 'bg-rose-950 border-rose-500 text-rose-200 font-bold shadow-sm'
+                                    : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                                }`}
+                              >
+                                {m.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Giải thích trực quan vòm hỏa lực SAM */}
+                    <div className="p-2 bg-slate-950/90 rounded border border-slate-800 space-y-1 text-[9px] font-mono">
+                      <span className="text-slate-400 block font-bold text-[9.5px]">VÒM HỎA LỰC TIÊU DIỆT (TẦM TỐI ĐA):</span>
+                      <div className="flex items-center gap-1.5 text-rose-300">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shrink-0 shadow-[0_0_6px_rgba(244,63,94,0.6)]" />
+                        <span>Tầm tối đa (D_max): {dMaxKm} km • Trần {hMaxM / 1000} km</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-amber-300">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block shrink-0 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
+                        <span>Vùng mù hình nón: Góc tà cực đại 65°</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-cyan-300">
+                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block shrink-0 shadow-[0_0_6px_rgba(6,182,212,0.6)]" />
+                        <span>Góc ngẩng cố định bệ phóng: 6° so với phương ngang</span>
+                      </div>
+                    </div>
+
+                    {/* Nút bấm Mở Mặt Cắt Đứng 2D (Cross Section) */}
                     <button
-                      onClick={() =>
-                        updateEquipment(selected.instanceId, {
-                          showDome: !selected.showDome,
-                        })
-                      }
-                      className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                        selected.showDome
-                          ? 'bg-rose-950 text-rose-300 border-rose-500/60 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
-                          : 'bg-slate-950 text-slate-500 border-slate-800'
+                      onClick={toggleCrossSection}
+                      className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                        showCrossSection
+                          ? 'bg-rose-950 text-rose-300 border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.4)] ring-1 ring-rose-400'
+                          : 'bg-slate-950 hover:bg-slate-900 text-slate-300 border-slate-700 hover:border-rose-500/50'
                       }`}
                     >
-                      {selected.showDome ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                      <span>{selected.showDome ? 'Đang bật' : 'Đang ẩn'}</span>
+                      <Compass
+                        className={`w-4 h-4 ${showCrossSection ? 'animate-spin' : ''}`}
+                        style={{ animationDuration: '6s' }}
+                      />
+                      <span>
+                        {showCrossSection
+                          ? 'Đang Xem Mặt Cắt Đứng 2D (WEZ)'
+                          : 'Mở Mặt Cắt Đứng 2D (Cross Section)'}
+                      </span>
                     </button>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 font-mono text-[10px]">
-                    <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
-                      <span className="text-slate-400 block">CỰ LY TIÊU DIỆT</span>
-                      <strong className="text-rose-400">
-                        {selected.minEngagementRangeKm ?? (selected.category === 'TenLuaPhongKhong' ? 3 : 0.2)} - {selected.rangeKm} km
-                      </strong>
-                    </div>
-                    <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
-                      <span className="text-slate-400 block">TRẦN HỎA LỰC H_max</span>
-                      <strong className="text-rose-400">
-                        {((selected.maxEngagementAltitudeM || 27000) / 1000).toFixed(0)} km
-                      </strong>
-                    </div>
-                  </div>
-
-                  <p className="text-[9.5px] text-slate-400 italic">
-                    Vòm hỏa lực 3D hiển thị thể tích không gian đánh chặn thực tế, tối ưu hóa hiển thị không ép quét sóng như đài radar.
-                  </p>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Trường hợp 3: Cảm Biến Thụ Động ESM (Kolchuga-M) */}
               {caps.hasSensorNetwork && (
