@@ -22,7 +22,6 @@ import {
 } from '../../utils/spxGeometryBuilder';
 import {
   getAssetCapabilities,
-  createCategoryTacticalMarkerSvg,
   formatTacticalAssetInfoCard,
   STATUS_COLOR_MAP,
 } from '../../utils/assetVisualization';
@@ -52,10 +51,17 @@ import {
   computeSamEngagementVolume,
   buildSamLayerGeometry,
   createSamVolumeGeometryInstance,
+  getSamVolumeCacheKey,
 } from '../../utils/missileVolumeEngine';
-import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
+import { EQUIPMENT_TEMPLATES, SPYDER_SYSTEM_DEFAULT_CONFIG } from '../../data/equipmentTemplates';
+import { ENABLE_3D_MODELS } from '../../types/equipment';
 import { createEquipmentFromTemplate } from '../../utils/equipmentFactory';
 import { setAdvisorViewport } from '../../utils/aiPlacementAdvisor';
+import {
+  getTacticalBadgeDataUrl,
+  registerBadgeImageListener,
+} from '../../utils/tacticalBadgeGenerator';
+import { getCustomModelUrl } from '../../utils/model3dConverter';
 
 /** Tra cứu template theo id để lấy `domeColor` (màu vỏ vòm riêng của từng loại đài) */
 const TEMPLATE_BY_ID = new Map(EQUIPMENT_TEMPLATES.map((t) => [t.id, t]));
@@ -220,6 +226,16 @@ export const CesiumGlobe: React.FC = () => {
 
   const [isPinned, setIsPinned] = useState<boolean>(true);
   const [cameraHeight, setCameraHeight] = useState<number>(95000);
+  const [customModelUrls, setCustomModelUrls] = useState<Record<string, string>>({});
+  const [badgeRefreshTick, setBadgeRefreshTick] = useState<number>(0);
+
+  // Lắng nghe khi ảnh thực tế của khí tài tải xong để vẽ lại cờ tác chiến
+  useEffect(() => {
+    const unregister = registerBadgeImageListener(() => {
+      setBadgeRefreshTick((prev) => prev + 1);
+    });
+    return unregister;
+  }, []);
 
   const {
     instances,
@@ -265,6 +281,7 @@ export const CesiumGlobe: React.FC = () => {
     showRangeRingsLayer,
     showLabelsLayer,
     showMarkersLayer,
+    showModelsLayer,
     categoryFilter,
     domeAlpha,
     domeAzimuthSegments,
@@ -313,6 +330,30 @@ export const CesiumGlobe: React.FC = () => {
     domeResourcesRef.current = [];
   }, []);
 
+  // Tải các mô hình 3D tùy chỉnh của người dùng từ IndexedDB
+  useEffect(() => {
+    if (!ENABLE_3D_MODELS) return;
+    let isMounted = true;
+    const loadCustomModels = async () => {
+      const urls: Record<string, string> = {};
+      for (const inst of instances) {
+        if (inst.customModelFileName) {
+          const url = await getCustomModelUrl(inst.instanceId);
+          if (url) {
+            urls[inst.instanceId] = url;
+          }
+        }
+      }
+      if (isMounted) {
+        setCustomModelUrls(urls);
+      }
+    };
+    loadCustomModels();
+    return () => {
+      isMounted = false;
+    };
+  }, [instances]);
+
   // 1. Khởi tạo Cesium Viewer
   useEffect(() => {
     if (!containerRef.current) return;
@@ -356,6 +397,7 @@ export const CesiumGlobe: React.FC = () => {
     Cesium.CesiumTerrainProvider.fromUrl('./offline-terrain', {
       requestVertexNormals: false,
       requestWaterMask: false,
+      requestMetadata: false,
     })
       .then((provider) => {
         // Tắt retry vô hạn khi gặp tile 404 offline
@@ -442,6 +484,7 @@ export const CesiumGlobe: React.FC = () => {
       Cesium.CesiumTerrainProvider.fromUrl('./offline-terrain', {
         requestVertexNormals: false,
         requestWaterMask: false,
+        requestMetadata: false,
       })
         .then((provider) => {
           provider.errorEvent.addEventListener((tileError: any) => {
@@ -938,11 +981,7 @@ export const CesiumGlobe: React.FC = () => {
       if (!hasPending) {
         for (const inst of candidateSams) {
           const mode = inst.samEngagementMode || samEngagementModes[inst.instanceId] || 'head_on';
-          const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === inst.templateId);
-          const profile = (inst.samProfiles || tmpl?.samProfiles)?.[mode];
-          const dMaxKm = profile?.dMaxKm || inst.rangeKm || tmpl?.defaultRangeKm || 25;
-          const hMaxM = profile?.hMaxM || inst.maxEngagementAltitudeM || tmpl?.maxEngagementAltitudeM || 18000;
-          const samCacheKey = `sam_${inst.instanceId}_${mode}_${inst.latitude.toFixed(4)}_${inst.longitude.toFixed(4)}_${dMaxKm}_${hMaxM}_${azimuthStepDeg}_${kFactor.toFixed(2)}`;
+          const samCacheKey = getSamVolumeCacheKey(inst, { mode, azimuthStepDeg, kFactor });
           if (currentSamVolumes[inst.instanceId]?.cacheKey !== samCacheKey) {
             hasPending = true;
             break;
@@ -988,11 +1027,7 @@ export const CesiumGlobe: React.FC = () => {
         if (isCancelled) break;
         try {
           const mode = inst.samEngagementMode || samEngagementModes[inst.instanceId] || 'head_on';
-          const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === inst.templateId);
-          const profile = (inst.samProfiles || tmpl?.samProfiles)?.[mode];
-          const dMaxKm = profile?.dMaxKm || inst.rangeKm || tmpl?.defaultRangeKm || 25;
-          const hMaxM = profile?.hMaxM || inst.maxEngagementAltitudeM || tmpl?.maxEngagementAltitudeM || 18000;
-          const samCacheKey = `sam_${inst.instanceId}_${mode}_${inst.latitude.toFixed(4)}_${inst.longitude.toFixed(4)}_${dMaxKm}_${hMaxM}_${azimuthStepDeg}_${kFactor.toFixed(2)}`;
+          const samCacheKey = getSamVolumeCacheKey(inst, { mode, azimuthStepDeg, kFactor });
           const stateNow = useTacticalStore.getState();
           if (stateNow.samVolumes[inst.instanceId]?.cacheKey === samCacheKey) {
             continue;
@@ -1090,23 +1125,31 @@ export const CesiumGlobe: React.FC = () => {
         const radarCartesian = Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, is2D ? 0 : safeAlt);
 
         if (showMarkersLayer) {
-          const flagSvg = createCategoryTacticalMarkerSvg(
-            inst.category,
-            inst.shortId || 'EQ',
-            inst.color || '#06b6d4',
+          const badgeUrl = getTacticalBadgeDataUrl({
+            instanceId: inst.instanceId,
+            name: inst.name,
+            shortId: inst.shortId,
+            category: inst.category,
+            rangeKm: safeRangeKm,
+            antennaHeightAGL: safeAntennaAGL,
+            status: inst.status,
             isSelected,
-            inst.status
-          );
-          // Cờ cắm tác chiến chuẩn chuyên ngành quân sự
+            realPhotoUrl: inst.realPhotoUrl || TEMPLATE_BY_ID.get(inst.templateId)?.realPhotoUrl || '',
+            themeColor: inst.color || '#06b6d4',
+          });
+
+          // Cờ cắm tác chiến HUD kích thước lớn với ảnh thực tế sắc nét và tên đầy đủ
           viewer.entities.add({
             name: `Marker ${inst.shortId || ''} (${inst.category})`,
             position: radarCartesian,
             properties: { instanceId: inst.instanceId },
             billboard: {
-              image: flagSvg,
+              image: badgeUrl,
+              width: 240,
+              height: 46,
               verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
               horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-              pixelOffset: new Cesium.Cartesian2(-10, 4),
+              pixelOffset: new Cesium.Cartesian2(-12, 4),
               eyeOffset: new Cesium.Cartesian3(0, 0, -450),
               heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -1170,11 +1213,79 @@ export const CesiumGlobe: React.FC = () => {
               backgroundPadding: new Cesium.Cartesian2(10, 6),
               verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
               horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-              pixelOffset: new Cesium.Cartesian2(46, -8),
+              pixelOffset: new Cesium.Cartesian2(16, -58),
               eyeOffset: new Cesium.Cartesian3(0, 0, -500),
               distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, isSelected ? 800000 : 350000),
               heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          });
+        }
+      }
+
+      // 1b. Mô Hình 3D Khí Tài tại Tâm Toạ Độ trên Địa Hình 3D
+      // TẠM THỜI TẮT THEO YÊU CẦU: Tạm thời không thêm mô hình 3D vào mà chỉ chấm điểm đặt (tâm đài & cờ tác chiến).
+      // Sau này khi có đầy đủ bộ mô hình chuẩn sẽ kích hoạt lại qua hằng số ENABLE_3D_MODELS.
+      if (ENABLE_3D_MODELS && viewMode === '3D' && showModelsLayer) {
+        const effectiveModelUrl =
+          customModelUrls[inst.instanceId] ||
+          inst.model3dUrl ||
+          TEMPLATE_BY_ID.get(inst.templateId)?.model3dUrl ||
+          (inst.category === 'RadarCanhGioi'
+            ? '/models/equipments/radar_3d.glb'
+            : inst.category === 'TenLuaPhongKhong'
+              ? '/models/equipments/sam_launcher.glb'
+              : inst.category === 'SoChiHuy'
+                ? '/models/equipments/command_post.glb'
+                : inst.category === 'CamBienThuDong'
+                  ? '/models/equipments/esm_station.glb'
+                  : inst.category === 'PhaoPhongKhong'
+                    ? '/models/equipments/aaa_gun.glb'
+                    : undefined);
+
+        if (effectiveModelUrl) {
+          const baseScale = 25.0; // Tỉ lệ hiển thị chuẩn trên bản đồ địa hình 3D
+          const modelScale = (inst.model3dScale || 1.0) * baseScale;
+          const altOffset = inst.model3dAltitudeOffset || 0;
+          const modelCartesian = Cesium.Cartesian3.fromDegrees(
+            inst.longitude,
+            inst.latitude,
+            safeAlt + altOffset
+          );
+
+          const isRadar = inst.category === 'RadarCanhGioi';
+          const scanSpeed = inst.scanSpeed || 36; // deg/sec
+          const headingOffset = inst.model3dHeadingOffset || 0;
+
+          // Hướng quay: Radar quay quét vòng liên tục theo tốc độ quét, các khí tài khác xoay theo heading offset
+          const modelOrientation = isRadar
+            ? new Cesium.CallbackProperty((time?: Cesium.JulianDate) => {
+                const nowSec = time ? Cesium.JulianDate.toDate(time).getTime() / 1000 : Date.now() / 1000;
+                const currentHeading = (headingOffset + nowSec * scanSpeed) % 360;
+                const hpr = new Cesium.HeadingPitchRoll(
+                  Cesium.Math.toRadians(currentHeading),
+                  0,
+                  0
+                );
+                return Cesium.Transforms.headingPitchRollQuaternion(modelCartesian, hpr);
+              }, false)
+            : Cesium.Transforms.headingPitchRollQuaternion(
+                modelCartesian,
+                new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(headingOffset), 0, 0)
+              );
+
+          viewer.entities.add({
+            name: `Mô hình 3D ${inst.name}`,
+            position: modelCartesian,
+            properties: { instanceId: inst.instanceId, isModel3d: true },
+            orientation: modelOrientation,
+            model: {
+              uri: effectiveModelUrl,
+              scale: modelScale,
+              minimumPixelSize: 52,
+              maximumScale: 160,
+              heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+              distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 150000),
             },
           });
         }
@@ -1218,171 +1329,477 @@ export const CesiumGlobe: React.FC = () => {
       // 3. Vùng Hỏa Lực Tiêu Diệt Mục Tiêu (Engagement Envelope cho Tên Lửa Phòng Không SAM và Pháo PK AAA)
       if (caps.hasEngagementEnvelope && safeRangeKm > 0 && showCoverageLayer) {
         const isSAM = inst.category === 'TenLuaPhongKhong';
-        const envColorHex = isSAM ? (inst.color || '#ef4444') : '#10b981';
-        const envColor = Cesium.Color.fromCssColorString(envColorHex);
-        const minRangeKm = typeof inst.minEngagementRangeKm === 'number' && inst.minEngagementRangeKm > 0
-          ? inst.minEngagementRangeKm
-          : (isSAM ? (safeRangeKm > 100 ? 3 : 1) : 0.2);
-        const maxAltM = typeof inst.maxEngagementAltitudeM === 'number' && inst.maxEngagementAltitudeM > 0
-          ? inst.maxEngagementAltitudeM
-          : (inst.coverageHeightKm ? inst.coverageHeightKm * 1000 : (isSAM ? 25000 : 3000));
-        const reactionTimeText = inst.reactionTimeSeconds ? ` | T_pư: ${inst.reactionTimeSeconds}s` : '';
-        const envLabelText = isSAM
-          ? `VÙNG HỎA LỰC [${inst.shortId || 'SAM'}: ${minRangeKm}-${safeRangeKm}km | H_max: ${(maxAltM / 1000).toFixed(0)}km${reactionTimeText}]`
-          : `HỎA LỰC PHÁO PK [${inst.shortId || 'AAA'}: ${minRangeKm}-${safeRangeKm}km | H_max: ${(maxAltM / 1000).toFixed(1)}km]`;
+        const isSpyder = inst.templateId === 'sam_spyder' || !!inst.spyderConfig;
+        const spyderCfg = inst.spyderConfig || EQUIPMENT_TEMPLATES.find((t) => t.id === inst.templateId)?.spyderConfig || (isSpyder ? SPYDER_SYSTEM_DEFAULT_CONFIG : undefined);
 
-        // Vùng hỏa lực tiêu diệt ngoại vi (R_kill)
-        viewer.entities.add({
-          name: `Vùng Hỏa Lực ${inst.shortId || ''}`,
-          position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
-          properties: { instanceId: inst.instanceId },
-          ellipse: {
-            semiMajorAxis: safeRangeKm * 1000,
-            semiMinorAxis: safeRangeKm * 1000,
-            height: 0,
-            heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
-            classificationType: is2D ? undefined : Cesium.ClassificationType.TERRAIN,
-            material: envColor.withAlpha(isSelected ? (isSAM ? 0.15 : 0.16) : 0.05),
-            outline: true,
-            outlineColor: envColor.withAlpha(isSelected ? 0.95 : 0.6),
-            outlineWidth: isSelected ? 3 : 1.5,
-          },
-        });
+        if (isSpyder && spyderCfg) {
+          // =========================================================================
+          // HIỂN THỊ CHUYÊN BIỆT CHO KHÍ TÀI SPYDER: 2 VÒM (SPYDER-SR VÀ SPYDER-MR)
+          // Theo Bảng 1 và Mặt cắt đứng chuẩn (Ảnh 1 & 2):
+          // - SPYDER-SR: Tầm ngắn 20km, trần 9km, R_min 1km, màu xanh lục nhạt #10b981
+          // - SPYDER-MR: Tầm trung 50km, trần 16km, R_min 2km, màu xanh lam nhạt #0ea5e9
+          // =========================================================================
+          const mrColorHex = spyderCfg.mr.colorHex || '#0ea5e9';
+          const mrColor = Cesium.Color.fromCssColorString(mrColorHex);
+          const srColorHex = spyderCfg.sr.colorHex || '#10b981';
+          const srColor = Cesium.Color.fromCssColorString(srColorHex);
 
-        // Nón chết cự ly cực cận (R_min) - Chỉ hiển thị trên bản đồ 2D
-        if (is2D && minRangeKm > 0 && minRangeKm < safeRangeKm) {
+          const mrRangeKm = spyderCfg.mr.dMaxKm; // 50km
+          const mrMinRangeKm = spyderCfg.mr.dMinKm; // 2km
+          const mrMaxAltM = spyderCfg.mr.hMaxM; // 16000m
+          const srRangeKm = spyderCfg.sr.dMaxKm; // 20km
+          const srMinRangeKm = spyderCfg.sr.dMinKm; // 1km
+          const srMaxAltM = spyderCfg.sr.hMaxM; // 9000m
+          const reactionTimeText = inst.reactionTimeSeconds ? ` | T_pư: ${inst.reactionTimeSeconds}s` : '';
+
+          // 1. VÙNG HỎA LỰC TẦM TRUNG SPYDER-MR (50KM) - 2D
           viewer.entities.add({
-            name: `Nón Mù Cực Cận R_min ${inst.shortId || ''}`,
+            name: `Vùng Hỏa Lực SPYDER-MR ${inst.shortId || ''}`,
             position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
-            properties: { instanceId: inst.instanceId },
+            properties: { instanceId: inst.instanceId, domeType: 'spyder_mr' },
             ellipse: {
-              semiMajorAxis: minRangeKm * 1000,
-              semiMinorAxis: minRangeKm * 1000,
+              semiMajorAxis: mrRangeKm * 1000,
+              semiMinorAxis: mrRangeKm * 1000,
               height: 0,
               heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
               classificationType: is2D ? undefined : Cesium.ClassificationType.TERRAIN,
-              material: Cesium.Color.BLACK.withAlpha(0.3),
+              material: mrColor.withAlpha(isSelected ? 0.16 : 0.05),
               outline: true,
-              outlineColor: Cesium.Color.fromCssColorString('#f43f5e').withAlpha(0.85),
-              outlineWidth: 1.8,
-            },
-          });
-        }
-
-        // Nhãn biên giới cự ly hỏa lực (Hướng Bắc 0°)
-        const boundaryPoint = destinationPoint(inst.latitude, inst.longitude, safeRangeKm * 1000, 0);
-        viewer.entities.add({
-          name: `Nhãn Hỏa Lực ${inst.shortId || ''}`,
-          position: Cesium.Cartesian3.fromDegrees(boundaryPoint.lon, boundaryPoint.lat, is2D ? 0 : safeAlt),
-          properties: { instanceId: inst.instanceId },
-          label: {
-            text: envLabelText,
-            font: isSelected ? 'bold 11px "JetBrains Mono", monospace' : '10px "JetBrains Mono", monospace',
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            fillColor: isSelected ? Cesium.Color.fromCssColorString('#fde047') : envColor,
-            outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 3,
-            showBackground: true,
-            backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.85),
-            backgroundPadding: new Cesium.Cartesian2(6, 3),
-            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-            horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, isSelected ? 600000 : 300000),
-            heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-        });
-
-        // 3D Vòm Hỏa Lực Tiêu Diệt (3D Firing Dome Envelope)
-        if (viewMode === '3D' && showAllDomes && inst.showDome) {
-          const radiusMeters = safeRangeKm * 1000;
-          const domeColor = envColor.withAlpha(isSelected ? 0.45 : 0.22);
-          const ribCount = 8;
-          const centerPos = Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, safeAlt + safeAntennaAGL);
-
-          // Vòng cung chân vòm cự ly tối đa
-          const ringPositions: Cesium.Cartesian3[] = [];
-          for (let deg = 0; deg <= 360; deg += 10) {
-            const dest = destinationPoint(inst.latitude, inst.longitude, radiusMeters, deg);
-            ringPositions.push(Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 15));
-          }
-          viewer.entities.add({
-            name: `Vòng Giới Hạn Hỏa Lực 3D ${inst.shortId || ''}`,
-            properties: { instanceId: inst.instanceId },
-            polyline: {
-              positions: ringPositions,
-              width: isSelected ? 3 : 2,
-              material: new Cesium.PolylineGlowMaterialProperty({
-                color: envColor,
-                glowPower: isSelected ? 0.35 : 0.15,
-              }),
+              outlineColor: mrColor.withAlpha(isSelected ? 0.95 : 0.65),
+              outlineWidth: isSelected ? 3 : 1.5,
             },
           });
 
-          const samVol = samVolumes[inst.instanceId];
-          if (samVol) {
-            // Render 1 LỚP VÒM HỎA LỰC SAM 3D THỂ TÍCH DUY NHẤT (Tầm tối đa D_max)
-            const samGeom = buildSamLayerGeometry(samVol, 'outer_boundary', {
-              mode: dome3DMode,
-              showInnerCone: true,
-              showTopCap: true,
-              showBottomCap: false,
+          if (is2D && mrMinRangeKm > 0) {
+            viewer.entities.add({
+              name: `Nón Mù SPYDER-MR R_min ${inst.shortId || ''}`,
+              position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+              properties: { instanceId: inst.instanceId },
+              ellipse: {
+                semiMajorAxis: mrMinRangeKm * 1000,
+                semiMinorAxis: mrMinRangeKm * 1000,
+                height: 0,
+                heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+                classificationType: is2D ? undefined : Cesium.ClassificationType.TERRAIN,
+                material: Cesium.Color.BLACK.withAlpha(0.3),
+                outline: true,
+                outlineColor: mrColor.withAlpha(0.85),
+                outlineWidth: 1.5,
+              },
             });
-            if (samGeom) {
-              const domeColorHex = inst.color || '#f43f5e';
-              const domeColor = Cesium.Color.fromCssColorString(domeColorHex);
-              const samMat = createRadarDomeMaterial({
-                baseColor: domeColor.withAlpha(isSelected ? 0.35 : 0.22),
-                rimColor: Cesium.Color.fromCssColorString(domeColorHex),
-                rimPower: 2.2,
-                scanLineCount: 16,
-                scanLineSpeed: 0,
-              });
-              const samPrim = new Cesium.Primitive({
-                geometryInstances: createSamVolumeGeometryInstance(samGeom, inst.instanceId, 'outer_boundary'),
-                appearance: new Cesium.MaterialAppearance({
-                  material: samMat,
-                  flat: true,
-                  faceForward: false,
-                  closed: false,
-                  translucent: true,
-                  renderState: {
-                    cull: { enabled: false },
-                    depthTest: { enabled: true },
-                    depthMask: false,
-                    blending: Cesium.BlendingState.ALPHA_BLEND,
-                  },
-                }),
-                asynchronous: false,
-                allowPicking: false,
-                compressVertices: false,
-              });
-              viewer.scene.primitives.add(samPrim);
-              domeResourcesRef.current.push({ primitive: samPrim, material: samMat });
+          }
+
+          const mrBoundaryPoint = destinationPoint(inst.latitude, inst.longitude, mrRangeKm * 1000, 0);
+          viewer.entities.add({
+            name: `Nhãn SPYDER-MR ${inst.shortId || ''}`,
+            position: Cesium.Cartesian3.fromDegrees(mrBoundaryPoint.lon, mrBoundaryPoint.lat, is2D ? 0 : safeAlt),
+            properties: { instanceId: inst.instanceId },
+            label: {
+              text: `VÙNG HỎA LỰC [SPYDER-MR: ${mrMinRangeKm}-${mrRangeKm}km | H_max: ${(mrMaxAltM / 1000).toFixed(0)}km${reactionTimeText}]`,
+              font: isSelected ? 'bold 11px "JetBrains Mono", monospace' : '10px "JetBrains Mono", monospace',
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              fillColor: isSelected ? Cesium.Color.fromCssColorString('#fde047') : mrColor,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 3,
+              showBackground: true,
+              backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.85),
+              backgroundPadding: new Cesium.Cartesian2(6, 3),
+              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+              distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, isSelected ? 600000 : 300000),
+              heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          });
+
+          // 2. VÙNG HỎA LỰC TẦM NGẮN SPYDER-SR (20KM) - 2D
+          viewer.entities.add({
+            name: `Vùng Hỏa Lực SPYDER-SR ${inst.shortId || ''}`,
+            position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+            properties: { instanceId: inst.instanceId, domeType: 'spyder_sr' },
+            ellipse: {
+              semiMajorAxis: srRangeKm * 1000,
+              semiMinorAxis: srRangeKm * 1000,
+              height: 0,
+              heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+              classificationType: is2D ? undefined : Cesium.ClassificationType.TERRAIN,
+              material: srColor.withAlpha(isSelected ? 0.22 : 0.08),
+              outline: true,
+              outlineColor: srColor.withAlpha(isSelected ? 0.95 : 0.75),
+              outlineWidth: isSelected ? 3 : 1.8,
+            },
+          });
+
+          if (is2D && srMinRangeKm > 0) {
+            viewer.entities.add({
+              name: `Nón Mù SPYDER-SR R_min ${inst.shortId || ''}`,
+              position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+              properties: { instanceId: inst.instanceId },
+              ellipse: {
+                semiMajorAxis: srMinRangeKm * 1000,
+                semiMinorAxis: srMinRangeKm * 1000,
+                height: 0,
+                heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+                classificationType: is2D ? undefined : Cesium.ClassificationType.TERRAIN,
+                material: Cesium.Color.BLACK.withAlpha(0.35),
+                outline: true,
+                outlineColor: srColor.withAlpha(0.9),
+                outlineWidth: 1.5,
+              },
+            });
+          }
+
+          const srBoundaryPoint = destinationPoint(inst.latitude, inst.longitude, srRangeKm * 1000, 45);
+          viewer.entities.add({
+            name: `Nhãn SPYDER-SR ${inst.shortId || ''}`,
+            position: Cesium.Cartesian3.fromDegrees(srBoundaryPoint.lon, srBoundaryPoint.lat, is2D ? 0 : safeAlt),
+            properties: { instanceId: inst.instanceId },
+            label: {
+              text: `VÙNG HỎA LỰC [SPYDER-SR: ${srMinRangeKm}-${srRangeKm}km | H_max: ${(srMaxAltM / 1000).toFixed(0)}km]`,
+              font: isSelected ? 'bold 11px "JetBrains Mono", monospace' : '10px "JetBrains Mono", monospace',
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              fillColor: isSelected ? Cesium.Color.fromCssColorString('#a7f3d0') : srColor,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 3,
+              showBackground: true,
+              backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.85),
+              backgroundPadding: new Cesium.Cartesian2(6, 3),
+              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+              distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, isSelected ? 600000 : 300000),
+              heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          });
+
+          // 3. HIỂN THỊ VÒM 3D (MR 50km & SR 20km)
+          if (viewMode === '3D' && showAllDomes && inst.showDome) {
+            // Vòng chân vòm MR 50km
+            const mrRingPositions: Cesium.Cartesian3[] = [];
+            for (let deg = 0; deg <= 360; deg += 10) {
+              const dest = destinationPoint(inst.latitude, inst.longitude, mrRangeKm * 1000, deg);
+              mrRingPositions.push(Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 15));
             }
-          } else {
-            // Fallback khi volume SAM đang tính toán: nan quạt dây an toàn
-            for (let r = 0; r < ribCount; r++) {
-              const az = (r * 360) / ribCount;
-              const dest = destinationPoint(inst.latitude, inst.longitude, radiusMeters, az);
-              const midDist = radiusMeters * 0.65;
-              const midDest = destinationPoint(inst.latitude, inst.longitude, midDist, az);
+            viewer.entities.add({
+              name: `Vòng Giới Hạn SPYDER-MR 3D ${inst.shortId || ''}`,
+              properties: { instanceId: inst.instanceId },
+              polyline: {
+                positions: mrRingPositions,
+                width: isSelected ? 3 : 2,
+                material: new Cesium.PolylineGlowMaterialProperty({
+                  color: mrColor,
+                  glowPower: isSelected ? 0.35 : 0.15,
+                }),
+              },
+            });
 
-              const ribPositions = [
-                centerPos,
-                Cesium.Cartesian3.fromDegrees(midDest.lon, midDest.lat, safeAlt + maxAltM * 0.85),
-                Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 15),
-              ];
+            // Vòng chân vòm SR 20km
+            const srRingPositions: Cesium.Cartesian3[] = [];
+            for (let deg = 0; deg <= 360; deg += 10) {
+              const dest = destinationPoint(inst.latitude, inst.longitude, srRangeKm * 1000, deg);
+              srRingPositions.push(Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 15));
+            }
+            viewer.entities.add({
+              name: `Vòng Giới Hạn SPYDER-SR 3D ${inst.shortId || ''}`,
+              properties: { instanceId: inst.instanceId },
+              polyline: {
+                positions: srRingPositions,
+                width: isSelected ? 3 : 2,
+                material: new Cesium.PolylineGlowMaterialProperty({
+                  color: srColor,
+                  glowPower: isSelected ? 0.35 : 0.15,
+                }),
+              },
+            });
 
-              viewer.entities.add({
-                name: `Nan Vòm Hỏa Lực 3D ${az}° ${inst.shortId || ''}`,
-                properties: { instanceId: inst.instanceId },
-                polyline: {
-                  positions: ribPositions,
-                  width: isSelected ? 1.8 : 1.2,
-                  material: domeColor,
-                },
+            // Vòm thể tích 3D
+            const samVol = samVolumes[inst.instanceId];
+            if (samVol && samVol.isSpyderDualDome && samVol.spyderSrVolume) {
+              // Vòm MR 50km (ngoài, xanh lam nhạt)
+              const mrGeom = buildSamLayerGeometry(samVol, 'outer_boundary', {
+                mode: dome3DMode,
+                showInnerCone: false,
+                showTopCap: true,
+                showBottomCap: false,
               });
+              if (mrGeom) {
+                const mrMat = createRadarDomeMaterial({
+                  baseColor: mrColor.withAlpha(isSelected ? 0.30 : 0.18),
+                  rimColor: Cesium.Color.fromCssColorString('#38bdf8'),
+                  rimPower: 2.0,
+                  scanLineCount: 16,
+                  scanLineSpeed: 0,
+                });
+                const mrPrim = new Cesium.Primitive({
+                  geometryInstances: createSamVolumeGeometryInstance(mrGeom, `${inst.instanceId}_mr`, 'outer_boundary'),
+                  appearance: new Cesium.MaterialAppearance({
+                    material: mrMat,
+                    flat: true,
+                    faceForward: false,
+                    closed: false,
+                    translucent: true,
+                    renderState: {
+                      cull: { enabled: false },
+                      depthTest: { enabled: true },
+                      depthMask: false,
+                      blending: Cesium.BlendingState.ALPHA_BLEND,
+                    },
+                  }),
+                  asynchronous: false,
+                  allowPicking: false,
+                  compressVertices: false,
+                });
+                viewer.scene.primitives.add(mrPrim);
+                domeResourcesRef.current.push({ primitive: mrPrim, material: mrMat });
+              }
+
+              // Vòm SR 20km (trong, xanh lục nhạt)
+              const srGeom = buildSamLayerGeometry(samVol.spyderSrVolume, 'outer_boundary', {
+                mode: dome3DMode,
+                showInnerCone: false,
+                showTopCap: true,
+                showBottomCap: false,
+              });
+              if (srGeom) {
+                const srMat = createRadarDomeMaterial({
+                  baseColor: srColor.withAlpha(isSelected ? 0.38 : 0.25),
+                  rimColor: Cesium.Color.fromCssColorString('#34d399'),
+                  rimPower: 2.2,
+                  scanLineCount: 16,
+                  scanLineSpeed: 0,
+                });
+                const srPrim = new Cesium.Primitive({
+                  geometryInstances: createSamVolumeGeometryInstance(srGeom, `${inst.instanceId}_sr`, 'outer_boundary'),
+                  appearance: new Cesium.MaterialAppearance({
+                    material: srMat,
+                    flat: true,
+                    faceForward: false,
+                    closed: false,
+                    translucent: true,
+                    renderState: {
+                      cull: { enabled: false },
+                      depthTest: { enabled: true },
+                      depthMask: false,
+                      blending: Cesium.BlendingState.ALPHA_BLEND,
+                    },
+                  }),
+                  asynchronous: false,
+                  allowPicking: false,
+                  compressVertices: false,
+                });
+                viewer.scene.primitives.add(srPrim);
+                domeResourcesRef.current.push({ primitive: srPrim, material: srMat });
+              }
+            } else {
+              // Fallback khi volume đang tính toán
+              const centerPos = Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, safeAlt + safeAntennaAGL);
+              const ribCount = 8;
+              for (let r = 0; r < ribCount; r++) {
+                const az = (r * 360) / ribCount;
+                const destMR = destinationPoint(inst.latitude, inst.longitude, mrRangeKm * 1000, az);
+                const midDestMR = destinationPoint(inst.latitude, inst.longitude, mrRangeKm * 1000 * 0.65, az);
+                viewer.entities.add({
+                  name: `Nan SPYDER-MR 3D ${az}° ${inst.shortId || ''}`,
+                  properties: { instanceId: inst.instanceId },
+                  polyline: {
+                    positions: [
+                      centerPos,
+                      Cesium.Cartesian3.fromDegrees(midDestMR.lon, midDestMR.lat, safeAlt + mrMaxAltM * 0.85),
+                      Cesium.Cartesian3.fromDegrees(destMR.lon, destMR.lat, safeAlt + 15),
+                    ],
+                    width: isSelected ? 1.8 : 1.2,
+                    material: mrColor.withAlpha(0.5),
+                  },
+                });
+
+                const destSR = destinationPoint(inst.latitude, inst.longitude, srRangeKm * 1000, az);
+                const midDestSR = destinationPoint(inst.latitude, inst.longitude, srRangeKm * 1000 * 0.65, az);
+                viewer.entities.add({
+                  name: `Nan SPYDER-SR 3D ${az}° ${inst.shortId || ''}`,
+                  properties: { instanceId: inst.instanceId },
+                  polyline: {
+                    positions: [
+                      centerPos,
+                      Cesium.Cartesian3.fromDegrees(midDestSR.lon, midDestSR.lat, safeAlt + srMaxAltM * 0.85),
+                      Cesium.Cartesian3.fromDegrees(destSR.lon, destSR.lat, safeAlt + 15),
+                    ],
+                    width: isSelected ? 1.8 : 1.2,
+                    material: srColor.withAlpha(0.6),
+                  },
+                });
+              }
+            }
+          }
+        } else {
+          // =========================================================================
+          // CÁC TỔ HỢP SAM TIÊU CHUẨN (C-125 Pechora, S-300, Shilka...): VÒM ĐƠN ĐẶC THÙ
+          // =========================================================================
+          const envColorHex = isSAM ? (inst.color || '#ef4444') : '#10b981';
+          const envColor = Cesium.Color.fromCssColorString(envColorHex);
+          const minRangeKm = typeof inst.minEngagementRangeKm === 'number' && inst.minEngagementRangeKm > 0
+            ? inst.minEngagementRangeKm
+            : (isSAM ? (safeRangeKm > 100 ? 3 : 1) : 0.2);
+          const maxAltM = typeof inst.maxEngagementAltitudeM === 'number' && inst.maxEngagementAltitudeM > 0
+            ? inst.maxEngagementAltitudeM
+            : (inst.coverageHeightKm ? inst.coverageHeightKm * 1000 : (isSAM ? 25000 : 3000));
+          const reactionTimeText = inst.reactionTimeSeconds ? ` | T_pư: ${inst.reactionTimeSeconds}s` : '';
+          const envLabelText = isSAM
+            ? `VÙNG HỎA LỰC [${inst.shortId || 'SAM'}: ${minRangeKm}-${safeRangeKm}km | H_max: ${(maxAltM / 1000).toFixed(0)}km${reactionTimeText}]`
+            : `HỎA LỰC PHÁO PK [${inst.shortId || 'AAA'}: ${minRangeKm}-${safeRangeKm}km | H_max: ${(maxAltM / 1000).toFixed(1)}km]`;
+
+          // Vùng hỏa lực tiêu diệt ngoại vi (R_kill)
+          viewer.entities.add({
+            name: `Vùng Hỏa Lực ${inst.shortId || ''}`,
+            position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+            properties: { instanceId: inst.instanceId },
+            ellipse: {
+              semiMajorAxis: safeRangeKm * 1000,
+              semiMinorAxis: safeRangeKm * 1000,
+              height: 0,
+              heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+              classificationType: is2D ? undefined : Cesium.ClassificationType.TERRAIN,
+              material: envColor.withAlpha(isSelected ? (isSAM ? 0.15 : 0.16) : 0.05),
+              outline: true,
+              outlineColor: envColor.withAlpha(isSelected ? 0.95 : 0.6),
+              outlineWidth: isSelected ? 3 : 1.5,
+            },
+          });
+
+          // Nón chết cự ly cực cận (R_min) - Chỉ hiển thị trên bản đồ 2D
+          if (is2D && minRangeKm > 0 && minRangeKm < safeRangeKm) {
+            viewer.entities.add({
+              name: `Nón Mù Cực Cận R_min ${inst.shortId || ''}`,
+              position: Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, 0),
+              properties: { instanceId: inst.instanceId },
+              ellipse: {
+                semiMajorAxis: minRangeKm * 1000,
+                semiMinorAxis: minRangeKm * 1000,
+                height: 0,
+                heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+                classificationType: is2D ? undefined : Cesium.ClassificationType.TERRAIN,
+                material: Cesium.Color.BLACK.withAlpha(0.3),
+                outline: true,
+                outlineColor: Cesium.Color.fromCssColorString('#f43f5e').withAlpha(0.85),
+                outlineWidth: 1.8,
+              },
+            });
+          }
+
+          // Nhãn biên giới cự ly hỏa lực (Hướng Bắc 0°)
+          const boundaryPoint = destinationPoint(inst.latitude, inst.longitude, safeRangeKm * 1000, 0);
+          viewer.entities.add({
+            name: `Nhãn Hỏa Lực ${inst.shortId || ''}`,
+            position: Cesium.Cartesian3.fromDegrees(boundaryPoint.lon, boundaryPoint.lat, is2D ? 0 : safeAlt),
+            properties: { instanceId: inst.instanceId },
+            label: {
+              text: envLabelText,
+              font: isSelected ? 'bold 11px "JetBrains Mono", monospace' : '10px "JetBrains Mono", monospace',
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              fillColor: isSelected ? Cesium.Color.fromCssColorString('#fde047') : envColor,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 3,
+              showBackground: true,
+              backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.85),
+              backgroundPadding: new Cesium.Cartesian2(6, 3),
+              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+              distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, isSelected ? 600000 : 300000),
+              heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          });
+
+          // 3D Vòm Hỏa Lực Tiêu Diệt (3D Firing Dome Envelope)
+          if (viewMode === '3D' && showAllDomes && inst.showDome) {
+            const radiusMeters = safeRangeKm * 1000;
+            const domeColor = envColor.withAlpha(isSelected ? 0.45 : 0.22);
+            const ribCount = 8;
+            const centerPos = Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, safeAlt + safeAntennaAGL);
+
+            // Vòng cung chân vòm cự ly tối đa
+            const ringPositions: Cesium.Cartesian3[] = [];
+            for (let deg = 0; deg <= 360; deg += 10) {
+              const dest = destinationPoint(inst.latitude, inst.longitude, radiusMeters, deg);
+              ringPositions.push(Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 15));
+            }
+            viewer.entities.add({
+              name: `Vòng Giới Hạn Hỏa Lực 3D ${inst.shortId || ''}`,
+              properties: { instanceId: inst.instanceId },
+              polyline: {
+                positions: ringPositions,
+                width: isSelected ? 3 : 2,
+                material: new Cesium.PolylineGlowMaterialProperty({
+                  color: envColor,
+                  glowPower: isSelected ? 0.35 : 0.15,
+                }),
+              },
+            });
+
+            const samVol = samVolumes[inst.instanceId];
+            if (samVol) {
+              // Render 1 LỚP VÒM HỎA LỰC SAM 3D THỂ TÍCH DUY NHẤT (Tầm tối đa D_max)
+              const samGeom = buildSamLayerGeometry(samVol, 'outer_boundary', {
+                mode: dome3DMode,
+                showInnerCone: true,
+                showTopCap: true,
+                showBottomCap: false,
+              });
+              if (samGeom) {
+                const domeColorHex = inst.color || '#f43f5e';
+                const domeColor = Cesium.Color.fromCssColorString(domeColorHex);
+                const samMat = createRadarDomeMaterial({
+                  baseColor: domeColor.withAlpha(isSelected ? 0.35 : 0.22),
+                  rimColor: Cesium.Color.fromCssColorString(domeColorHex),
+                  rimPower: 2.2,
+                  scanLineCount: 16,
+                  scanLineSpeed: 0,
+                });
+                const samPrim = new Cesium.Primitive({
+                  geometryInstances: createSamVolumeGeometryInstance(samGeom, inst.instanceId, 'outer_boundary'),
+                  appearance: new Cesium.MaterialAppearance({
+                    material: samMat,
+                    flat: true,
+                    faceForward: false,
+                    closed: false,
+                    translucent: true,
+                    renderState: {
+                      cull: { enabled: false },
+                      depthTest: { enabled: true },
+                      depthMask: false,
+                      blending: Cesium.BlendingState.ALPHA_BLEND,
+                    },
+                  }),
+                  asynchronous: false,
+                  allowPicking: false,
+                  compressVertices: false,
+                });
+                viewer.scene.primitives.add(samPrim);
+                domeResourcesRef.current.push({ primitive: samPrim, material: samMat });
+              }
+            } else {
+              // Fallback khi volume SAM đang tính toán: nan quạt dây an toàn
+              for (let r = 0; r < ribCount; r++) {
+                const az = (r * 360) / ribCount;
+                const dest = destinationPoint(inst.latitude, inst.longitude, radiusMeters, az);
+                const midDist = radiusMeters * 0.65;
+                const midDest = destinationPoint(inst.latitude, inst.longitude, midDist, az);
+
+                const ribPositions = [
+                  centerPos,
+                  Cesium.Cartesian3.fromDegrees(midDest.lon, midDest.lat, safeAlt + maxAltM * 0.85),
+                  Cesium.Cartesian3.fromDegrees(dest.lon, dest.lat, safeAlt + 15),
+                ];
+
+                viewer.entities.add({
+                  name: `Nan Vòm Hỏa Lực 3D ${az}° ${inst.shortId || ''}`,
+                  properties: { instanceId: inst.instanceId },
+                  polyline: {
+                    positions: ribPositions,
+                    width: isSelected ? 1.8 : 1.2,
+                    material: domeColor,
+                  },
+                });
+              }
             }
           }
         }
@@ -1525,8 +1942,8 @@ export const CesiumGlobe: React.FC = () => {
           hasAnySelected,
           showCoverage: showCoverageLayer,
           showRangeRings: showRangeRingsLayer,
-          showLabels: showLabelsLayer,
-          showMarkers: showMarkersLayer,
+          showLabels: false, // Cờ tác chiến và nhãn thông tin đã được hiển thị đồng bộ ở mục 1
+          showMarkers: false,
           shortId: inst.shortId,
           status: inst.status,
           category: inst.category,
@@ -1534,6 +1951,8 @@ export const CesiumGlobe: React.FC = () => {
           antennaHeightAGL: safeAntennaAGL,
           rangeKm: safeRangeKm,
           color: inst.color,
+          realPhotoUrl: inst.realPhotoUrl || TEMPLATE_BY_ID.get(inst.templateId)?.realPhotoUrl || '',
+          instanceId: inst.instanceId,
         });
         spxEntities.forEach((e) => {
           e.properties = new Cesium.PropertyBag({ instanceId: inst.instanceId });
@@ -2310,6 +2729,9 @@ export const CesiumGlobe: React.FC = () => {
     showRangeRingsLayer,
     showLabelsLayer,
     showMarkersLayer,
+    showModelsLayer,
+    customModelUrls,
+    badgeRefreshTick,
     categoryFilter,
     domeAlpha,
     domeAzimuthSegments,

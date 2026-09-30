@@ -18,6 +18,7 @@ import {
   getProfileMaxRange,
 } from './radarMath';
 import { EQUIPMENT_TEMPLATES } from '../data/equipmentTemplates';
+import { sampleTerrainOptimized } from './terrainSampler';
 
 /**
  * Tính toạ độ đích (lat, lon) từ điểm gốc, khoảng cách (m) và góc phương vị (độ)
@@ -173,31 +174,15 @@ export async function computeRadarCoverageField(
 
   if (terrainProvider) {
     try {
-      // Xác định cấp zoom địa hình phù hợp theo tầm hoạt động của radar
-      // Tầm nhỏ (<= 60km): level 11 (~10km/tile, mesh dày)
-      // Tầm trung (<= 160km): level 10 (~20km/tile)
-      // Tầm xa (> 160km): level 9 (~40km/tile, tối ưu hóa triệt để lưu lượng mạng tránh lỗi net::ERR_INSUFFICIENT_RESOURCES)
       const targetLevel = globalMaxRangeKm <= 60 ? 11 : globalMaxRangeKm <= 160 ? 10 : 9;
-      const batchSize = 350;
-      for (let i = 0; i < cartographics.length; i += batchSize) {
-        const chunk = cartographics.slice(i, i + batchSize);
-        try {
-          await Cesium.sampleTerrain(terrainProvider, targetLevel, chunk, false);
-        } catch {
-          try {
-            await Cesium.sampleTerrain(terrainProvider, Math.max(8, targetLevel - 1), chunk, false);
-          } catch {
-            // Không ngắt luồng nếu thiếu một vài tile cục bộ
-          }
-        }
-        for (let j = 0; j < chunk.length; j++) {
-          const h = chunk[j].height;
-          sampledHeights[i + j] = h !== undefined && !isNaN(h) && isFinite(h) ? Math.max(0, h) : 0;
-        }
-        if (i + batchSize < cartographics.length) {
-          await new Promise((resolve) => setTimeout(resolve, 8));
-        }
-      }
+      sampledHeights = await sampleTerrainOptimized(
+        terrainProvider,
+        radarLon,
+        radarLat,
+        cartographics,
+        targetLevel,
+        1500
+      );
       terrainStatus = 'loaded';
     } catch {
       sampledHeights = cartographics.map(() => 0);

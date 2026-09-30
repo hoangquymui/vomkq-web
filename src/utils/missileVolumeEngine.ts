@@ -6,7 +6,7 @@ import {
   EARTH_RADIUS_METERS,
 } from './radarMath';
 import { sampleTerrainGridAndMasks } from './radarVolumeEngine';
-import { EQUIPMENT_TEMPLATES } from '../data/equipmentTemplates';
+import { EQUIPMENT_TEMPLATES, SPYDER_SYSTEM_DEFAULT_CONFIG } from '../data/equipmentTemplates';
 
 export type SamEngagementMode =
   | 'head_on'
@@ -58,10 +58,61 @@ export interface SamEngagementVolume {
   terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error';
   cacheKey: string;
   maxMaskInfoByAzDist?: Map<string, { maxTan: number; peakDist: number; peakAlt: number }>;
+  isSpyderDualDome?: boolean;
+  spyderSrVolume?: SamEngagementVolume;
 }
 
 /** Cache bộ nhớ lưu các SamEngagementVolume đã tính toán */
 const samVolumeCache = new Map<string, SamEngagementVolume>();
+
+/**
+ * Tạo cache key đồng bộ duy nhất cho SamEngagementVolume
+ */
+export function getSamVolumeCacheKey(
+  instance: EquipmentInstance,
+  options: {
+    mode?: SamEngagementMode;
+    azimuthStepDeg?: number;
+    kFactor?: number;
+  } = {}
+): string {
+  const mode = options.mode || instance.samEngagementMode || 'head_on';
+  const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === instance.templateId);
+  const isSpyder = instance.templateId === 'sam_spyder' || !!instance.spyderConfig;
+  const spyderCfg = instance.spyderConfig || tmpl?.spyderConfig || (isSpyder ? SPYDER_SYSTEM_DEFAULT_CONFIG : undefined);
+  const profile = (instance.samProfiles || tmpl?.samProfiles)?.[mode];
+
+  const dMaxKm = isSpyder && spyderCfg ? spyderCfg.mr.dMaxKm : (profile?.dMaxKm || instance.rangeKm || tmpl?.defaultRangeKm || 25);
+  const hMaxM = isSpyder && spyderCfg ? spyderCfg.mr.hMaxM : (profile?.hMaxM || instance.maxEngagementAltitudeM || tmpl?.maxEngagementAltitudeM || 18000);
+  const minElevationDeg = instance.minElevationDeg !== undefined ? instance.minElevationDeg : 6.0;
+  const maxElevationDeg = instance.maxElevationDeg !== undefined ? instance.maxElevationDeg : 65.0;
+  const azimuthStepDeg = options.azimuthStepDeg || 5;
+  const kFactor = options.kFactor || DEFAULT_K_FACTOR;
+  const centerLat = instance.latitude;
+  const centerLon = instance.longitude;
+  const centerGroundAltM = instance.altitude || 0;
+  const antennaHeightAGL = instance.antennaHeightAGL || 6;
+  const centerAltM = centerGroundAltM + antennaHeightAGL;
+
+  return `sam_${instance.instanceId}_${mode}_${centerLat.toFixed(4)}_${centerLon.toFixed(4)}_${centerAltM.toFixed(1)}_${dMaxKm}_${hMaxM}_${minElevationDeg}_${maxElevationDeg}_${azimuthStepDeg}_${kFactor.toFixed(2)}`;
+}
+
+/**
+ * 1b. HÀM TÍNH BIÊN CỰ LY VÒM HỎA LỰC ELIP SPYDER THEO ĐỘ CAO (D(deltaH))
+ * Dạng hình học: Vòm cong elip đều (Mặt cắt đứng Ảnh 2) từ sàn hỏa lực hMinM đến trần hMaxM:
+ * D(deltaH) = D_max * sqrt(max(0, 1 - (deltaH / hMaxM)^2))
+ * Tại mặt đất (deltaH = 0): D = D_max (20km cho SR, 50km cho MR)
+ * Tại trần bay (deltaH = hMaxM): D = 0 (9km cho SR, 16km cho MR)
+ */
+export function calculateSpyderDomeMaxRange(
+  deltaHM: number,
+  dMaxM: number,
+  hMaxM: number
+): number {
+  if (deltaHM < 0 || deltaHM > hMaxM) return 0;
+  const ratio = deltaHM / hMaxM;
+  return Math.max(0, dMaxM * Math.sqrt(Math.max(0, 1 - ratio * ratio)));
+}
 
 /**
  * 1. HÀM TÍNH BIÊN CỰ LY QUẢ LÊ KHÍ ĐỘNG SAM THEO ĐỘ CAO (D_max(H))
@@ -186,16 +237,19 @@ export async function computeSamEngagementVolume(
 ): Promise<SamEngagementVolume> {
   const mode: SamEngagementMode = options.mode || instance.samEngagementMode || 'head_on';
   const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === instance.templateId);
+  const isSpyder = instance.templateId === 'sam_spyder' || !!instance.spyderConfig;
+  const spyderCfg = instance.spyderConfig || tmpl?.spyderConfig || (isSpyder ? SPYDER_SYSTEM_DEFAULT_CONFIG : undefined);
+
   const profile = (instance.samProfiles || tmpl?.samProfiles)?.[mode];
 
-  const dMaxKm = profile?.dMaxKm || instance.rangeKm || tmpl?.defaultRangeKm || 25;
-  const dMinKm = profile?.dMinKm || instance.minEngagementRangeKm || tmpl?.minEngagementRangeKm || 3.5;
-  const hMaxM = profile?.hMaxM || instance.maxEngagementAltitudeM || tmpl?.maxEngagementAltitudeM || 18000;
-  const hMinM = profile?.hMinM || instance.minEngagementAltitudeM || tmpl?.minEngagementAltitudeM || 20;
-  const hOptM = instance.optimalAltitudeM || tmpl?.optimalAltitudeM || Math.round(hMaxM * 0.35);
+  const dMaxKm = isSpyder && spyderCfg ? spyderCfg.mr.dMaxKm : (profile?.dMaxKm || instance.rangeKm || tmpl?.defaultRangeKm || 25);
+  const dMinKm = isSpyder && spyderCfg ? spyderCfg.mr.dMinKm : (profile?.dMinKm || instance.minEngagementRangeKm || tmpl?.minEngagementRangeKm || 3.5);
+  const hMaxM = isSpyder && spyderCfg ? spyderCfg.mr.hMaxM : (profile?.hMaxM || instance.maxEngagementAltitudeM || tmpl?.maxEngagementAltitudeM || 18000);
+  const hMinM = isSpyder && spyderCfg ? spyderCfg.mr.hMinM : (profile?.hMinM || instance.minEngagementAltitudeM || tmpl?.minEngagementAltitudeM || 20);
+  const hOptM = isSpyder ? 5000 : (instance.optimalAltitudeM || tmpl?.optimalAltitudeM || Math.round(hMaxM * 0.35));
   const pGhKm = profile?.pGhKm || instance.maxTargetParamKm || tmpl?.maxTargetParamKm || 16.5;
-  const vMaxMps = profile?.vMaxMps || instance.maxTargetSpeedMps || tmpl?.maxTargetSpeedMps || 700;
-  const modeVi = profile?.modeVi || 'Bắn đón (Không nhiễu)';
+  const vMaxMps = isSpyder && spyderCfg ? spyderCfg.targetSpeeds.aircraftMps : (profile?.vMaxMps || instance.maxTargetSpeedMps || tmpl?.maxTargetSpeedMps || 700);
+  const modeVi = isSpyder ? 'Tổ hợp Spyder-MR Tầm trung (Derby-MR)' : (profile?.modeVi || 'Bắn đón (Không nhiễu)');
 
   // Góc ngẩng bệ phóng cố định 6° và góc cực đại ngẩng được 65°
   const minElevationDeg = instance.minElevationDeg !== undefined ? instance.minElevationDeg : 6.0;
@@ -211,9 +265,8 @@ export async function computeSamEngagementVolume(
   const antennaHeightAGL = instance.antennaHeightAGL || 6;
   const centerAltM = centerGroundAltM + antennaHeightAGL;
   const dMaxM = dMaxKm * 1000;
-  const dMinM = dMinKm * 1000;
 
-  const cacheKey = `sam_${instance.instanceId}_${mode}_${centerLat.toFixed(4)}_${centerLon.toFixed(4)}_${centerAltM.toFixed(1)}_${dMaxKm}_${hMaxM}_${minElevationDeg}_${maxElevationDeg}_${azimuthStepDeg}_${kFactor.toFixed(2)}`;
+  const cacheKey = getSamVolumeCacheKey(instance, { mode, azimuthStepDeg, kFactor });
   const cached = samVolumeCache.get(cacheKey);
   if (cached) return cached;
 
@@ -229,7 +282,7 @@ export async function computeSamEngagementVolume(
     calculateSamDeadConeRadius(altM, centerAltM, maxElevationDeg)
   );
 
-  // Lấy mẫu độ cao địa hình DEM và tính góc che khuất tích lũy
+  // Lấy mẫu độ cao địa hình DEM và tính góc che khuất tích lũy (bao quát cự ly tối đa dMaxM)
   const { terrainMap, maxMaskInfoByAzDist, sampleDistances, terrainStatus } = await sampleTerrainGridAndMasks(
     centerLat,
     centerLon,
@@ -246,84 +299,158 @@ export async function computeSamEngagementVolume(
   const rEquiv = EARTH_RADIUS_METERS * kFactor;
   const aQuad = 1 / (2 * rEquiv);
 
-  const optimalRanges: number[][] = [];
-  const highProbRanges: number[][] = [];
-  const nominalRanges: number[][] = [];
-  const effectiveRanges: number[][] = [];
+  /** Hàm tiện ích xây dựng ma trận cự ly danh định và hiệu dụng sau cắt địa hình */
+  const buildMatrix = (
+    bands: number[],
+    innerCones: number[],
+    envelopeMaxM: number,
+    envelopeHeightM: number,
+    envelopeOptM: number,
+    useSpyderDome: boolean
+  ) => {
+    const optimalRanges: number[][] = [];
+    const highProbRanges: number[][] = [];
+    const nominalRanges: number[][] = [];
+    const effectiveRanges: number[][] = [];
 
-  for (let b = 0; b < altitudeBands.length; b++) {
-    const altM = altitudeBands[b];
-    const deltaH = Math.max(0, altM - centerAltM);
-    const innerConeM = innerConeRadii[b];
+    for (let b = 0; b < bands.length; b++) {
+      const altM = bands[b];
+      const deltaH = Math.max(0, altM - centerAltM);
+      const innerConeM = innerCones[b];
 
-    // Tại tâm bệ phóng (deltaH = 0): cự ly = 0
-    if (deltaH === 0) {
-      nominalRanges.push(azimuthSamples.map(() => 0));
-      optimalRanges.push(azimuthSamples.map(() => 0));
-      highProbRanges.push(azimuthSamples.map(() => 0));
-      effectiveRanges.push(azimuthSamples.map(() => 0));
-      continue;
-    }
-
-    // Giới hạn biên hỏa lực bởi góc ngẩng cố định của bệ phóng (6 độ)
-    const launchLimitM = Math.round(deltaH * cotMinElev);
-    const aeroMaxM = calculateSamPearMaxRange(deltaH, dMaxM, 0, hMaxM, hOptM);
-    let nomMaxRangeM = Math.min(aeroMaxM, launchLimitM);
-    nomMaxRangeM = Math.max(innerConeM, nomMaxRangeM);
-
-    const optMaxM = Math.max(innerConeM, Math.round(nomMaxRangeM * 0.70));
-    const highProbM = Math.max(innerConeM, Math.round(nomMaxRangeM * 0.85));
-
-    const optRow: number[] = [];
-    const highProbRow: number[] = [];
-    const nomRow: number[] = [];
-    const effRow: number[] = [];
-
-    for (let j = 0; j < azimuthSamples.length; j++) {
-      const az = azimuthSamples[j];
-      nomRow.push(nomMaxRangeM);
-      optRow.push(optMaxM);
-      highProbRow.push(highProbM);
-
-      if (nomMaxRangeM <= innerConeM) {
-        effRow.push(innerConeM);
+      if (deltaH === 0) {
+        if (useSpyderDome) {
+          const rawDome = calculateSpyderDomeMaxRange(0, envelopeMaxM, envelopeHeightM);
+          nominalRanges.push(azimuthSamples.map(() => rawDome));
+          optimalRanges.push(azimuthSamples.map(() => Math.round(rawDome * 0.7)));
+          highProbRanges.push(azimuthSamples.map(() => Math.round(rawDome * 0.85)));
+          effectiveRanges.push(azimuthSamples.map(() => rawDome));
+          continue;
+        }
+        nominalRanges.push(azimuthSamples.map(() => 0));
+        optimalRanges.push(azimuthSamples.map(() => 0));
+        highProbRanges.push(azimuthSamples.map(() => 0));
+        effectiveRanges.push(azimuthSamples.map(() => 0));
         continue;
       }
 
-      // Kiểm tra góc che chắn địa hình
-      let effDistM = nomMaxRangeM;
-      for (const dist of sampleDistances) {
-        if (dist > nomMaxRangeM) break;
-        if (dist <= innerConeM) continue;
-
-        const groundAlt = terrainMap.get(`${az}_${dist}`) || 0;
-        const deltaHBulge = calculateEarthBulgeMeters(dist, kFactor);
-        const tanTarget = (altM - centerAltM - deltaHBulge) / dist;
-        const maskInfo = maxMaskInfoByAzDist.get(`${az}_${dist}`);
-        const maxMaskTan = maskInfo ? maskInfo.maxTan : -Number.MAX_VALUE;
-
-        if (altM < groundAlt || (maxMaskTan > tanMinElev && tanTarget < maxMaskTan)) {
-          // Bị địa hình chắn
-          const bQuad = Math.max(tanMinElev, maxMaskTan);
-          const cQuad = -(altM - centerAltM);
-          const disc = bQuad * bQuad - 4 * aQuad * cQuad;
-          if (disc >= 0 && altM > centerAltM) {
-            const dCutoff = (-bQuad + Math.sqrt(disc)) / (2 * aQuad);
-            effDistM = Math.min(dist, Math.max(innerConeM, dCutoff));
-          } else {
-            effDistM = Math.min(dist, Math.max(innerConeM, maskInfo ? maskInfo.peakDist : dist));
-          }
-          break;
-        }
+      let nomMaxRangeM = 0;
+      if (useSpyderDome) {
+        const rawDome = calculateSpyderDomeMaxRange(deltaH, envelopeMaxM, envelopeHeightM);
+        const isTopBand = b === bands.length - 1;
+        nomMaxRangeM = isTopBand ? Math.max(80, rawDome) : rawDome;
+        nomMaxRangeM = Math.max(innerConeM, nomMaxRangeM);
+      } else {
+        const launchLimitM = Math.round(deltaH * cotMinElev);
+        const aeroMaxM = calculateSamPearMaxRange(deltaH, envelopeMaxM, 0, envelopeHeightM, envelopeOptM);
+        nomMaxRangeM = Math.min(aeroMaxM, launchLimitM);
+        nomMaxRangeM = Math.max(innerConeM, nomMaxRangeM);
       }
 
-      effRow.push(Math.round(effDistM));
+      const optMaxM = Math.max(innerConeM, Math.round(nomMaxRangeM * 0.70));
+      const highProbM = Math.max(innerConeM, Math.round(nomMaxRangeM * 0.85));
+
+      const optRow: number[] = [];
+      const highProbRow: number[] = [];
+      const nomRow: number[] = [];
+      const effRow: number[] = [];
+
+      for (let j = 0; j < azimuthSamples.length; j++) {
+        const az = azimuthSamples[j];
+        nomRow.push(nomMaxRangeM);
+        optRow.push(optMaxM);
+        highProbRow.push(highProbM);
+
+        if (nomMaxRangeM <= innerConeM) {
+          effRow.push(innerConeM);
+          continue;
+        }
+
+        // Kiểm tra góc che chắn địa hình
+        let effDistM = nomMaxRangeM;
+        for (const dist of sampleDistances) {
+          if (dist > nomMaxRangeM) break;
+          if (dist <= innerConeM) continue;
+
+          const groundAlt = terrainMap.get(`${az}_${dist}`) || 0;
+          const deltaHBulge = calculateEarthBulgeMeters(dist, kFactor);
+          const tanTarget = (altM - centerAltM - deltaHBulge) / dist;
+          const maskInfo = maxMaskInfoByAzDist.get(`${az}_${dist}`);
+          const maxMaskTan = maskInfo ? maskInfo.maxTan : -Number.MAX_VALUE;
+
+          if (altM < groundAlt || (maxMaskTan > tanMinElev && tanTarget < maxMaskTan)) {
+            const bQuad = Math.max(tanMinElev, maxMaskTan);
+            const cQuad = -(altM - centerAltM);
+            const disc = bQuad * bQuad - 4 * aQuad * cQuad;
+            if (disc >= 0 && altM > centerAltM) {
+              const dCutoff = (-bQuad + Math.sqrt(disc)) / (2 * aQuad);
+              effDistM = Math.min(dist, Math.max(innerConeM, dCutoff));
+            } else {
+              effDistM = Math.min(dist, Math.max(innerConeM, maskInfo ? maskInfo.peakDist : dist));
+            }
+            break;
+          }
+        }
+
+        effRow.push(Math.round(effDistM));
+      }
+
+      optimalRanges.push(optRow);
+      highProbRanges.push(highProbRow);
+      nominalRanges.push(nomRow);
+      effectiveRanges.push(effRow);
     }
 
-    optimalRanges.push(optRow);
-    highProbRanges.push(highProbRow);
-    nominalRanges.push(nomRow);
-    effectiveRanges.push(effRow);
+    return { optimalRanges, highProbRanges, nominalRanges, effectiveRanges };
+  };
+
+  // 1. Tính toán ma trận cho vòm chính (MR đối với Spyder, hoặc SAM thông thường)
+  const mainMatrices = buildMatrix(altitudeBands, innerConeRadii, dMaxM, hMaxM, hOptM, isSpyder);
+
+  // 2. Nếu là Tổ hợp Spyder: tính toán vòm phụ tầm ngắn SPYDER-SR (20km, 9000m)
+  let srVolume: SamEngagementVolume | undefined = undefined;
+  if (isSpyder && spyderCfg) {
+    const srDMaxKm = spyderCfg.sr.dMaxKm;
+    const srDMinKm = spyderCfg.sr.dMinKm;
+    const srHMaxM = spyderCfg.sr.hMaxM;
+    const srHMinM = spyderCfg.sr.hMinM;
+    const srDMaxM = srDMaxKm * 1000;
+    const srAltitudeBands = extractSamAltitudeBands(centerAltM, srHMaxM, 3500);
+    const srInnerConeRadii = srAltitudeBands.map((altM) =>
+      calculateSamDeadConeRadius(altM, centerAltM, maxElevationDeg)
+    );
+    const srMatrices = buildMatrix(srAltitudeBands, srInnerConeRadii, srDMaxM, srHMaxM, 3500, true);
+
+    srVolume = {
+      instanceId: `${instance.instanceId}_sr`,
+      instanceName: `${instance.name} (SPYDER-SR)`,
+      mode,
+      modeVi: 'Tổ hợp Spyder-SR Tầm ngắn (Python-5)',
+      centerLat,
+      centerLon,
+      centerAltM,
+      antennaHeightAGL,
+      dMaxKm: srDMaxKm,
+      dMinKm: srDMinKm,
+      hMaxM: srHMaxM,
+      hMinM: srHMinM,
+      hOptM: 3500,
+      pGhKm: 20.0,
+      vMaxMps: spyderCfg.targetSpeeds.aircraftMps,
+      minElevationDeg,
+      maxElevationDeg,
+      azimuthSamples,
+      altitudeBands: srAltitudeBands,
+      innerConeRadii: srInnerConeRadii,
+      optimalRanges: srMatrices.optimalRanges,
+      highProbRanges: srMatrices.highProbRanges,
+      nominalRanges: srMatrices.nominalRanges,
+      effectiveRanges: srMatrices.effectiveRanges,
+      terrainStatus,
+      cacheKey: `${cacheKey}_sr`,
+      maxMaskInfoByAzDist,
+      isSpyderDualDome: true,
+    };
   }
 
   const volume: SamEngagementVolume = {
@@ -347,13 +474,15 @@ export async function computeSamEngagementVolume(
     azimuthSamples,
     altitudeBands,
     innerConeRadii,
-    optimalRanges,
-    highProbRanges,
-    nominalRanges,
-    effectiveRanges,
+    optimalRanges: mainMatrices.optimalRanges,
+    highProbRanges: mainMatrices.highProbRanges,
+    nominalRanges: mainMatrices.nominalRanges,
+    effectiveRanges: mainMatrices.effectiveRanges,
     terrainStatus,
     cacheKey,
     maxMaskInfoByAzDist,
+    isSpyderDualDome: isSpyder,
+    spyderSrVolume: srVolume,
   };
 
   samVolumeCache.set(cacheKey, volume);
@@ -692,6 +821,15 @@ export function getSamCrossSectionProfile(
   dMaxM: number;
   dMinM: number;
   modeVi: string;
+  isSpyderDualDome?: boolean;
+  spyderSrProfile?: {
+    points: SamCrossSectionCurvePoint[];
+    hMinM: number;
+    hMaxM: number;
+    dMaxM: number;
+    dMinM: number;
+    modeVi: string;
+  };
 } {
   const { altitudeBands, azimuthSamples, optimalRanges, highProbRanges, nominalRanges, effectiveRanges, innerConeRadii } = volume;
 
@@ -716,6 +854,44 @@ export function getSamCrossSectionProfile(
     dEffectiveM: effectiveRanges[k][closestAzIdx],
   }));
 
+  let spyderSrProfile: {
+    points: SamCrossSectionCurvePoint[];
+    hMinM: number;
+    hMaxM: number;
+    dMaxM: number;
+    dMinM: number;
+    modeVi: string;
+  } | undefined = undefined;
+
+  if (volume.isSpyderDualDome && volume.spyderSrVolume) {
+    const srVol = volume.spyderSrVolume;
+    let srClosestAzIdx = 0;
+    let srMinDiff = 360;
+    for (let j = 0; j < srVol.azimuthSamples.length; j++) {
+      let diff = Math.abs(srVol.azimuthSamples[j] - azimuthDeg);
+      if (diff > 180) diff = 360 - diff;
+      if (diff < srMinDiff) {
+        srMinDiff = diff;
+        srClosestAzIdx = j;
+      }
+    }
+    spyderSrProfile = {
+      points: srVol.altitudeBands.map((altM, k) => ({
+        altM,
+        dMinM: srVol.innerConeRadii[k],
+        dOptM: srVol.optimalRanges[k][srClosestAzIdx],
+        dHighM: srVol.highProbRanges[k][srClosestAzIdx],
+        dMaxM: srVol.nominalRanges[k][srClosestAzIdx],
+        dEffectiveM: srVol.effectiveRanges[k][srClosestAzIdx],
+      })),
+      hMinM: srVol.hMinM,
+      hMaxM: srVol.hMaxM,
+      dMaxM: srVol.dMaxKm * 1000,
+      dMinM: srVol.dMinKm * 1000,
+      modeVi: srVol.modeVi,
+    };
+  }
+
   return {
     points,
     hMinM: volume.hMinM,
@@ -724,5 +900,7 @@ export function getSamCrossSectionProfile(
     dMaxM: volume.dMaxKm * 1000,
     dMinM: volume.dMinKm * 1000,
     modeVi: volume.modeVi,
+    isSpyderDualDome: volume.isSpyderDualDome,
+    spyderSrProfile,
   };
 }

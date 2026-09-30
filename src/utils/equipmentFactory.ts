@@ -63,5 +63,8 @@ export function createEquipmentFromTemplate(
     guidanceMethodVi: template.guidanceMethodVi,
     samProfiles: template.samProfiles,
     samEngagementMode: template.samEngagementMode || 'head_on',
+    realPhotoUrl: template.realPhotoUrl,
+    model3dUrl: template.model3dUrl,
+    model3dScale: template.model3dScale || 1.0,
   };
 }

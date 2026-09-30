@@ -4,6 +4,7 @@ import type {
   SpxRadarCoverageConfig,
 } from '../types/spxRadarCoverage';
 import { destinationPoint } from './spxCoverageEngine';
+import { getTacticalBadgeDataUrl } from './tacticalBadgeGenerator';
 
 /**
  * Helper chuyển toạ độ thập phân sang định dạng DMS (Độ, Phút, Giây)
@@ -91,6 +92,8 @@ export interface SpxRenderOptions {
   antennaHeightAGL?: number;
   rangeKm?: number;
   color?: string;
+  realPhotoUrl?: string;
+  instanceId?: string;
 }
 
 /**
@@ -422,19 +425,33 @@ export function buildSpxCoverageEntities(
 
   // 3. Render CỜ CẮM TÁC CHIẾN & TÂM ĐÀI RADAR (Tactical Flag Pin & Anchor Crosshair)
   if (showMarkers) {
-    const flagSvg = createTacticalFlagSvg(options?.shortId || 'R', options?.color || '#06b6d4', isSelected);
+    const badgeUrl = getTacticalBadgeDataUrl({
+      instanceId: options?.instanceId || `spx_${instanceName || 'radar'}`,
+      name: instanceName || (options?.shortId ? `Đài Radar [${options.shortId}]` : 'Đài Radar'),
+      shortId: options?.shortId,
+      category: options?.category || 'RadarCanhGioi',
+      rangeKm: options?.rangeKm,
+      antennaHeightAGL: options?.antennaHeightAGL,
+      status: (options?.status as import('../types/equipment').OperationalStatus) || 'Active',
+      isSelected: !!isSelected,
+      realPhotoUrl: options?.realPhotoUrl || '',
+      themeColor: options?.color || '#06b6d4',
+    });
 
-    // A. Cờ cắm tác chiến với cán cờ kim loại cắm thẳng xuống tâm radar
+    // A. Cờ cắm tác chiến HUD to rõ với ảnh thực tế và tên đầy đủ
     entities.push(
       new Cesium.Entity({
-        name: `Cờ Cắm Tâm Đài ${options?.shortId || ''}`,
+        name: `Cờ Tác Chiến Tâm Đài ${options?.shortId || ''}`,
         position: radarCartesian,
+        properties: options?.instanceId ? new Cesium.PropertyBag({ instanceId: options.instanceId }) : undefined,
         billboard: {
-          image: flagSvg,
+          image: badgeUrl,
+          width: 240,
+          height: 46,
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
           horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-          pixelOffset: new Cesium.Cartesian2(-10, 4),
-          eyeOffset: new Cesium.Cartesian3(0, 0, -400), // Nổi lên trên vòng cự ly
+          pixelOffset: new Cesium.Cartesian2(-12, 4),
+          eyeOffset: new Cesium.Cartesian3(0, 0, -450), // Nổi lên trên vòng cự ly
           heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
@@ -499,7 +516,7 @@ export function buildSpxCoverageEntities(
           backgroundPadding: new Cesium.Cartesian2(10, 6),
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
           horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-          pixelOffset: new Cesium.Cartesian2(46, -8),
+          pixelOffset: new Cesium.Cartesian2(16, -84),
           eyeOffset: new Cesium.Cartesian3(0, 0, -500), // LUÔN NẰM TRÊN CÁC TẦM CỰ LY VÀ ĐƯỜNG VÒNG
           heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,

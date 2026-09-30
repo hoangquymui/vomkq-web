@@ -18,6 +18,7 @@ import {
   getProfileMaxRange,
 } from './radarMath';
 import { destinationPoint } from './radarLosEngine';
+import { sampleTerrainOptimized } from './terrainSampler';
 
 // ============================================================================
 // 1. DATA CONTRACTS (Theo Mục 5 Đặc tả Kỹ thuật)
@@ -161,36 +162,28 @@ export class CesiumTerrainSampler implements TerrainSampler {
       return results;
     }
 
-    // 2. Lấy mẫu từ Cesium theo lô để không nghẽn luồng GPU / Network
+    // 2. Lấy mẫu từ Cesium qua hàm tối ưu hoá cao độ
     const targetLevel = this.maxRangeKm <= 60 ? 11 : this.maxRangeKm <= 160 ? 10 : 9;
-    const batchSize = 350;
+    const centerLon = Cesium.Math.toDegrees(unhitPositions[0].longitude);
+    const centerLat = Cesium.Math.toDegrees(unhitPositions[0].latitude);
 
-    for (let b = 0; b < unhitPositions.length; b += batchSize) {
-      const chunk = unhitPositions.slice(b, b + batchSize);
-      try {
-        await Cesium.sampleTerrain(this.provider, targetLevel, chunk, false);
-      } catch {
-        try {
-          await Cesium.sampleTerrain(this.provider, Math.max(8, targetLevel - 1), chunk, false);
-        } catch {
-          // Bỏ qua lỗi cục bộ nếu thiếu tile
-        }
-      }
+    const sampledHeights = await sampleTerrainOptimized(
+      this.provider,
+      centerLon,
+      centerLat,
+      unhitPositions,
+      targetLevel,
+      1500
+    );
 
-      for (let j = 0; j < chunk.length; j++) {
-        const origIdx = unhitIndices[b + j];
-        const h = chunk[j].height;
-        const validH = h !== undefined && !isNaN(h) && isFinite(h) ? Math.max(0, h) : 0;
-        results[origIdx] = validH;
+    for (let j = 0; j < unhitPositions.length; j++) {
+      const origIdx = unhitIndices[j];
+      const validH = sampledHeights[j] || 0;
+      results[origIdx] = validH;
 
-        const p = chunk[j];
-        const key = `${p.longitude.toFixed(5)}_${p.latitude.toFixed(5)}`;
-        this.cache.set(key, validH);
-      }
-
-      if (b + batchSize < unhitPositions.length) {
-        await new Promise((resolve) => setTimeout(resolve, 6));
-      }
+      const p = unhitPositions[j];
+      const key = `${p.longitude.toFixed(5)}_${p.latitude.toFixed(5)}`;
+      this.cache.set(key, validH);
     }
 
     return results;

@@ -1,4 +1,41 @@
-import type { EquipmentTemplate, PresetLocation } from '../types/equipment';
+import type { EquipmentTemplate, PresetLocation, SpyderSystemConfig } from '../types/equipment';
+
+/**
+ * Cấu hình chuẩn quân sự cho Tổ hợp Tên lửa Phòng không Spyder kết hợp tầm ngắn (SR) và tầm trung (MR)
+ * Nguồn thông số: Bảng 1 - Tham số cơ bản của hệ thống Spyder và Sơ đồ mặt cắt đứng (WEZ Cross Section)
+ */
+export const SPYDER_SYSTEM_DEFAULT_CONFIG: SpyderSystemConfig = {
+  sr: {
+    name: 'SPYDER-SR',
+    nameVi: 'Tầm Ngắn (SPYDER-SR)',
+    missileTypeVi: 'Tên lửa tầm ngắn Python-5 (Hồng ngoại IIR)',
+    dMaxKm: 20, // Bảng 1, Mục 2: Cự ly tiêu diệt lớn nhất 20 km (Ảnh 2)
+    dMinKm: 1,  // Bảng 1, Mục 2: Cự ly tiêu diệt nhỏ nhất 1 km
+    hMaxM: 9000, // Bảng 1, Mục 2: Độ cao tiêu diệt lớn nhất 9 km = 9.000 m (Ảnh 2)
+    hMinM: 20,  // Bảng 1, Mục 2: Độ cao tiêu diệt nhỏ nhất 20 m
+    colorHex: '#10b981', // Màu vòm xanh lục nhạt (như trong ảnh 2)
+  },
+  mr: {
+    name: 'SPYDER-MR',
+    nameVi: 'Tầm Trung (SPYDER-MR)',
+    missileTypeVi: 'Tên lửa tầm trung Derby-MR (Radar chủ động sóng milimet & Booster)',
+    dMaxKm: 50, // Bảng 1, Mục 2: Cự ly tiêu diệt lớn nhất 50 km (Ảnh 2)
+    dMinKm: 2,  // Bảng 1, Mục 2: Cự ly tiêu diệt nhỏ nhất 2 km
+    hMaxM: 16000, // Bảng 1, Mục 2: Độ cao tiêu diệt lớn nhất 16 km = 16.000 m (Ảnh 2)
+    hMinM: 20,  // Bảng 1, Mục 2: Độ cao tiêu diệt nhỏ nhất 20 m
+    colorHex: '#0ea5e9', // Màu vòm xanh lam nhạt (như trong ảnh 2)
+  },
+  targetSpeeds: {
+    aircraftMps: 800, // Bảng 1, Mục 3: Máy bay ở độ cao > 30m: < 800 m/s
+    helicopterMps: 200, // Bảng 1, Mục 3: Trực thăng > 20m: 0 - 200 m/s
+    uavMps: 300, // Bảng 1, Mục 3: Thiết bị bay không người lái (UAV) > 100m: < 300 m/s
+  },
+  targetTypesVi: [
+    'Máy bay, trực thăng, tên lửa hành trình, máy bay không người lái (UAVs)',
+    'Máy bay chiến đấu không người lái (UCAVs)',
+    'Vũ khí dẫn đường chính xác (PGMs) và vũ khí từ xa',
+  ],
+};
 
 export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   {
@@ -15,6 +52,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     coverageHeightKm: 30,
     symbolColor: '#06b6d4', // Cyan
     iconName: 'Radar',
+    realPhotoUrl: '/images/equipments/radar_36d6.jpg',
+    model3dUrl: '/models/equipments/radar_3d.glb',
     wavelengthM: 0.1, // Sóng dm (S-band ~10cm)
     coverageProfile: {
       id: 'prof_36d6',
@@ -61,6 +100,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     symbolColor: '#0ea5e9', // Sky blue
     domeColor: '#77ff7e', // Vỏ vòm xanh lá — Unity symbolColor = (0.466, 1, 0.494)
     iconName: 'Radio',
+    realPhotoUrl: '/images/equipments/radar_p18.jpg',
+    model3dUrl: '/models/equipments/radar_3d.glb',
     wavelengthM: 2.0, // Sóng mét (VHF ~2m)
     coverageProfile: {
       id: 'prof_p18',
@@ -112,6 +153,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     coverageHeightKm: 20,
     symbolColor: '#38bdf8', // Light Sky Blue
     iconName: 'Radio',
+    realPhotoUrl: '/images/equipments/radar_nebo.jpg',
+    model3dUrl: '/models/equipments/radar_3d.glb',
     wavelengthM: 2.0, // Sóng mét (VHF ~2m)
     coverageProfile: {
       id: 'prof_nebo',
@@ -163,6 +206,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     coverageHeightKm: 6,
     symbolColor: '#22d3ee', // Cyan
     iconName: 'Radar',
+    realPhotoUrl: '/images/equipments/radar_vrs2dm.jpg',
+    model3dUrl: '/models/equipments/radar_3d.glb',
     wavelengthM: 0.1, // Sóng đề-xi-mét (S-band ~10cm)
     coverageProfile: {
       id: 'prof_vrs2dm',
@@ -207,6 +252,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     symbolColor: '#77ff7e', // Unity symbolColor = (0.466, 1, 0.494)
     domeColor: '#77ff7e',
     iconName: 'Radio',
+    realPhotoUrl: '/images/equipments/radar_p18.jpg',
+    model3dUrl: '/models/equipments/radar_3d.glb',
     wavelengthM: 2.0, // Sóng mét (VHF ~2m)
     coverageProfile: {
       id: 'prof_p18_terek_video',
@@ -249,6 +296,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     frequencyRangeGhz: '0.1 - 18.0 GHz (VHF/UHF/SHF)',
     symbolColor: '#a855f7', // Purple/Violet ESM
     iconName: 'RadioTower',
+    realPhotoUrl: '/images/equipments/esm_kolchuga.jpg',
+    model3dUrl: '/models/equipments/esm_station.glb',
     coverageProfile: {
       id: 'prof_kolchuga',
       name: 'Vùng Trinh sát Thụ động Kolchuga-M (ESM)',
@@ -287,6 +336,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     symbolColor: '#ef4444', // Red
     domeColor: '#ef4444',
     iconName: 'Crosshair',
+    realPhotoUrl: '/images/equipments/sam_s300.jpg',
+    model3dUrl: '/models/equipments/sam_launcher.glb',
     samProfiles: {
       head_on: { modeVi: 'Bắn đón (Không nhiễu)', dMinKm: 3.0, dMaxKm: 200.0, hMinM: 10, hMaxM: 27000, vMaxMps: 2800, pGhKm: 120.0 },
       tail_chase: { modeVi: 'Bắn đuổi (Không nhiễu)', dMinKm: 8.0, dMaxKm: 110.0, hMinM: 50, hMaxM: 20000, vMaxMps: 600, pGhKm: 80.0 },
@@ -332,6 +383,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     symbolColor: '#f43f5e', // Rose Red
     domeColor: '#f43f5e',
     iconName: 'Crosshair',
+    realPhotoUrl: '/images/equipments/sam_c125.jpg',
+    model3dUrl: '/models/equipments/sam_launcher.glb',
     samProfiles: {
       head_on: { modeVi: 'Bắn đón (Không nhiễu)', dMinKm: 3.5, dMaxKm: 35.4, hMinM: 20, hMaxM: 25000, vMaxMps: 900, pGhKm: 25.0 },
       tail_chase: { modeVi: 'Bắn đuổi (Không nhiễu)', dMinKm: 6.0, dMaxKm: 26.0, hMinM: 100, hMaxM: 18000, vMaxMps: 300, pGhKm: 20.0 },
@@ -377,6 +430,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     symbolColor: '#fb7185',
     domeColor: '#fb7185',
     iconName: 'Crosshair',
+    realPhotoUrl: '/images/equipments/sam_c125.jpg',
+    model3dUrl: '/models/equipments/sam_launcher.glb',
     samProfiles: {
       head_on: { modeVi: 'Bắn đón (Không nhiễu)', dMinKm: 3.5, dMaxKm: 25.0, hMinM: 20, hMaxM: 18000, vMaxMps: 700, pGhKm: 16.5 },
       tail_chase: { modeVi: 'Bắn đuổi (Không nhiễu)', dMinKm: 6.0, dMaxKm: 22.0, hMinM: 100, hMaxM: 14000, vMaxMps: 300, pGhKm: 16.5 },
@@ -400,16 +455,16 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   },
   {
     id: 'sam_spyder',
-    name: 'Tổ hợp Tên lửa Cơ động Spyder-MR',
+    name: 'Tổ hợp Tên lửa Phòng không Spyder (SR/MR)',
     category: 'TenLuaPhongKhong',
     categoryNameVi: 'Tên Lửa Phòng Không',
-    description: 'Tổ hợp tên lửa phòng không cơ động tầm trung phản ứng nhanh, trang bị đầu dò hồng ngoại IIR và radar chủ động.',
+    description: 'Tổ hợp tên lửa phòng không cơ động phản ứng nhanh kết hợp tầm ngắn SPYDER-SR (cự ly 20km, trần 9km, tên lửa Python-5) và tầm trung SPYDER-MR (cự ly 50km, trần 16km, tên lửa Derby-MR) theo Bảng 1 và Mặt cắt đứng chuẩn quân sự.',
     defaultRangeKm: 50,
-    minEngagementRangeKm: 1,
-    maxEngagementAltitudeM: 16000,
-    minEngagementAltitudeM: 20,
-    optimalAltitudeM: 4500,
-    maxTargetSpeedMps: 1000,
+    minEngagementRangeKm: 2, // Tầm trung MR 2km (Tầm ngắn SR 1km)
+    maxEngagementAltitudeM: 16000, // Tầm trung MR 16km (Tầm ngắn SR 9km)
+    minEngagementAltitudeM: 20, // Bảng 1: Sàn hỏa lực 20m
+    optimalAltitudeM: 5000,
+    maxTargetSpeedMps: 800, // Bảng 1: Vận tốc mục tiêu máy bay < 800 m/s
     maxTargetParamKm: 35.0,
     reactionTimeSeconds: 9,
     guidanceMethodVi: 'Chủ động sóng milimet Derby-MR & Hồng ngoại IIR Python-5',
@@ -418,19 +473,22 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     maxElevationDeg: 75,
     antennaHeightAGL: 5,
     coverageHeightKm: 16,
-    symbolColor: '#f97316', // Orange
-    domeColor: '#f97316',
+    symbolColor: '#0ea5e9', // Blue/cyan như ảnh 2
+    domeColor: '#0ea5e9',
     iconName: 'Zap',
+    realPhotoUrl: '/images/equipments/sam_spyder.jpg',
+    model3dUrl: '/models/equipments/sam_launcher.glb',
+    spyderConfig: SPYDER_SYSTEM_DEFAULT_CONFIG,
     samProfiles: {
-      head_on: { modeVi: 'Bắn đón (Không nhiễu)', dMinKm: 1.0, dMaxKm: 50.0, hMinM: 20, hMaxM: 16000, vMaxMps: 1000, pGhKm: 35.0 },
+      head_on: { modeVi: 'Bắn đón (Không nhiễu)', dMinKm: 2.0, dMaxKm: 50.0, hMinM: 20, hMaxM: 16000, vMaxMps: 800, pGhKm: 35.0 },
       tail_chase: { modeVi: 'Bắn đuổi (Không nhiễu)', dMinKm: 3.0, dMaxKm: 28.0, hMinM: 50, hMaxM: 12000, vMaxMps: 450, pGhKm: 22.0 },
-      jamming_passive: { modeVi: 'Nhiễu vô tuyến tiêu cực', dMinKm: 1.0, dMaxKm: 42.0, hMinM: 20, hMaxM: 14000, vMaxMps: 800, pGhKm: 28.0 },
-      jamming_active: { modeVi: 'Nhiễu vô tuyến tích cực', dMinKm: 1.0, dMaxKm: 35.0, hMinM: 30, hMaxM: 12000, vMaxMps: 800, pGhKm: 25.0 },
-      tbk_optical: { modeVi: 'Chế độ quang điện tử IIR quang học', dMinKm: 1.0, dMaxKm: 45.0, hMinM: 20, hMaxM: 15000, vMaxMps: 900, pGhKm: 30.0 },
+      jamming_passive: { modeVi: 'Nhiễu vô tuyến tiêu cực', dMinKm: 2.0, dMaxKm: 42.0, hMinM: 20, hMaxM: 14000, vMaxMps: 800, pGhKm: 28.0 },
+      jamming_active: { modeVi: 'Nhiễu vô tuyến tích cực', dMinKm: 2.0, dMaxKm: 35.0, hMinM: 30, hMaxM: 12000, vMaxMps: 800, pGhKm: 25.0 },
+      tbk_optical: { modeVi: 'Chế độ quang điện tử IIR quang học (Python-5)', dMinKm: 1.0, dMaxKm: 45.0, hMinM: 20, hMaxM: 15000, vMaxMps: 800, pGhKm: 30.0 },
     },
     coverageProfile: {
       id: 'prof_spyder',
-      name: 'Khu vực Tiêu diệt Spyder-MR',
+      name: 'Khu vực Tiêu diệt Spyder (SR & MR)',
       minElevationDeg: 5,
       maxElevationDeg: 75,
       points: [
@@ -456,6 +514,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     coverageHeightKm: 15,
     symbolColor: '#eab308', // Yellow/Gold
     iconName: 'ShieldAlert',
+    realPhotoUrl: '/images/equipments/c2_command.jpg',
+    model3dUrl: '/models/equipments/command_post.glb',
     coverageProfile: {
       id: 'prof_c2',
       name: 'Phạm vi Chỉ huy C2',
@@ -486,6 +546,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     coverageHeightKm: 3,
     symbolColor: '#10b981', // Emerald
     iconName: 'Target',
+    realPhotoUrl: '/images/equipments/aaa_gun.jpg',
+    model3dUrl: '/models/equipments/aaa_gun.glb',
     coverageProfile: {
       id: 'prof_zsu23',
       name: 'Xạ giới Pháo ZSU-23-4',

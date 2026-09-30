@@ -10,6 +10,13 @@ export type EquipmentCategory =
 
 export type OperationalStatus = 'Active' | 'Standby' | 'Maintenance' | 'Offline';
 
+/**
+ * Cấu hình tạm thời bật/tắt hiển thị mô hình 3D khí tài trên quả cầu Cesium 3D.
+ * - false (mặc định hiện tại): Tạm thời không thêm mô hình 3D vào, chỉ chấm điểm đặt (tâm đài / cờ tác chiến).
+ * - true: Sau này khi người dùng chuẩn bị đầy đủ bộ mô hình 3D chuẩn sẽ kích hoạt lại toàn diện.
+ */
+export const ENABLE_3D_MODELS = false;
+
 export interface AltitudeDetectionRow {
   altitudeM: number; // Độ cao mục tiêu (m)
   val1: number | string; // Cự ly phát hiện cột 1 (km)
@@ -68,6 +75,36 @@ export interface EquipmentTemplate {
   >;
   frequencyRangeGhz?: string; // Dải tần số trinh sát điện từ (GHz) cho trạm thụ động ESM
   networkGroupId?: string; // Định danh nhóm mạng cảm biến TDoA
+  spyderConfig?: SpyderSystemConfig;
+  realPhotoUrl?: string; // Ảnh thực tế khí tài hiển thị trên cờ tác chiến
+  model3dUrl?: string; // Đường dẫn mô hình 3D (.glb, .gltf)
+  model3dScale?: number; // Hệ số tỉ lệ mô hình 3D (mặc định 1.0)
+  model3dHeadingOffset?: number; // Độ lệch góc xoay (độ)
+  model3dAltitudeOffset?: number; // Độ lệch cao độ so với mặt đất (m)
+  customModelFileName?: string; // Tên file mô hình 3D tự nạp
+  customPhotoFileName?: string; // Tên file ảnh thực tế tự nạp
+}
+
+export interface SpyderDomeSpec {
+  name: string;
+  nameVi: string;
+  missileTypeVi: string;
+  dMaxKm: number; // Cự ly tiêu diệt lớn nhất (km): 20km (SR), 50km (MR)
+  dMinKm: number; // Cự ly tiêu diệt nhỏ nhất (km): 1km (SR), 2km (MR)
+  hMaxM: number;  // Độ cao tiêu diệt lớn nhất (m): 9000m (SR), 16000m (MR)
+  hMinM: number;  // Độ cao tiêu diệt nhỏ nhất (m): 20m (SR & MR)
+  colorHex: string; // Mã màu vòm: xanh lá nhạt #10b981 (SR), xanh lam nhạt #0ea5e9 (MR)
+}
+
+export interface SpyderSystemConfig {
+  sr: SpyderDomeSpec;
+  mr: SpyderDomeSpec;
+  targetSpeeds: {
+    aircraftMps: number; // Máy bay > 30m: < 800 m/s
+    helicopterMps: number; // Trực thăng > 20m: 0 - 200 m/s
+    uavMps: number; // UAV > 100m: < 300 m/s
+  };
+  targetTypesVi: string[];
 }
 
 export interface EquipmentInstance {
@@ -120,6 +157,14 @@ export interface EquipmentInstance {
   networkGroupId?: string;
   spxConfig?: Partial<import('./spxRadarCoverage').SpxRadarCoverageConfig>;
   targetAltitudeM?: number; // Độ cao mục tiêu khảo sát riêng của đài (m)
+  spyderConfig?: SpyderSystemConfig;
+  realPhotoUrl?: string; // Ảnh thực tế khí tài hiển thị trên cờ tác chiến
+  model3dUrl?: string; // Đường dẫn mô hình 3D (.glb, .gltf)
+  model3dScale?: number; // Hệ số tỉ lệ mô hình 3D (mặc định 1.0)
+  model3dHeadingOffset?: number; // Độ lệch góc xoay (độ)
+  model3dAltitudeOffset?: number; // Độ lệch cao độ so với mặt đất (m)
+  customModelFileName?: string; // Tên file mô hình 3D tự nạp
+  customPhotoFileName?: string; // Tên file ảnh thực tế tự nạp
 }
 
 export const CATEGORY_META: Record<

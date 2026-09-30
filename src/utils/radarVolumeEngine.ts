@@ -16,6 +16,7 @@ import {
 } from './radarMath';
 import { destinationPoint } from './radarLosEngine';
 import { EQUIPMENT_TEMPLATES } from '../data/equipmentTemplates';
+import { sampleTerrainOptimized } from './terrainSampler';
 
 /** Cache lưu các Volume đã tính để tránh tính lại khi xoay/zoom bản đồ */
 const volumeCache = new Map<string, RadarCoverageVolume>();
@@ -435,26 +436,14 @@ export async function sampleTerrainGridAndMasks(
   if (terrainProvider) {
     try {
       const targetLevel = maxRangeKm <= 60 ? 11 : maxRangeKm <= 160 ? 10 : 9;
-      const batchSize = 350;
-      for (let i = 0; i < cartographics.length; i += batchSize) {
-        const chunk = cartographics.slice(i, i + batchSize);
-        try {
-          await Cesium.sampleTerrain(terrainProvider, targetLevel, chunk, false);
-        } catch {
-          try {
-            await Cesium.sampleTerrain(terrainProvider, Math.max(8, targetLevel - 1), chunk, false);
-          } catch {
-            // bỏ qua lỗi cục bộ
-          }
-        }
-        for (let j = 0; j < chunk.length; j++) {
-          const h = chunk[j].height;
-          sampledHeights[i + j] = h !== undefined && !isNaN(h) && isFinite(h) ? Math.max(0, h) : 0;
-        }
-        if (i + batchSize < cartographics.length) {
-          await new Promise((resolve) => setTimeout(resolve, 6));
-        }
-      }
+      sampledHeights = await sampleTerrainOptimized(
+        terrainProvider,
+        centerLon,
+        centerLat,
+        cartographics,
+        targetLevel,
+        1500
+      );
       terrainStatus = 'loaded';
     } catch {
       sampledHeights = cartographics.map(() => 0);

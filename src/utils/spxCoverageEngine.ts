@@ -6,6 +6,7 @@ import type {
   SpxCoverageContour,
   SpxRangeRing,
 } from '../types/spxRadarCoverage';
+import { sampleTerrainOptimized } from './terrainSampler';
 
 const MEAN_EARTH_RADIUS_METERS = 6371000; // Bán kính trung bình Trái Đất (m)
 
@@ -151,43 +152,26 @@ export function calculateSmartRangeRings(endRangeM: number, customIntervalM?: nu
 async function sampleTerrainInBatches(
   terrainProvider: Cesium.TerrainProvider,
   positions: Cesium.Cartographic[],
-  endRangeM: number
+  endRangeM: number,
+  radarLon: number,
+  radarLat: number
 ): Promise<{ heights: number[]; status: 'dem_loaded' | 'flat_fallback' | 'error' }> {
-  // Cấp 11: mỗi tile ~10km, độ chi tiết mesh rất cao, bao phủ trọn vẹn đỉnh núi Bà Nà, Sơn Trà, Hải Vân
-  // Cấp 10: mỗi tile ~20km, tối ưu cho cự ly lớn > 60km
-  // Cấp 9: mỗi tile ~40km, tối ưu cho cự ly siêu lớn > 160km (ví dụ 36D6 300km, Nebo 360km) tránh nghẽn socket Chromium
   const targetLevel = endRangeM <= 60000 ? 11 : endRangeM <= 160000 ? 10 : 9;
-  const batchSize = 500;
-  const heights = new Array<number>(positions.length).fill(0);
 
   try {
-    for (let i = 0; i < positions.length; i += batchSize) {
-      const chunk = positions.slice(i, i + batchSize);
-      try {
-        await Cesium.sampleTerrain(terrainProvider, targetLevel, chunk, false);
-      } catch (err) {
-        console.warn(`Lô lấy mẫu địa hình ${i}-${i + chunk.length} tại level ${targetLevel} có lỗi, fallback sang cấp thấp hơn:`, err);
-        try {
-          await Cesium.sampleTerrain(terrainProvider, Math.max(8, targetLevel - 1), chunk, false);
-        } catch {
-          // Bỏ qua lỗi cục bộ, các điểm không đọc được sẽ mặc định 0m (mực nước biển)
-        }
-      }
-
-      for (let j = 0; j < chunk.length; j++) {
-        const h = chunk[j].height;
-        heights[i + j] = h !== undefined && !isNaN(h) && isFinite(h) ? Math.max(0, h) : 0;
-      }
-
-      if (i + batchSize < positions.length) {
-        await new Promise((resolve) => setTimeout(resolve, 8));
-      }
-    }
+    const heights = await sampleTerrainOptimized(
+      terrainProvider,
+      radarLon,
+      radarLat,
+      positions,
+      targetLevel,
+      1500
+    );
 
     return { heights, status: 'dem_loaded' };
   } catch (finalErr) {
     console.error('Lỗi khi lấy mẫu địa hình DEM:', finalErr);
-    return { heights, status: 'error' };
+    return { heights: new Array<number>(positions.length).fill(0), status: 'error' };
   }
 }
 
@@ -258,7 +242,9 @@ export async function computeSpxRadarCoverage(
       const sampleRes = await sampleTerrainInBatches(
         terrainProvider,
         gridCartos,
-        endRangeM
+        endRangeM,
+        radarLon,
+        radarLat
       );
       sampledHeights = sampleRes.heights;
       terrainStatus = sampleRes.status;
@@ -314,11 +300,11 @@ export async function computeSpxRadarCoverage(
   const targetHeightsList = Array.isArray(config?.targetHeights) && config.targetHeights.length > 0
     ? config.targetHeights
     : [
-        { id: 'tier_500', heightMeters: 500, color: '#00e676', label: '500m' },
-        { id: 'tier_800', heightMeters: 800, color: '#ffd600', label: '800m' },
-        { id: 'tier_1000', heightMeters: 1000, color: '#ff9100', label: '1000m' },
-        { id: 'tier_2000', heightMeters: 2000, color: '#ff1744', label: '2000m' },
-      ];
+      { id: 'tier_500', heightMeters: 500, color: '#00e676', label: '500m' },
+      { id: 'tier_800', heightMeters: 800, color: '#ffd600', label: '800m' },
+      { id: 'tier_1000', heightMeters: 1000, color: '#ff9100', label: '1000m' },
+      { id: 'tier_2000', heightMeters: 2000, color: '#ff1744', label: '2000m' },
+    ];
   const sortedTiers = [...targetHeightsList].sort(
     (a, b) => a.heightMeters - b.heightMeters
   );

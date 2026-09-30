@@ -67,7 +67,9 @@ export default defineConfig({
     entries: ['index.html'],
   },
   server: {
+    host: '0.0.0.0',
     port: 3000,
+    strictPort: true,
     open: false,
     // Tiles remain available as static files but do not need HMR file watchers.
     watch: {

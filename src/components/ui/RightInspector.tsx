@@ -153,7 +153,6 @@ export const RightInspector: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [isSpecsOpen, setIsSpecsOpen] = useState<boolean>(false);
   const [isDomeStylingOpen, setIsDomeStylingOpen] = useState<boolean>(false);
-
   const selected = instances.find((i) => i.instanceId === selectedInstanceId);
 
   // Helper tính cự ly đại vòng tròn giữa 2 điểm (km)
@@ -1818,20 +1817,28 @@ export const RightInspector: React.FC = () => {
                 const activeSamMode = selected.samEngagementMode || samEngagementModes[selected.instanceId] || 'head_on';
                 const samTmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === selected.templateId);
                 const samProfile = (selected.samProfiles || samTmpl?.samProfiles)?.[activeSamMode];
-                const dMaxKm = samProfile?.dMaxKm || selected.rangeKm || samTmpl?.defaultRangeKm || 25;
-                const dMinKm = samProfile?.dMinKm || selected.minEngagementRangeKm || samTmpl?.minEngagementRangeKm || 3.5;
-                const hMaxM = samProfile?.hMaxM || selected.maxEngagementAltitudeM || samTmpl?.maxEngagementAltitudeM || 18000;
+                const isSpyder = selected.templateId === 'sam_spyder' || !!selected.spyderConfig || !!samTmpl?.spyderConfig;
+                const spyderCfg = selected.spyderConfig || samTmpl?.spyderConfig;
+                const dMaxKm = samProfile?.dMaxKm || selected.rangeKm || samTmpl?.defaultRangeKm || (isSpyder ? 50 : 25);
+                const dMinKm = samProfile?.dMinKm || selected.minEngagementRangeKm || samTmpl?.minEngagementRangeKm || (isSpyder ? 2 : 3.5);
+                const hMaxM = samProfile?.hMaxM || selected.maxEngagementAltitudeM || samTmpl?.maxEngagementAltitudeM || (isSpyder ? 16000 : 18000);
                 const hMinM = samProfile?.hMinM || selected.minEngagementAltitudeM || samTmpl?.minEngagementAltitudeM || 20;
-                const vMaxMps = samProfile?.vMaxMps || selected.maxTargetSpeedMps || samTmpl?.maxTargetSpeedMps || 700;
+                const vMaxMps = samProfile?.vMaxMps || selected.maxTargetSpeedMps || samTmpl?.maxTargetSpeedMps || (isSpyder ? 800 : 700);
                 const pGhKm = samProfile?.pGhKm || selected.maxTargetParamKm || samTmpl?.maxTargetParamKm || 16.5;
                 const activeSamVolume = samVolumes[selected.instanceId];
 
                 return (
-                  <div className="bg-slate-900/60 p-2.5 rounded-xl border border-rose-500/40 space-y-2.5">
+                  <div className={`p-2.5 rounded-xl border space-y-2.5 ${
+                    isSpyder
+                      ? 'bg-slate-900/60 border-sky-500/40'
+                      : 'bg-slate-900/60 border-rose-500/40'
+                  }`}>
                     <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-                      <span className="text-[10px] font-bold text-rose-300 font-mono flex items-center gap-1">
-                        <Target className="w-3.5 h-3.5 text-rose-400" />
-                        VÒM HỎA LỰC ĐÁNH CHẶN 3D
+                      <span className={`text-[10px] font-bold font-mono flex items-center gap-1 ${
+                        isSpyder ? 'text-sky-300' : 'text-rose-300'
+                      }`}>
+                        <Target className={`w-3.5 h-3.5 ${isSpyder ? 'text-sky-400' : 'text-rose-400'}`} />
+                        {isSpyder ? 'VÒM HỎA LỰC SPYDER (KÉP SR/MR)' : 'VÒM HỎA LỰC ĐÁNH CHẶN 3D'}
                       </span>
                       <button
                         onClick={() =>
@@ -1841,7 +1848,9 @@ export const RightInspector: React.FC = () => {
                         }
                         className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
                           selected.showDome
-                            ? 'bg-rose-950 text-rose-300 border-rose-500/60 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
+                            ? isSpyder
+                              ? 'bg-sky-950 text-sky-300 border-sky-500/60 shadow-[0_0_8px_rgba(14,165,233,0.3)]'
+                              : 'bg-rose-950 text-rose-300 border-rose-500/60 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
                             : 'bg-slate-950 text-slate-500 border-slate-800'
                         }`}
                       >
@@ -1857,7 +1866,11 @@ export const RightInspector: React.FC = () => {
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                           Vòm 3D Sẵn Sàng
                         </span>
-                        <span>{activeSamVolume.altitudeBands.length} tầng cao • {activeSamVolume.azimuthSamples.length} hướng</span>
+                        <span>
+                          {isSpyder
+                            ? `${activeSamVolume.altitudeBands.length} tầng cao • 2 vòm SR/MR`
+                            : `${activeSamVolume.altitudeBands.length} tầng cao • ${activeSamVolume.azimuthSamples.length} hướng`}
+                        </span>
                       </div>
                     ) : isCalculatingVolume ? (
                       <div className="flex items-center gap-1.5 text-[9px] font-mono text-cyan-300 bg-cyan-950/40 px-2 py-1 rounded border border-cyan-800/40 animate-pulse">
@@ -1872,12 +1885,16 @@ export const RightInspector: React.FC = () => {
                         onClick={() => setDome3DMode('nominal')}
                         className={`py-1 px-1.5 rounded-md font-mono text-[10px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${
                           dome3DMode === 'nominal'
-                            ? 'bg-rose-900/60 text-rose-200 border border-rose-500/80 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
+                            ? isSpyder
+                              ? 'bg-sky-900/60 text-sky-200 border border-sky-500/80 shadow-[0_0_8px_rgba(14,165,233,0.3)]'
+                              : 'bg-rose-900/60 text-rose-200 border border-rose-500/80 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                         }`}
                       >
                         <span>DANH NGHĨA</span>
-                        <span className="text-[8.5px] font-normal text-slate-400">(Quả lê lý thuyết)</span>
+                        <span className="text-[8.5px] font-normal text-slate-400">
+                          {isSpyder ? '(Vòm kép bán elip)' : '(Quả lê lý thuyết)'}
+                        </span>
                       </button>
                       <button
                         onClick={() => setDome3DMode('terrain-aware')}
@@ -1893,35 +1910,104 @@ export const RightInspector: React.FC = () => {
                     </div>
 
                     {/* Bảng tham số chiến thuật tác chiến trực tiếp */}
-                    <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
-                      <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
-                        <span className="text-slate-400 block text-[9px]">CỰ LY TIÊU DIỆT</span>
-                        <strong className="text-rose-400">
-                          {dMinKm} - {dMaxKm} km
-                        </strong>
-                      </div>
-                      <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
-                        <span className="text-slate-400 block text-[9px]">TRẦN / SÀN HỎA LỰC</span>
-                        <strong className="text-rose-400">
-                          {hMinM}m - {(hMaxM / 1000).toFixed(0)}km
-                        </strong>
-                      </div>
-                      <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
-                        <span className="text-slate-400 block text-[9px]">V_max MỤC TIÊU</span>
-                        <strong className="text-amber-300">
-                          {vMaxMps} m/s
-                        </strong>
-                      </div>
-                      <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
-                        <span className="text-slate-400 block text-[9px]">THAM SỐ P_gh</span>
-                        <strong className="text-cyan-300">
-                          {pGhKm} km
-                        </strong>
-                      </div>
-                    </div>
+                    {isSpyder && spyderCfg ? (
+                      <div className="space-y-1.5 font-mono text-[10px]">
+                        {/* Vòm tầm ngắn SR */}
+                        <div className="p-2 bg-emerald-950/40 rounded-lg border border-emerald-500/40 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
+                              SPYDER-SR (TẦM NGẮN)
+                            </span>
+                            <span className="text-[9px] text-emerald-300 font-semibold bg-emerald-900/60 px-1 rounded">
+                              Python-5
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 text-[9px] pt-0.5">
+                            <div>
+                              <span className="text-slate-400 block">Cự ly tiêu diệt:</span>
+                              <strong className="text-emerald-300">{spyderCfg.sr.dMinKm} - {spyderCfg.sr.dMaxKm} km</strong>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block">Độ cao tiêu diệt:</span>
+                              <strong className="text-emerald-300">{spyderCfg.sr.hMinM}m - {spyderCfg.sr.hMaxM / 1000} km</strong>
+                            </div>
+                          </div>
+                        </div>
 
-                    {/* Cụm 5 nút chọn chế độ chiến thuật SAM */}
-                    {selected.category === 'TenLuaPhongKhong' && (
+                        {/* Vòm tầm trung MR */}
+                        <div className="p-2 bg-sky-950/40 rounded-lg border border-sky-500/40 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-sky-400 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-sky-400 inline-block shadow-[0_0_6px_rgba(14,165,233,0.8)]" />
+                              SPYDER-MR (TẦM TRUNG)
+                            </span>
+                            <span className="text-[9px] text-sky-300 font-semibold bg-sky-900/60 px-1 rounded">
+                              Derby / Booster
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 text-[9px] pt-0.5">
+                            <div>
+                              <span className="text-slate-400 block">Cự ly tiêu diệt:</span>
+                              <strong className="text-sky-300">{spyderCfg.mr.dMinKm} - {spyderCfg.mr.dMaxKm} km</strong>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block">Độ cao tiêu diệt:</span>
+                              <strong className="text-sky-300">{spyderCfg.mr.hMinM}m - {spyderCfg.mr.hMaxM / 1000} km</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Dải tốc độ mục tiêu theo Bảng 1 */}
+                        <div className="p-2 bg-slate-950 rounded-lg border border-slate-800 text-[9px] space-y-1.5">
+                          <span className="text-slate-400 block font-bold text-[9px]">DẢI TỐC ĐỘ MỤC TIÊU TIẾP CẬN (BẢNG 1):</span>
+                          <div className="grid grid-cols-3 gap-1 text-center font-mono">
+                            <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+                              <span className="text-slate-400 block text-[8px]">Máy bay (&gt;30m)</span>
+                              <strong className="text-amber-300 font-bold">&lt; 800 m/s</strong>
+                            </div>
+                            <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+                              <span className="text-slate-400 block text-[8px]">Trực thăng (&gt;20m)</span>
+                              <strong className="text-amber-300 font-bold">0 - 200 m/s</strong>
+                            </div>
+                            <div className="bg-slate-900/80 p-1.5 rounded border border-slate-800">
+                              <span className="text-slate-400 block text-[8px]">UAV (&gt;100m)</span>
+                              <strong className="text-amber-300 font-bold">&lt; 300 m/s</strong>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px]">
+                        <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                          <span className="text-slate-400 block text-[9px]">CỰ LY TIÊU DIỆT</span>
+                          <strong className="text-rose-400">
+                            {dMinKm} - {dMaxKm} km
+                          </strong>
+                        </div>
+                        <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                          <span className="text-slate-400 block text-[9px]">TRẦN / SÀN HỎA LỰC</span>
+                          <strong className="text-rose-400">
+                            {hMinM}m - {(hMaxM / 1000).toFixed(0)}km
+                          </strong>
+                        </div>
+                        <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                          <span className="text-slate-400 block text-[9px]">V_max MỤC TIÊU</span>
+                          <strong className="text-amber-300">
+                            {vMaxMps} m/s
+                          </strong>
+                        </div>
+                        <div className="p-1.5 bg-slate-950 rounded border border-slate-800">
+                          <span className="text-slate-400 block text-[9px]">THAM SỐ P_gh</span>
+                          <strong className="text-cyan-300">
+                            {pGhKm} km
+                          </strong>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cụm 5 nút chọn chế độ chiến thuật SAM (cho các tổ hợp SAM có profiles như Pechora) */}
+                    {selected.category === 'TenLuaPhongKhong' && !isSpyder && (
                       <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
                         <div className="flex items-center justify-between">
                           <span className="text-[9.5px] text-slate-400 font-mono font-semibold">
@@ -1965,28 +2051,50 @@ export const RightInspector: React.FC = () => {
                     )}
 
                     {/* Giải thích trực quan vòm hỏa lực SAM */}
-                    <div className="p-2 bg-slate-950/90 rounded border border-slate-800 space-y-1 text-[9px] font-mono">
-                      <span className="text-slate-400 block font-bold text-[9.5px]">VÒM HỎA LỰC TIÊU DIỆT (TẦM TỐI ĐA):</span>
-                      <div className="flex items-center gap-1.5 text-rose-300">
-                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shrink-0 shadow-[0_0_6px_rgba(244,63,94,0.6)]" />
-                        <span>Tầm tối đa (D_max): {dMaxKm} km • Trần {hMaxM / 1000} km</span>
+                    {isSpyder ? (
+                      <div className="p-2 bg-slate-950/90 rounded border border-slate-800 space-y-1 text-[9px] font-mono">
+                        <span className="text-slate-400 block font-bold text-[9.5px]">CẤU TRÚC VÒM HỎA LỰC SPYDER (BẢNG 1):</span>
+                        <div className="flex items-center gap-1.5 text-emerald-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block shrink-0 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
+                          <span>Vòm SR: D_max 20 km • H_max 9 km (Vùng chết R_min 1 km, H_min 20 m)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-sky-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block shrink-0 shadow-[0_0_6px_rgba(14,165,233,0.8)]" />
+                          <span>Vòm MR: D_max 50 km • H_max 16 km (Vùng chết R_min 2 km, H_min 20 m)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-purple-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-purple-400 inline-block shrink-0 shadow-[0_0_6px_rgba(192,132,252,0.8)]" />
+                          <span>Mặt cắt bán elip D(H) = D_max√(1-(H/H_max)²) • Phóng đa hướng 360°</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5 text-amber-300">
-                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block shrink-0 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
-                        <span>Vùng mù hình nón: Góc tà cực đại 65°</span>
+                    ) : (
+                      <div className="p-2 bg-slate-950/90 rounded border border-slate-800 space-y-1 text-[9px] font-mono">
+                        <span className="text-slate-400 block font-bold text-[9.5px]">VÒM HỎA LỰC TIÊU DIỆT (TẦM TỐI ĐA):</span>
+                        <div className="flex items-center gap-1.5 text-rose-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shrink-0 shadow-[0_0_6px_rgba(244,63,94,0.6)]" />
+                          <span>Tầm tối đa (D_max): {dMaxKm} km • Trần {hMaxM / 1000} km</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-amber-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block shrink-0 shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
+                          <span>Vùng mù hình nón: Góc tà cực đại 65°</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-cyan-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block shrink-0 shadow-[0_0_6px_rgba(6,182,212,0.6)]" />
+                          <span>Góc ngẩng cố định bệ phóng: 6° so với phương ngang</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5 text-cyan-300">
-                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block shrink-0 shadow-[0_0_6px_rgba(6,182,212,0.6)]" />
-                        <span>Góc ngẩng cố định bệ phóng: 6° so với phương ngang</span>
-                      </div>
-                    </div>
+                    )}
 
                     {/* Nút bấm Mở Mặt Cắt Đứng 2D (Cross Section) */}
                     <button
                       onClick={toggleCrossSection}
                       className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
                         showCrossSection
-                          ? 'bg-rose-950 text-rose-300 border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.4)] ring-1 ring-rose-400'
+                          ? isSpyder
+                            ? 'bg-sky-950 text-sky-300 border-sky-400 shadow-[0_0_15px_rgba(14,165,233,0.4)] ring-1 ring-sky-400'
+                            : 'bg-rose-950 text-rose-300 border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.4)] ring-1 ring-rose-400'
+                          : isSpyder
+                          ? 'bg-slate-950 hover:bg-slate-900 text-slate-300 border-slate-700 hover:border-sky-500/50'
                           : 'bg-slate-950 hover:bg-slate-900 text-slate-300 border-slate-700 hover:border-rose-500/50'
                       }`}
                     >
@@ -1996,7 +2104,11 @@ export const RightInspector: React.FC = () => {
                       />
                       <span>
                         {showCrossSection
-                          ? 'Đang Xem Mặt Cắt Đứng 2D (WEZ)'
+                          ? isSpyder
+                            ? 'Đang Xem Mặt Cắt Đứng Vòm Kép 2D (SR/MR)'
+                            : 'Đang Xem Mặt Cắt Đứng 2D (WEZ)'
+                          : isSpyder
+                          ? 'Mở Mặt Cắt Đứng Vòm Kép (2D)'
                           : 'Mở Mặt Cắt Đứng 2D (Cross Section)'}
                       </span>
                     </button>
@@ -2119,13 +2231,17 @@ export const RightInspector: React.FC = () => {
             {selected.minEngagementRangeKm !== undefined && (
               <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
                 <span className="text-slate-400">Cự ly tiêu diệt cực cận (R_min):</span>
-                <strong className="text-rose-300">{selected.minEngagementRangeKm} km</strong>
+                <strong className={selected.templateId === 'sam_spyder' ? 'text-sky-300' : 'text-rose-300'}>
+                  {selected.templateId === 'sam_spyder' ? '1 km (SR) / 2 km (MR)' : `${selected.minEngagementRangeKm} km`}
+                </strong>
               </div>
             )}
             {selected.maxEngagementAltitudeM !== undefined && (
               <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
                 <span className="text-slate-400">Trần hỏa lực (H_max):</span>
-                <strong className="text-rose-300">{(selected.maxEngagementAltitudeM / 1000).toFixed(0)} km ({selected.maxEngagementAltitudeM}m)</strong>
+                <strong className={selected.templateId === 'sam_spyder' ? 'text-sky-300' : 'text-rose-300'}>
+                  {selected.templateId === 'sam_spyder' ? '9 km (SR) / 16 km (MR)' : `${(selected.maxEngagementAltitudeM / 1000).toFixed(0)} km (${selected.maxEngagementAltitudeM}m)`}
+                </strong>
               </div>
             )}
             {selected.reactionTimeSeconds !== undefined && (

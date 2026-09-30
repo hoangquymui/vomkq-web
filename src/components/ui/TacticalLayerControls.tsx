@@ -8,9 +8,11 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  Box,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import type { EquipmentCategory } from '../../types/equipment';
+import { ENABLE_3D_MODELS } from '../../types/equipment';
 
 export const TacticalLayerControls: React.FC = () => {
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
@@ -20,11 +22,13 @@ export const TacticalLayerControls: React.FC = () => {
     showRangeRingsLayer,
     showLabelsLayer,
     showMarkersLayer,
+    showModelsLayer,
     categoryFilter,
     toggleCoverageLayer,
     toggleRangeRingsLayer,
     toggleLabelsLayer,
     toggleMarkersLayer,
+    toggleModelsLayer,
     setCategoryFilter,
   } = useTacticalStore();
 
@@ -120,6 +124,27 @@ export const TacticalLayerControls: React.FC = () => {
             <EyeOff className="w-3 h-3 text-slate-500 ml-0.5 opacity-60" />
           )}
         </button>
+
+        {/* Toggle Mô Hình 3D (Tạm thời ẩn khi ENABLE_3D_MODELS = false, chỉ giữ Điểm đặt) */}
+        {ENABLE_3D_MODELS && (
+          <button
+            onClick={toggleModelsLayer}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              showModelsLayer
+                ? 'bg-cyan-950/90 text-cyan-300 border border-cyan-500/40 shadow-[0_0_8px_rgba(6,182,212,0.25)]'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 border border-transparent'
+            }`}
+            title="Bật/Tắt hiển thị Mô hình 3D Khí Tài trên bản đồ 3D"
+          >
+            <Box className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>Mô hình 3D</span>
+            {showModelsLayer ? (
+              <Eye className="w-3 h-3 text-cyan-400 ml-0.5 opacity-80" />
+            ) : (
+              <EyeOff className="w-3 h-3 text-slate-500 ml-0.5 opacity-60" />
+            )}
+          </button>
+        )}
 
         <div className="w-[1px] h-5 bg-slate-800 mx-0.5" />
 

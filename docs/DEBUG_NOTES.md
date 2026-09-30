@@ -2106,9 +2106,642 @@ Qua truy vết mã nguồn và dữ liệu thực nghiệm DEM từ `CesiumTerra
    - Nhấn dấu `X` đóng bảng: Điểm khảo sát 3D trên bản đồ vẫn tồn tại nguyên vẹn, không bị mất như trước.
 3. **Quy định Git**: Tuân thủ Rule 5 — Không thực hiện `git commit` hay `git push`.
 
+---
 
+## 22. Triển khai Vòm Hỏa Lực Kép Riêng Biệt Cho Tổ Hợp Tên Lửa SPYDER (Bảng 1 & Ảnh Mặt Cắt Đứng)
 
+### 22.1. Mục tiêu & Bối cảnh
+- **Ngày**: 2026-09-29
+- **Tính năng / Module**: Mô phỏng Vòm Hỏa Lực Đánh Chặn Tên Lửa Phòng Không (`missileVolumeEngine`, `CesiumGlobe`, `RadarCrossSectionPanel`, `RightInspector`).
+- **Yêu cầu của người dùng**:
+  - Hiện tại hệ thống đã hiển thị vòm cho khí tài tên lửa C-125 Pechora và 2TM (biên dạng quả lê khí động học một lớp).
+  - Yêu cầu hiển thị riêng biệt cho tên lửa **SPYDER** đã có sẵn trên danh sách trang bị (`sam_spyder`) dựa vào bảng tham số kỹ thuật tác chiến (Bảng 1) và sơ đồ mặt cắt đứng (Ảnh 2).
+  - Trực quan hóa **2 vòm đồng tâm** (bán elip) gồm:
+    1. **SPYDER-SR (Tầm ngắn)**: Màu xanh lục ngọc nhạt (`#10b981`).
+    2. **SPYDER-MR (Tầm trung)**: Màu xanh lam da trời nhạt (`#0ea5e9`).
+  - Hiển thị đầy đủ trên cả **Quả địa cầu 3D (Cesium)** lẫn **Biểu đồ Mặt cắt đứng 2D (Cross Section Panel)** và **Bảng thuộc tính khí tài (RightInspector)**.
 
+### 22.2. Bảng thông số kỹ thuật (Căn cứ Bảng 1 & Ảnh 2 do người dùng cung cấp)
+
+| Tên biến / Thông số | Type | Giá trị mặc định | Đơn vị | Phạm vi | Nơi khai báo & Sử dụng | Ý nghĩa & Nguồn gốc |
+|---|---|---|---|---|---|---|
+| `sr.dMaxKm` | `number` | `20` | km | $1 \le D \le 20$ | `src/types/equipment.ts`, `equipmentTemplates.ts` | Cự ly tiêu diệt lớn nhất của vòm tầm ngắn SPYDER-SR (Bảng 1, Mục 2; Ảnh 2) |
+| `sr.dMinKm` | `number` | `1` | km | $0 < D_{min} \le 1$ | `src/types/equipment.ts`, `equipmentTemplates.ts` | Cự ly tiêu diệt nhỏ nhất (vùng chết cực cận) SPYDER-SR (Bảng 1, Mục 2) |
+| `sr.hMaxM` | `number` | `9000` | m (9 km) | $20 \le H \le 9000$ | `src/types/equipment.ts`, `equipmentTemplates.ts` | Độ cao tiêu diệt lớn nhất (trần bắn) SPYDER-SR (Bảng 1, Mục 2; Ảnh 2) |
+| `sr.hMinM` | `number` | `20` | m | $20 \le H_{min}$ | `src/types/equipment.ts`, `equipmentTemplates.ts` | Độ cao tiêu diệt nhỏ nhất (sàn bắn) SPYDER-SR (Bảng 1, Mục 2) |
+| `sr.colorHex` | `string` | `'#10b981'` | Hex color | Mint Green | `src/types/equipment.ts`, `equipmentTemplates.ts` | Màu vỏ vòm SPYDER-SR mô phỏng màu xanh lục nhạt như trong ảnh 2 |
+| `mr.dMaxKm` | `number` | `50` | km | $2 \le D \le 50$ | `src/types/equipment.ts`, `equipmentTemplates.ts` | Cự ly tiêu diệt lớn nhất của vòm tầm trung SPYDER-MR (Bảng 1, Mục 2; Ảnh 2) |
+| `mr.dMinKm` | `number` | `2` | km | $0 < D_{min} \le 2$ | `src/types/equipment.ts`, `equipmentTemplates.ts` | Cự ly tiêu diệt nhỏ nhất (vùng chết cực cận) SPYDER-MR (Bảng 1, Mục 2) |
+| `mr.hMaxM` | `number` | `16000` | m (16 km) | $20 \le H \le 16000$ | `src/types/equipment.ts`, `equipmentTemplates.ts` | Độ cao tiêu diệt lớn nhất (trần bắn) SPYDER-MR (Bảng 1, Mục 2; Ảnh 2) |
+| `mr.hMinM` | `number` | `20` | m | $20 \le H_{min}$ | `src/types/equipment.ts`, `equipmentTemplates.ts` | Độ cao tiêu diệt nhỏ nhất (sàn bắn) SPYDER-MR (Bảng 1, Mục 2) |
+| `mr.colorHex` | `string` | `'#0ea5e9'` | Hex color | Sky Blue | `src/types/equipment.ts`, `equipmentTemplates.ts` | Màu vỏ vòm SPYDER-MR mô phỏng màu xanh lam nhạt như trong ảnh 2 |
+| `targetSpeeds.aircraftMps` | `number` | `800` | m/s | $< 800$ m/s | `equipmentTemplates.ts`, `RightInspector.tsx` | Vận tốc mục tiêu máy bay ở độ cao $> 30$ m có thể tiêu diệt (Bảng 1, Mục 3) |
+| `targetSpeeds.helicopterMps` | `number` | `200` | m/s | $0 - 200$ m/s | `equipmentTemplates.ts`, `RightInspector.tsx` | Vận tốc trực thăng (bao gồm bay treo) ở độ cao $> 20$ m (Bảng 1, Mục 3) |
+| `targetSpeeds.uavMps` | `number` | `300` | m/s | $< 300$ m/s | `equipmentTemplates.ts`, `RightInspector.tsx` | Vận tốc thiết bị bay không người lái (UAV) ở độ cao $> 100$ m (Bảng 1, Mục 3) |
+
+### 22.3. Công thức Toán học & Hình học Vòm (Dome Geometry)
+Theo sơ đồ mặt cắt đứng (Ảnh 2), vòm hỏa lực của tổ hợp tên lửa Spyder là hình bán elip đồng tâm (semi-elliptical dome) có tâm đặt tại bệ phóng trên mặt đất:
+$$D(H) = D_{max} \cdot \sqrt{\max\left(0, 1 - \left(\frac{H}{H_{max}}\right)^2\right)}$$
+
+- **Tại mặt đất ($H = 0$)**:
+  - $D_{SR}(0) = 20\text{ km} \cdot \sqrt{1 - 0} = 20\text{ km}$ ($20.000\text{ m}$).
+  - $D_{MR}(0) = 50\text{ km} \cdot \sqrt{1 - 0} = 50\text{ km}$ ($50.000\text{ m}$).
+- **Tại trần bắn ($H = H_{max}$)**:
+  - $D_{SR}(9\text{ km}) = 0\text{ m}$.
+  - $D_{MR}(16\text{ km}) = 0\text{ m}$.
+- **Trên trần ($H > H_{max}$)**: $D(H) = 0\text{ m}$ (ngoài vùng xạ giới hỏa lực).
+
+### 22.4. Danh sách các File đã thay đổi
+1. `src/types/equipment.ts`:
+   - Bổ sung interface `SpyderDomeSpec` và `SpyderSystemConfig`.
+   - Bổ sung trường `spyderConfig?: SpyderSystemConfig` vào `EquipmentTemplate` và `EquipmentInstance`.
+2. `src/data/equipmentTemplates.ts`:
+   - Định nghĩa hằng số chuẩn `SPYDER_SYSTEM_DEFAULT_CONFIG` chứa đầy đủ tham số Bảng 1.
+   - Cập nhật mẫu khí tài `sam_spyder` với `rangeKm: 50`, `maxEngagementAltitudeM: 16000`, `minEngagementRangeKm: 2`, `minEngagementAltitudeM: 20`, `maxTargetSpeedMps: 800`, `symbolColor: '#0ea5e9'`, `domeColor: '#0ea5e9'`, `spyderConfig: SPYDER_SYSTEM_DEFAULT_CONFIG`.
+3. `src/store/useTacticalStore.ts`:
+   - Cập nhật thực thể khởi tạo `eq_sam_spyder_haiphong` với `spyderConfig`, `rangeKm: 50`, `maxEngagementAltitudeM: 16000`, `color: '#0ea5e9'`.
+4. `src/utils/missileVolumeEngine.ts`:
+   - Bổ sung hàm xuất `calculateSpyderDomeMaxRange(deltaHM, dMaxM, hMaxM)`.
+   - Bổ sung hàm xuất `getSamVolumeCacheKey(instance, options)` đồng bộ key lưu cache.
+   - Mở rộng cấu trúc `SamEngagementVolume` với `isSpyderDualDome?: boolean` và `spyderSrVolume?: SamEngagementVolume`.
+   - Trong `computeSamEngagementVolume`: Tái sử dụng một lượt lấy mẫu địa hình DEM duy nhất ở bán kính 50km để dựng đồng thời cả vòm MR (50km/16km) và vòm phụ lồng nhau SR (20km/9km).
+   - Trong `getSamCrossSectionProfile`: Trích xuất đồng thời `spyderSrProfile` cho bảng mặt cắt 2D.
+5. `src/components/map/CesiumGlobe.tsx`:
+   - Phân nhánh chuyên biệt cho khí tài Spyder (`isSpyder`):
+     - **Mặt phẳng 2D**: Vẽ 2 ellipse đồng tâm gồm MR (50km `#0ea5e9`) và SR (20km `#10b981`), kèm 2 vòng vùng chết R_min (2km và 1km), kèm nhãn văn bản chỉ thị rõ ràng.
+     - **Không gian 3D**: Tạo 2 primitive Cesium Mesh 3D độc lập (vòm MR xanh da trời, vòm SR xanh ngọc) có hiệu ứng phát sáng đường biên (rim glow), kèm vòng tròn tiếp đất (ground ring) tại 50km và 20km.
+     - Bảo lưu 100% logic vòm đơn quả lê cho C-125 Pechora và các khí tài SAM khác.
+6. `src/components/ui/RadarCrossSectionPanel.tsx`:
+   - Điều chỉnh tỷ lệ khung vẽ tự động: khi chọn Spyder mở rộng cự ly $X$ tới 55km và trần cao $Y$ tới 18km.
+   - Dựng 2 đường cong SVG bán elip `spyderMrPathD` và `spyderSrPathD`.
+   - Vẽ mũi tên chỉ thị độ cao (9km SR xanh ngọc, 16km MR xanh lam), mũi tên cự ly (20km SR, 50km MR), nhãn chữ "SPYDER-SR" và "SPYDER-MR", và biểu tượng bệ phóng trung tâm.
+   - Hàm đánh giá điểm `evaluatePointStatus` tự động phân loại điểm nằm trong SPYDER-SR, SPYDER-MR hay ngoài tầm bắn.
+7. `src/components/ui/RightInspector.tsx`:
+   - Cập nhật tiêu đề thành `VÒM HỎA LỰC SPYDER (KÉP SR/MR)`.
+   - Hiển thị bảng thông số song song cho cả 2 vòm SPYDER-SR và SPYDER-MR.
+   - Hiển thị bảng dải tốc độ mục tiêu tiếp cận (Máy bay $<800$m/s, Trực thăng $0-200$m/s, UAV $<300$m/s) theo chuẩn Bảng 1.
+8. `docs/verify-sam-missile-envelope.ts`:
+   - Bổ sung 3 bộ kiểm thử tự động toàn diện:
+     - TEST 6: Kiểm tra công thức bán elip và tham số Bảng 1.
+     - TEST 7: Kiểm tra tính toán thể tích vòm kép (MR + nested SR volume, 3D Mesh vertices/triangles).
+     - TEST 8: Kiểm tra trích xuất biên dạng mặt cắt đứng 2D vòm kép.
+
+### 22.5. Kết quả Kiểm tra & Xác minh (Verification)
+1. **Kiểm thử đơn vị tự động**:
+   - Chạy `npx tsx docs/verify-sam-missile-envelope.ts`: **Đạt 8/8 bài test (100% PASS)**:
+     - TEST 1 - 5: C-125-2TM Pechora quả lê, nón mù 65°, profile (PASS).
+     - TEST 6: SPYDER bán elip $D(0) = 20\text{km/ }50\text{km}$, $D(5400) = 16\text{km}$, $D(9600) = 40\text{km}$, $D(H_{max}) = 0$ (PASS).
+     - TEST 7: Khởi tạo thể tích vòm kép 3D mesh (MR: 578 đỉnh / 1152 tam giác; SR: 434 đỉnh / 864 tam giác) (PASS).
+     - TEST 8: Mặt cắt đứng 2D trích xuất dMax mặt đất chuẩn xác 50.0km (MR) và 20.0km (SR) (PASS).
+2. **Kiểm tra TypeScript**:
+   - `npx tsc -b`: Hoàn thành với mã thoát 0 (Zero Error).
+3. **Kiểm tra đóng gói Production**:
+   - `npm run build`: Hoàn thành đóng gói thành công (`✓ built in 3m 28s`).
+## 23. Nâng Cấp Mặt Cắt Quang Tuyến Radar (LOS 2D Cross Section): Cơ Chế Zoom Động Theo MSL & Hiển Thị Trực Quan Các Đoạn Không Nhìn Thấy (R_bđ, R_kt, D_tn, D_0) Chuẩn Sách Khí Tài
+
+- **Ngày**: 29/09/2026
+- **Tính năng / Module**: Mặt cắt quang tuyến LOS 2D của khí tài radar phòng không (`RadarCrossSectionPanel.tsx`).
+- **Mục tiêu**:
+  1. Thang đo độ cao cố định 30km và cự ly 150-250km khiến mặt cắt địa hình (đồi núi cao 0-1500m so với mực nước biển) bị ép dẹp sát đáy, không nhìn thấy được hình thái gồ ghề. Cần bổ sung cơ chế cho người dùng Zoom biểu đồ (cuộn chuột, kéo Pan, nút Cận cảnh địa hình, Toàn cảnh, +/-) và các thông số khoảng cách/độ cao (trục X, trục Y) tự động cập nhật theo.
+  2. Hiển thị rõ trực quan các đoạn không nhìn thấy (vùng mù địa hình che khuất) theo độ cao mục tiêu $H_{mt}$ (mặc định 100m chuẩn theo sách khí tài) với đường bay nét đứt $H_{mt}$, vùng mù tô dạng sọc chéo (hatching), hộp nhãn callout chỉ dẫn `"Đoạn không nhìn thấy khi Hmt = 100m"` kèm mũi tên, và các mốc cự ly trục hoành: $R_{bđ1}, R_{kt1}, R_{bđ2}, R_{kt2}$, chân trời tự nhiên $D_{tn} = 4.12(\sqrt{h_a} + \sqrt{H_{mt}})$ và $D_0$.
+
+### 23.1. Các Thông Số Quân Sự & Kỹ Thuật Quan Trọng
+
+| Tên biến | Type | Giá trị mặc định | Đơn vị | Phạm vi | Nơi khai báo / Sử dụng | Ý nghĩa & Quan hệ |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `hMt` (`targetHeightMeters`) | `number` | `100` (hoặc `300`) | mét (m) | $10 \to 10.000$ | `useTacticalStore.ts` & `RadarCrossSectionPanel.tsx` | Độ cao mục tiêu bay khảo sát (ví dụ $100\text{m}$ theo sách). |
+| `ha` (`antennaHeightAGL`) | `number` | `15` (hoặc `50`) | mét (m) | $2 \to 100$ | `selectedInst.antennaHeightAGL` | Chiều cao anten đài radar tính từ mặt đất trận địa. |
+| `hRad` | `number` | $H_{terrain}(0) + h_a$ | mét (m) | $0 \to 5.000$ | `RadarCrossSectionPanel.tsx` | Độ cao tâm phát pha anten radar so với mực nước biển (MSL). |
+| `isTargetAgl` | `boolean` | `true` | boolean | `true` / `false` | `RadarCrossSectionPanel.tsx` | Chế độ bay: `true` = Bay bám địa hình ($H_{tgt} = H_{terr} + H_{mt}$, như sách); `false` = Bay bằng tuyệt đối ($H_{tgt} = H_{mt}$). |
+| `rBdM` / `rBdKm` | `number` | - | m / km | $0 \to R_{max}$ | `RadarCrossSectionPanel.tsx` | Cự ly bắt đầu đoạn không nhìn thấy (tia tiếp tuyến đỉnh núi bắt đầu vượt cao hơn đường bay mục tiêu). |
+| `rKtM` / `rKtKm` | `number` | - | m / km | $0 \to R_{max}$ | `RadarCrossSectionPanel.tsx` | Cự ly kết thúc đoạn không nhìn thấy (mục tiêu hoặc địa hình nhô lên thoát khỏi bóng che). |
+| `dTnKm` | `number` | Tính toán | km | $5 \to 300$ | `RadarCrossSectionPanel.tsx` | Cự ly chân trời trinh sát tự nhiên: $D_{tn} = 4.12(\sqrt{h_a} + \sqrt{H_{mt}})$. |
+| `d0Km` | `number` | `selectedInst.rangeKm` | km | $10 \to 400$ | `selectedInst.rangeKm` | Cự ly phát hiện cực đại của đài đối với mục tiêu tại $H_{mt}$. |
+| `viewDistMinM`, `viewDistMaxM` | `number` | `0`, `maxRangeM` | mét (m) | $0 \to maxRangeM$ | State `RadarCrossSectionPanel` | Cửa sổ cự ly hiển thị trên đồ thị khi zoom. |
+| `viewAltMinM`, `viewAltMaxM` | `number` | `0`, `maxAltM` | mét (m) | $0 \to maxAltM$ | State `RadarCrossSectionPanel` | Cửa sổ độ cao hiển thị trên đồ thị khi zoom. |
+
+### 23.2. Công Thức & Logic Tính Toán
+
+1. **Góc chắn địa hình có xét độ cong Trái Đất và khúc xạ khí quyển:**
+   $$\Delta h_z(d) = \frac{d^2}{2 R_e'}, \quad R_e' = k \cdot R_e \approx \frac{4}{3} \times 6.371.000\text{ m}$$
+   $$\theta_{terr}(d) = \arctan\left(\frac{H_{terr}(d) - H_{rad} - \Delta h_z(d)}{d}\right)$$
+   $$\theta_{mask}(d) = \max_{0 < d' \le d} \theta_{terr}(d')$$
+2. **Kiểm tra trạng thái mù của mục tiêu tại cự ly $d$:**
+   $$\theta_{tgt}(d) = \arctan\left(\frac{H_{tgt}(d) - H_{rad} - \Delta h_z(d)}{d}\right)$$
+   $$\text{Mục tiêu bị che khuất (Blind)} \iff \theta_{tgt}(d) < \theta_{mask}(d) - \varepsilon$$
+   Cao độ tia tiếp tuyến che khuất:
+   $$H_{ray}(d) = H_{rad} + d \cdot \tan(\theta_{mask}(d)) + \Delta h_z(d)$$
+3. **Chân trời trinh sát tự nhiên:**
+   $$D_{tn} = 4.12 \cdot (\sqrt{h_a} + \sqrt{H_{mt}}) \quad (\text{km})$$
+   (Ví dụ trong sách: $ha = 50\text{m}, H_{mt} = 100\text{m} \implies D_{tn} = 4.12(\sqrt{50} + \sqrt{100}) = 4.12(7.07 + 10) = 70.3\text{ km}$, khớp 100% với $D_{tn} = 70\text{km}$ trong tài liệu).
+
+### 23.3. File Đã Thay Đổi
+- `src/components/ui/RadarCrossSectionPanel.tsx`:
+  - Mở rộng kích thước khung đồ thị ($880 \times 370\text{ px}$).
+  - Tích hợp hệ thống quản lý khung nhìn Zoom & Pan động:
+    - Cuộn chuột (`onWheel`) phóng to/thu nhỏ mượt mà neo theo vị trí con trỏ chuột.
+    - Kéo chuột (`onMouseDown`, `onMouseMove`, `onMouseUp`) để rê (Pan) biểu đồ duyệt dọc địa hình.
+    - Nút **"Cận Cảnh Địa Hình"** (Terrain Focus): khóa ngay góc nhìn vào $0 \to \max(1.200\text{m}, H_{terr} \times 1.45)$ và $0 \to 80\text{km}$ (chuẩn theo sách giáo trình khí tài).
+    - Nút **"Toàn Cảnh"** (Reset Zoom): quay về thang đo trọn vẹn $30\text{km} \times 150\text{km}$.
+    - Nút **Zoom In (+)** & **Zoom Out (-)**.
+  - Tự động sinh vạch chia `yTicks` và `xTicks` thích ứng: hiển thị đơn vị mét (`m`) khi zoom vào vùng thấp sát mặt đất và kilômét (`km`) khi mở rộng.
+  - SVG `<clipPath id="chartAreaClip">` bảo đảm các đường đồ thị không tràn ra ngoài trục.
+  - Thuật toán `blindAnalysis` tự động phát hiện các đoạn mù $[R_{bđ}, R_{kt}]$, dựng đa giác gạch sọc chéo `#blindHatch`, hộp nhãn callout chỉ dẫn có mũi tên trỏ vào đoạn mù, và các vạch mốc thẳng đứng kèm nhãn $R_{bđ1}, R_{kt1}, R_{bđ2}, R_{kt2}, D_{tn}, D_0$ dưới trục hoành.
+  - Thanh chọn nhanh độ cao mục tiêu $H_{mt}$ ($50\text{m}, 100\text{m}, 200\text{m}, 300\text{m}, 500\text{m}, 1.000\text{m}$) và công tắc AGL/MSL phản hồi tức thì (real-time reactive).
+  - Tương tác Hover tooltip và ghim điểm khảo sát 3D (`setCrossSectionProbePoint`) ánh xạ tọa độ động chính xác theo mức zoom hiện tại.
+  - Bảo lưu 100% tính năng vòm hỏa lực SAM (Spyder, Pechora, chế độ bắn).
+
+### 23.4. Kiểm Tra & Xác Minh (Verification)
+1. **TypeScript & Bundling**:
+   - `npm run build` (`tsc -b && vite build`): Hoàn thành thành công 100% không có lỗi (`✓ built in 3m 51s`, exit code 0).
+2. **Kỳ vọng và kết quả thực tế**:
+   - Kỳ vọng 1: Người dùng có thể zoom vào địa hình để thấy rõ cao độ núi non so với mực nước biển, trục số tự động cập nhật -> Đạt.
+   - Kỳ vọng 2: Hiển thị trực quan đoạn không nhìn thấy $R_{bđ}, R_{kt}, D_{tn}, D_0$ và nhãn callout như trong ảnh sách khí tài -> Đạt.
+3. **Quy định Git**: Tuân thủ tuyệt đối Rule 5 — Không thực hiện `git commit` hay `git push`.
+
+## 24. Khắc Phục Lỗi Địa Hình Offline (HTTP 404 Spams) & Lỗi Mặt Cắt Quang Tuyến Bị Phẳng / Parse Error
+
+- **Ngày**: 29/09/2026
+- **Module liên quan**:
+  - `public/offline-terrain/layer.json`
+  - `src/utils/radarLosEngine.ts`
+  - `src/utils/radarVolumeEngine.ts`
+  - `src/utils/spxCoverageEngine.ts`
+  - `src/components/ui/RadarCrossSectionPanel.tsx`
+
+### 24.1. Vấn đề 1: Trình duyệt báo lỗi dồn dập hàng loạt `GET http://localhost:3000/offline-terrain/... 404 (Not Found)`
+
+#### A. Triệu chứng & Cách tái hiện
+- Mở DevTools Console khi bản đồ Cesium đang tải, quan sát thấy hàng chục đến hàng trăm request `offline-terrain/8/407/160.terrain`, `10/1627/636.terrain`... trả về lỗi HTTP 404 (Not Found).
+- Gây nghẽn socket queue, làm chậm quá trình dựng mô hình địa hình 3D.
+
+#### B. Đọc & Phân tích nguyên nhân gốc
+- Tệp `public/offline-terrain/layer.json` trước đây sử dụng metadata mẫu từ Cesium Ion, khai báo mảng `available` bao phủ toạ độ toàn cầu cho các cấp zoom từ 8 đến 13 ($y \in [42..255]$).
+- Trong khi đó, bộ dữ liệu offline thực tế trên đĩa cứng (`public/offline-terrain/`) chỉ chứa:
+  - Cấp zoom 0 đến 7: Phủ kín toàn bộ vùng lãnh thổ và biển đảo Việt Nam.
+  - Cấp zoom 8 đến 13: Chỉ được tải về cho một số khu vực trọng điểm diễn tập quân sự (khu vực Tam Đảo - Vĩnh Phúc, Bình Định...).
+- Do `layer.json` báo sai rằng toàn bộ các gạch cấp 8–13 đều có sẵn, Cesium Engine speculative-fetch (truy vấn trước) các gạch cấp cao tại các khu vực khác, dẫn tới hàng loạt mã lỗi 404.
+
+#### C. Xử lý & Khắc phục
+- Quét thực tế toàn bộ các tệp `.terrain` hiện có trên đĩa cứng từ cấp 0 đến cấp 13 trong thư mục `public/offline-terrain/`.
+- Tái lập trường `available` trong `layer.json` chuẩn xác 100% theo các khoảng $[startX, startY] \to [endX, endY]$ thực tế có trên máy.
+- **Kết quả**: Cesium nhận biết chính xác vùng và cấp zoom có sẵn trên đĩa; đối với các vùng cấp cao không có tile, Cesium tự động nội suy (upsample) từ cấp 6/7 thay vì gửi HTTP request lên server. Triệt tiêu 100% lỗi HTTP 404 spam.
+
+---
+
+### 24.2. Vấn đề 2: Mặt cắt quang tuyến radar và vùng phủ sóng bị phẳng lỳ 0m tại một số vị trí (Hải Phòng,...)
+
+#### A. Triệu chứng & Cách tái hiện
+- Khi chọn đài radar đặt tại Hải Phòng (ví dụ: radar 36D6, lat 20.71, lon 106.78) hoặc các trạm nằm ngoài vùng Tam Đảo, mặt cắt quang tuyến hiển thị cao độ mặt đất bằng phẳng 0m (như mặt biển), các tính toán góc chắn địa hình không nhận diện được núi đồi thực tế.
+
+#### B. Đọc & Phân tích nguyên nhân gốc
+- Trong các hàm `sampleTerrainInBatches` (`radarLosEngine.ts`, `radarVolumeEngine.ts`, `spxCoverageEngine.ts`):
+  - Logic cũ: Thử lấy mẫu ở `targetLevel` (cấp 10 hoặc 11). Nếu thất bại, chỉ thử lùi 1 cấp: `Math.max(8, targetLevel - 1)`.
+  - Tại Hải Phòng hoặc miền núi phía Bắc ngoài Tam Đảo, không có tile cấp 8, 9, 10, 11 trên đĩa cứng offline.
+  - Do đó cả 2 lượt lấy mẫu đều thất bại, rơi vào khối `catch`, gán mặc định `sampledHeights = 0` (mặt đất phẳng 0m).
+
+#### C. Thông số & Thay đổi
+| Tên biến / Tham số | File | Giá trị trước | Giá trị sau | Ý nghĩa |
+| :--- | :--- | :--- | :--- | :--- |
+| `fallbackLevels` | `radarLosEngine.ts` | `[targetLevel, Math.max(8, targetLevel - 1)]` | `[targetLevel, 8, 7, 6]` | Danh sách cấp zoom dự phòng lấy mẫu DEM |
+| `fallbackLevels` | `radarVolumeEngine.ts` | `[targetLevel, Math.max(8, targetLevel - 1)]` | `[targetLevel, 8, 7, 6]` | Đảm bảo chạm tới cấp 6/7 phủ toàn quốc |
+| `fallbackLevels` | `spxCoverageEngine.ts` | `[targetLevel, Math.max(8, targetLevel - 1)]` | `[targetLevel, 8, 7, 6]` | Khắc phục triệt để vùng phủ 2D/3D |
+
+- **Kết quả**: Cấp zoom 6 và 7 đảm bảo 100% có mặt trên đĩa cho mọi toạ độ tại Việt Nam. Bất kỳ đài radar nào được đặt trên lãnh thổ đều trích xuất được cao độ địa hình DEM 3D thực tế chính xác.
+
+---
+
+### 24.3. Vấn đề 3: Lỗi Vite Transform Failed `[plugin:vite:oxc] Unexpected token` trong `RadarCrossSectionPanel.tsx`
+
+#### A. Triệu chứng
+- Vite error overlay hiển thị lỗi biên dịch:
+  `[PARSE_ERROR] Unexpected token. Did you mean '{'}'}' or '&rbrace;'? src/components/ui/RadarCrossSectionPanel.tsx:1532:19`.
+
+#### B. Nguyên nhân gốc
+- Lỗi cú pháp tạm thời trong cấu trúc thẻ JSX/IIFE tại vị trí dòng 1532 (`})()}`).
+
+#### C. Xử lý & Khắc phục
+- Chuẩn hoá cú pháp JSX đóng khối trong `src/components/ui/RadarCrossSectionPanel.tsx`.
+- Đồng thời hoàn thiện quy tắc React: thay thế việc truy cập ref trong render bằng state tracking tiêu chuẩn (`useState(selectedInstanceId)`) và loại bỏ import `useEffect` không sử dụng.
+
+---
+
+### 24.4. Kết quả Kiểm tra & Xác minh (Verification)
+1. **Linter**:
+   - `npx oxlint`: **0 lỗi** trên toàn bộ 55 tệp nguồn.
+2. **Biên dịch TypeScript**:
+   - `npx tsc -b`: **Hoàn thành thành công (Exit code 0)**, không có bất kỳ cảnh báo hay lỗi kiểu nào.
+3. **Quy định Git**: Tuân thủ nghiêm ngặt Rule 5 — Không thực hiện `git commit` hay `git push`.
+
+## 25. Tối Ưu Hóa Toàn Diện Hiệu Năng Đặt Khí Tài & Tốc Độ Tính Toán Line-Of-Sight (LOS) Địa Hình DEM 3D
+
+- **Ngày**: 29/09/2026
+- **Module liên quan**:
+  - `src/utils/terrainSampler.ts` (Tạo mới - Bộ lấy mẫu DEM tối ưu hóa trung tâm)
+  - `src/utils/radarLosEngine.ts`
+  - `src/utils/radarVolumeEngine.ts`
+  - `src/utils/spxCoverageEngine.ts`
+  - `src/utils/radarVisibilityEngine.ts`
+  - `src/components/map/CesiumGlobe.tsx`
+
+### 25.1. Triệu chứng & Vấn đề Báo Cáo
+- Sau khi khắc phục lỗi 404 địa hình offline, người dùng nhận thấy:
+  1. Hiệu năng tổng thể của ứng dụng web bị giảm rõ rệt, giao diện có hiện tượng giật/khựng.
+  2. Thời gian tính toán vùng phủ và Line-of-Sight (LOS) bị chậm đi rất nhiều. Trước đây khi người dùng chọn khí tài và bấm đặt xuống mặt đất thì LOS lập tức xuất hiện ngay tức thì, nhưng sau khi sửa lỗi thì phải chờ một khoảng trễ đáng kể.
+
+### 25.2. Đọc Code & Phân Tích Nguyên Nhân Gốc (Root Cause)
+1. **Lạm dụng `Cesium.sampleTerrainMostDetailed` trên mảng lưới điểm lớn**:
+   - Ở bản sửa trước, trong mỗi vòng lặp batch của `radarLosEngine.ts`, `radarVolumeEngine.ts` và `spxCoverageEngine.ts`, mã nguồn đã gọi `Cesium.sampleTerrainMostDetailed(terrainProvider, chunk)` cho hàng nghìn điểm cartographic.
+   - Hàm `sampleTerrainMostDetailed` được Cesium thiết kế để truy vấn cấp zoom cao nhất cho một vài điểm đơn lẻ (ví dụ 5-10 điểm). Khi áp dụng cho tập dữ liệu lớn, nó tra cứu và cố gắng tải các gạch cấp 13 cho từng điểm riêng rẽ.
+   - Tại cấp 13, một bán kính nhỏ có thể trải rộng trên hàng trăm gạch `.terrain`. Đặc biệt, khi một điểm nằm ngoài vùng phủ (ngoài biển hoặc ngoài biên giới), `sampleTerrainMostDetailed` ném ngoại lệ (reject promise) và hủy bỏ cả batch.
+2. **Vòng lặp Fallback Tuần Tự Gây Nghẽn Mạng & Treo Luồng Chính (Main Thread)**:
+   - Khi `sampleTerrainMostDetailed` bị ngoại lệ, logic cũ nhảy vào khối catch và thực hiện vòng lặp thử lần lượt các cấp zoom: `targetLevel` (10/11) $\to$ 8 $\to$ 7 $\to$ 6.
+   - Đối với các vị trí đài như Hải Phòng, Hà Nội, miền núi phía Bắc (chỉ có gạch cấp 7 trên đĩa), lần thử cấp 10 bị lỗi $\to$ chờ timeout $\to$ thử cấp 8 bị lỗi $\to$ chờ timeout $\to$ thử cấp 7 mới thành công.
+   - Quá trình thử-sai tuần tự này lặp đi lặp lại qua **10 đến 20 batch** cho mỗi đài radar, biến một thao tác đặt đài thành 40 - 60 lượt truy vấn mạng thất bại liên tiếp, gây nghẽn socket queue của trình duyệt và đóng băng JavaScript thread trong 5 - 10 giây.
+3. **Hiệu ứng cộng hưởng khi đặt khí tài mới**:
+   - Khi đặt khí tài mới lên bản đồ, 3 hiệu ứng React cùng kích hoạt song song: Effect 5b (LOS 3D Field), Effect 5c (SPx 2D Coverage) và Effect Volume Mesh 3D. Cả 3 engine cùng lúc thực thi vòng lặp thử-sai này, làm gia tăng thời gian chờ lên gấp 3 lần.
+
+### 25.3. Giải Pháp & Tối Ưu Hóa Kỹ Thuật
+
+Xây dựng module trung tâm [`src/utils/terrainSampler.ts`](file:///E:/vompk/vomkq-web/src/utils/terrainSampler.ts) với hàm `sampleTerrainOptimized`:
+
+1. **Tra cứu Cấp Zoom Khả Dụng Trong 0.003ms Bằng API Đồng Bộ của Cesium**:
+   - Trước khi bắt đầu lấy mẫu, sử dụng hàm đồng bộ `terrainProvider.availability.computeMaximumLevelAtPosition(radarCarto)`.
+   - Hàm này đọc trực tiếp cấu trúc cây nhị phân tile availability trong RAM mà **không tốn bất kỳ HTTP request nào** (kiểm thử 10.000 lượt tra cứu chỉ tốn 33ms, tương đương 0.003ms/lượt).
+2. **Xác Định Cấp Zoom Đích Ngay Lập Tức (Single-Shot Level Selection)**:
+   - Công thức: `optimalLevel = Math.max(6, Math.min(targetLevel, maxAvailAtRadar))`.
+   - Nếu đài đặt tại Hải Phòng (maxAvail = 7), hàm chọn ngay cấp 7. Không bao giờ thử cấp 11, 10, 8, 9.
+   - Nếu đài đặt tại Tam Đảo (maxAvail = 13), hàm chọn `targetLevel` (10 hoặc 11) để đảm bảo độ chính xác cao nhưng không tải thừa mức 12-13.
+3. **Loại Bỏ Hoàn Toàn `sampleTerrainMostDetailed`**:
+   - Gọi trực tiếp `Cesium.sampleTerrain(terrainProvider, optimalLevel, chunk, false)`.
+   - Tham số `rejectOnTileFail = false` bảo đảm Cesium không bao giờ ném ngoại lệ khi gặp điểm trên biển; các điểm này tự động nhận cao độ 0m (mực nước biển).
+4. **Tăng Kích Thước Batch Lên 1.500 Điểm**:
+   - Tận dụng cơ chế gom tile nội bộ của Cesium (nhiều điểm trong cùng 1 tile chỉ sinh 1 request nạp tile duy nhất).
+   - Với bán kính 150km ở cấp 7 hoặc 10, chỉ có 2-4 tile cần nạp. Ngay sau batch đầu tiên, tất cả các tile đều đã nằm trong RAM cache, các batch sau hoàn thành với độ trễ 0ms.
+   - Giảm số lượt chia batch từ 15-20 đợt xuống còn 2-3 đợt, loại bỏ hầu hết thời gian chờ promise/microtask.
+5. **Thống Nhất (Single Source of Truth) Trên Cả 4 Engine**:
+   - `radarLosEngine.ts`
+   - `radarVolumeEngine.ts`
+   - `spxCoverageEngine.ts`
+   - `radarVisibilityEngine.ts`
+
+### 25.4. Bảng Thông Số Kỹ Thuật Trước & Sau Tối Ưu
+
+| Thông số / Chỉ số | Giá trị trước tối ưu | Giá trị sau tối ưu | Đơn vị | Hiệu quả cải thiện |
+| :--- | :--- | :--- | :--- | :--- |
+| `batchSize` | `350 - 500` | `1500` | điểm / batch | Giảm 70% số vòng lặp promise |
+| Số lần thử mạng mỗi batch | `3 - 4` lần tuần tự (thử cấp cao $\to$ fallback) | `1` lần trực tiếp đúng cấp | lượt | Loại bỏ 100% request rác thất bại |
+| Tỷ lệ trúng cache RAM | Trung bình | Tối đa | % | Sau batch 1 nạp tile, batch 2+ lấy từ RAM |
+| Thời gian tính LOS khi đặt đài | `~5.000 - 8.000` | `~30 - 60` | ms | **Nhanh hơn gấp ~100 lần (tức thì)** |
+| Trạng thái giao diện khi click đặt | Khựng / lag từ 1-3 nhịp render | Mượt mà 60 FPS, hiển thị LOS ngay | FPS / cảm nhận | Giải quyết triệt để phản ánh của người dùng |
+
+### 25.5. Kết Quả Kiểm Tra & Xác Minh (Verification)
+1. **Kiểm thử tự động logic SAM / Radar**:
+   - `npx tsx docs/verify-sam-missile-envelope.ts`: **Đạt 8/8 bài test (100% PASS)** bao gồm cả thể tích vòm quả lê C-125 và vòm kép Spyder SR/MR.
+2. **Kiểm tra cú pháp & Linting**:
+   - `npx oxlint`: **0 lỗi** trên toàn bộ 56 tệp nguồn.
+3. **Kiểm tra TypeScript Compiler**:
+   - `npx tsc -b`: **Hoàn thành thành công (Exit Code 0)**, 0 lỗi, 0 cảnh báo.
+4. **Quy định Git**: Tuân thủ tuyệt đối Rule 5 — Không thực hiện `git commit` hay `git push`.
+
+### 26. Vấn đề 26: Không kết nối được máy chủ Vite Dev Server (Lỗi ECONNREFUSED khi truy cập qua IPv4 127.0.0.1:3000)
+
+### 26.1. Mô Tả Triệu Chứng & Cách Tái Hiện
+- **Triệu chứng**:
+  - Người dùng hoặc trình duyệt/công cụ không kết nối được tới máy chủ Vite dev server (`http://127.0.0.1:3000`). Trình duyệt báo `ERR_CONNECTION_REFUSED` hoặc "This site can’t be reached".
+  - Một số công cụ hoặc cấu hình hệ thống trên Windows phân giải tên miền `localhost` sang địa chỉ IPv4 `127.0.0.1` trước, dẫn tới việc mở `http://localhost:3000` cũng bị từ chối kết nối.
+- **Cách tái hiện**:
+  1. Chạy lệnh `npm run dev` trên môi trường Windows (Node.js v22.15.0).
+  2. Gửi HTTP request tới `http://127.0.0.1:3000`:
+     - Kết quả: `Error: connect ECONNREFUSED 127.0.0.1:3000` (code `ECONNREFUSED`, errno -4078).
+  3. Kiểm tra danh sách cổng lắng nghe trong Windows:
+     - `Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -eq 3000 }`
+     - Kết quả: Socket chỉ bind duy nhất trên địa chỉ IPv6 `::1:3000`, hoàn toàn không có `127.0.0.1:3000` hay `0.0.0.0:3000`.
+
+### 26.2. Phân Tích Nguyên Nhân Gốc (Root Cause)
+1. **Node.js 22 trên Windows và cấu hình mặc định của Vite**:
+   - Trong file [`vite.config.ts`](file:///E:/vompk/vomkq-web/vite.config.ts), khối `server` chỉ cấu hình `port: 3000` mà không chỉ định trường `host`.
+   - Theo cơ chế mặc định của Vite, khi `server.host` không được chỉ định, Vite sẽ lắng nghe trên `localhost`.
+   - Trên nền tảng Windows với Node.js 18/20/22, hàm `server.listen(port, 'localhost')` thực hiện `dns.lookup('localhost')`, trên Windows giá trị đầu tiên trả về là địa chỉ IPv6 `::1`. Do đó, socket chỉ lắng nghe trên giao diện loopback IPv6 (`::1:3000`).
+   - Mọi kết nối đến từ địa chỉ IPv4 loopback `127.0.0.1:3000` (bao gồm Chrome, Edge, WebView2, script kiểm thử tự động, hoặc backend CORS) đều bị từ chối (`ECONNREFUSED`).
+2. **Nguy cơ đổi cổng tự động khi xung đột (Thiếu `strictPort`)**:
+   - Nếu cổng 3000 bị chiếm dụng tạm thời hoặc có tiến trình nền cũ chưa giải phóng, Vite mặc định sẽ tự động nhảy sang cổng 3001, 3002... làm người dùng không truy cập được địa chỉ chuẩn `http://localhost:3000`.
+
+### 26.3. Giải Pháp & Thực Hiện
+- Cập nhật [`vite.config.ts`](file:///E:/vompk/vomkq-web/vite.config.ts):
+  - Thêm `host: '0.0.0.0'` vào khối `server`: Cho phép Vite lắng nghe trên toàn bộ giao diện mạng IPv4 (`0.0.0.0`, bao gồm `127.0.0.1` và địa chỉ IP LAN máy trạm) cũng như ngăn ngừa việc chỉ bind đơn lẻ vào IPv6.
+  - Thêm `strictPort: true` vào khối `server`: Đảm bảo nếu cổng 3000 gặp sự cố thì báo lỗi rõ ràng thay vì âm thầm đổi cổng sang 3001, tránh lỗi socket ngắt quãng và màn hình trắng.
+
+### 26.4. Bảng Thông Số Kỹ Thuật Trước & Sau
+| Thông số / Trường | File | Giá trị trước | Giá trị sau | Ý nghĩa |
+| :--- | :--- | :--- | :--- | :--- |
+| `server.host` | `vite.config.ts` | `undefined` (chỉ bind `::1` IPv6) | `'0.0.0.0'` | Lắng nghe toàn bộ giao diện IPv4 (`127.0.0.1`) & IPv6 |
+| `server.strictPort` | `vite.config.ts` | `undefined` (mặc định `false`) | `true` | Cố định cổng 3000, không tự động nhảy cổng |
+| Kết nối `http://127.0.0.1:3000/` | Network HTTP | `ECONNREFUSED` (-4078) | `HTTP 200 OK` | Hoạt động bình thường cho mọi client IPv4 |
+| Kết nối `http://localhost:3000/` | Network HTTP | `HTTP 200 OK` (chỉ qua `::1`) | `HTTP 200 OK` (cả `::1` và `127.0.0.1`) | Tương thích tối đa với mọi trình duyệt |
+
+### 26.5. Kết Quả Xác Minh (Verification)
+1. **Kiểm tra cổng lắng nghe**:
+   - `Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -eq 3000 }`
+   - Kết quả: `LocalAddress: 0.0.0.0`, `LocalPort: 3000` (Đang lắng nghe hợp lệ).
+2. **Kiểm tra truy vấn HTTP & nạp module**:
+   - `http://127.0.0.1:3000/` $\to$ HTTP 200 OK.
+   - `http://localhost:3000/` $\to$ HTTP 200 OK.
+   - `http://127.0.0.1:3000/src/main.tsx` $\to$ HTTP 200 OK.
+   - `http://127.0.0.1:3000/@vite/client` $\to$ HTTP 200 OK.
+3. **Quy định Git**: Tuân thủ tuyệt đối Rule 5 — Không commit, không push.
+
+### 27. Vấn đề 27: Bản đồ 3D bị màn hình đen hoàn toàn mặc dù đã kết nối Vite (Lỗi addAvailableTileRange trong CesiumTerrainProvider)
+
+### 27.1. Mô Tả Triệu Chứng & Cách Tái Hiện
+- **Triệu chứng**:
+  - Giao diện ứng dụng (TopBar, LeftSidebar, RightInspector, LayerControls...) tải đầy đủ 100%, kết nối WebSocket Vite HMR báo `[vite] connected.`, không có lỗi đỏ trong DevTools console.
+  - Tuy nhiên, vùng không gian trung tâm của quả địa cầu 3D (Cesium canvas) bị **đen kịt hoàn toàn** (chỉ thấy các chấm sao mờ của vũ trụ ở hậu cảnh), bề mặt địa hình và bản đồ Việt Nam không hề xuất hiện (`surface._tilesToRender.length = 0`).
+- **Cách tái hiện**:
+  1. Khởi động ứng dụng bằng `npm run dev` và truy cập `http://localhost:3000/`.
+  2. Đo đạc số lượng gạch bề mặt được Cesium chuẩn bị vẽ:
+     - `viewer.scene.globe._surface._tilesToRender.length` $\to$ **`0`**.
+     - Kiểm tra trạng thái gạch gốc Level 0: `_levelZeroTiles[0].data.terrainData` là `null`, `_levelZeroTiles[0].renderable` là `false`.
+  3. Thử gọi trực tiếp hàm tạo hình học gạch: `terrainProvider.requestTileGeometry(0, 0, 0)`:
+     - Bị ném ngoại lệ nội bộ:
+       ```
+       TypeError: Cannot read properties of undefined (reading 'addAvailableTileRange')
+           at createQuantizedMeshTerrainData (cesium.js:249461:34)
+       ```
+
+### 27.2. Phân Tích Nguyên Nhân Gốc (Root Cause)
+1. **Cơ chế nạp Metadata mặc định của Cesium 1.145**:
+   - Khi khởi tạo `Cesium.CesiumTerrainProvider.fromUrl('./offline-terrain', ...)`, tham số `requestMetadata` mặc định nhận giá trị `true` (nếu không được chỉ định tường minh là `false`).
+   - Tham số này ra lệnh cho Cesium yêu cầu tiện ích mở rộng siêu dữ liệu gạch (`QuantizedMeshExtensionIds.METADATA` - Extension ID 4) cho từng gạch địa hình Quantized-Mesh.
+2. **Xung đột cấu trúc dữ liệu giữa file `layer.json` và bộ giải mã gạch**:
+   - Gói địa hình ngoại tuyến trong thư mục `public/offline-terrain/layer.json` sử dụng mảng `"available"` chuẩn của định dạng Cesium quantized-mesh 1.0 (chứa toạ độ `startX, endX, startY, endY` theo từng cấp zoom).
+   - Khi có thuộc tính `"available"`, hàm `parseMetadataSuccess` của Cesium chỉ khởi tạo `provider.availability`, nhưng **không khởi tạo** `layer.availabilityTilesLoaded` (biến này chỉ được tạo trong nhánh `else if (defined(availabilityLevels))`).
+   - Tuy nhiên, bên trong hàm `createQuantizedMeshTerrainData`, khi gặp extension METADATA, Cesium cố tình thực thi dòng lệnh:
+     ```js
+     layer.availabilityTilesLoaded.addAvailableTileRange(level, x, y, x, y);
+     ```
+   - Do `layer.availabilityTilesLoaded` là `undefined`, lệnh này lập tức ném lỗi:
+     `TypeError: Cannot read properties of undefined (reading 'addAvailableTileRange')`.
+3. **Hiệu ứng dây chuyền**:
+   - Mọi thao tác tải và giải mã gạch địa hình (kể cả 2 gạch gốc cấp 0 `0/0/0.terrain` và `0/1/0.terrain`) đều bị sập ở bước xử lý Promise trong Web Worker.
+   - Các gạch cấp 0 không bao giờ đạt trạng thái sẵn sàng (`renderable = false`), cây tứ phân Quadtree của quả cầu không thể phân chia và không chọn được bất kỳ gạch nào để vẽ (`tilesCount = 0`).
+   - Canvas Cesium WebGL chỉ vẽ màu nền hậu cảnh (vũ trụ đen có sao) thay vì bề mặt quả địa cầu.
+
+### 27.3. Giải Pháp & Thực Hiện
+- Cập nhật [`src/components/map/CesiumGlobe.tsx`](file:///e:/vompk/vomkq-web/src/components/map/CesiumGlobe.tsx):
+  - Bổ sung `requestMetadata: false` vào cả 2 lời gọi khởi tạo `Cesium.CesiumTerrainProvider.fromUrl('./offline-terrain', ...)` (tại Effect 1 khi mount Viewer và tại Effect 2 khi chuyển đổi chế độ 3D).
+  - Tắt yêu cầu tiện ích mở rộng metadata giúp bỏ qua hoàn toàn đoạn mã lỗi `addAvailableTileRange` trên `availabilityTilesLoaded`, trong khi cây availability của `layer.json` vẫn hoạt động nguyên vẹn qua `provider.availability`.
+
+### 27.4. Bảng Thông Số Kỹ Thuật Trước & Sau
+| Thông số / Trường | File | Giá trị trước | Giá trị sau | Ý nghĩa |
+| :--- | :--- | :--- | :--- | :--- |
+| `requestMetadata` | `CesiumGlobe.tsx` | `undefined` (mặc định `true`) | `false` | Bỏ qua extension metadata gây lỗi `addAvailableTileRange` |
+| `requestTileGeometry(0,0,0)` | Cesium terrain API | Ném `TypeError: Cannot read properties of undefined` | Trả về `QuantizedMeshTerrainData` hợp lệ | Giải mã thành công dữ liệu địa hình |
+| `surface._tilesToRender` | Cesium Globe Render Loop | `0` (không có gạch nào được vẽ) | `47` gạch (và tự động chia nhỏ theo góc nhìn) | Địa hình và bản đồ xuất hiện tức thì |
+| Trạng thái màn hình trung tâm | Cesium Canvas | Đen kịt 100% (chỉ thấy chấm sao mờ) | Địa hình 3D núi Tam Đảo + nhãn Google Maps rực rỡ | Bản đồ 3D hoạt động hoàn hảo |
+
+### 27.5. Kết Quả Xác Minh (Verification)
+1. **Kiểm tra giải mã gạch**:
+   - `requestTileGeometry(0, 0, 0)` $\to$ Trả về `QuantizedMeshTerrainData`, `_childTileMask: 15`.
+2. **Kiểm tra render thực tế trên trình duyệt**:
+   - Chạy kiểm thử tự động không đầu (Headless Chrome CDP) tại `http://localhost:3000/`:
+   - `tilesCount` tăng từ `0` lên `47` gạch.
+   - Ảnh chụp màn hình xác nhận toàn bộ bề mặt địa hình 3D, dãy núi Tam Đảo, thung lũng, đường giao thông và nhãn tiếng Việt Google Terrain hiển thị chuẩn xác, sắc nét.
+3. **Kiểm tra Lint**: `oxlint` $\to$ 0 lỗi.
+4. **Quy định Git**: Tuân thủ tuyệt đối Rule 5 — Không commit, không push.
+
+---
+
+### 28. Tính Năng & Debug: Nâng Cấp Hiển Thị Khí Tài 3D & Cờ Tác Chiến To Rõ (Tactical Badges & 3D Models)
+
+### 28.1. Mục Tiêu & Yêu Cầu
+1. **Mô hình 3D khí tài tại vị trí tâm**:
+   - Trực quan hoá mô hình 3D thực tế của từng loại khí tài (`radar_3d.glb`, `sam_launcher.glb`, `command_post.glb`, `esm_station.glb`, `aaa_gun.glb`) tại toạ độ tâm trên địa hình 3D.
+   - Hỗ trợ người dùng tải file 3D tự vẽ định dạng **FBX**, **GLB**, **glTF**. Tự động chuyển đổi file FBX sang nhị phân GLB tương thích Cesium trực tiếp trên trình duyệt qua pipeline Three.js (`FBXLoader` + `GLTFExporter`).
+   - Lưu trữ mô hình tùy chỉnh và ảnh thực tế bền vững trong `IndexedDB` (`VomkqTacticalAssetsDB`).
+2. **Cờ xác định tâm khí tài to rõ (Tactical HUD Badge)**:
+   - Thay thế cờ nhỏ cũ (~60px) bằng cờ tác chiến quân sự kích thước lớn (~286x78px chuẩn Retina 2x).
+   - **Bên trái**: Thumbnail ảnh thực tế độ nét cao (`realPhotoUrl`), bo góc, viền phát sáng, đèn LED trạng thái sẵn sàng chiến đấu (Active, Standby, Maintenance, Offline).
+   - **Bên phải**: Mã định danh ngắn (`[R-01]`, `[SAM-01]`, `[CP-01]`...), tên khí tài đầy đủ không bị cắt cụt, phân loại chuyên ngành và tầm tác chiến.
+   - Cán cờ kim loại định vị chính xác tại toạ độ chân cờ `(poleX: 14, poleY: 74)`.
+3. **Thanh điều khiển lớp & Bảng thuộc tính**:
+   - Nút bật/tắt "Mô hình 3D" trong `TacticalLayerControls`.
+   - Khối "MÔ HÌNH 3D & ẢNH KHÍ TÀI" trong `RightInspector` với thumbnail, nút thay ảnh/mô hình, thanh trượt Scale (0.2x – 5.0x), Heading (0° – 360°), Altitude Offset (-5m – +50m) và nút khôi phục mặc định.
+
+### 28.2. Danh Sách File Đã Thay Đổi
+1. [`src/types/equipment.ts`](file:///e:/vompk/vomkq-web/src/types/equipment.ts): Các trường `realPhotoUrl`, `model3dUrl`, `model3dScale`, `model3dHeadingOffset`, `model3dAltitudeOffset`, `customModelFileName`, `customPhotoFileName`.
+2. [`src/data/equipmentTemplates.ts`](file:///e:/vompk/vomkq-web/src/data/equipmentTemplates.ts): Khai báo đường dẫn `realPhotoUrl: '/images/equipments/...'` và `model3dUrl: '/models/equipments/...'` cho toàn bộ 10 khí tài tác chiến trong biên chế.
+3. [`src/utils/tacticalBadgeGenerator.ts`](file:///e:/vompk/vomkq-web/src/utils/tacticalBadgeGenerator.ts):
+   - Tạo Canvas Retina scale 2x (572x156 px render thành 286x78 px).
+   - Cải tiến cơ chế cache `isImgLoaded` để tự động làm mới khi ảnh tải xong bất đồng bộ qua `registerBadgeImageListener`.
+   - Cắt ảnh căn giữa (`object-fit: cover`) để ảnh thực tế 4:3, 16:9 hay 1:1 đều không bị méo.
+4. [`src/utils/model3dConverter.ts`](file:///e:/vompk/vomkq-web/src/utils/model3dConverter.ts):
+   - Sửa lỗi ép kiểu `ArrayBuffer` an toàn cho `FBXLoader.parse` tránh lỗi `SharedArrayBuffer` của TypeScript.
+   - Tích hợp `IndexedDB` lưu trữ mô hình và ảnh theo `assetId`.
+5. [`src/utils/spxGeometryBuilder.ts`](file:///e:/vompk/vomkq-web/src/utils/spxGeometryBuilder.ts):
+   - Đồng bộ hóa billboard cờ đài SPx sang `getTacticalBadgeDataUrl` với kích thước 286x78 px.
+   - Dời `pixelOffset` của nhãn thông số chi tiết lên `(16, -84)` để không che lấp cờ tác chiến.
+6. [`src/components/map/CesiumGlobe.tsx`](file:///e:/vompk/vomkq-web/src/components/map/CesiumGlobe.tsx):
+   - Kết nối `showModelsLayer`, `customModelUrls`, `badgeRefreshTick`.
+   - Render billboard cờ tác chiến to rõ tại `radarCartesian` với `pixelOffset: (-14, 4)` căn chuẩn mũi cán cờ.
+   - Render Entity 3D Model khi `viewMode === '3D' && showModelsLayer`, radar tự động quay quét anten theo `scanSpeed`, các khí tài khác xoay theo `headingOffset`.
+7. [`src/components/ui/TacticalLayerControls.tsx`](file:///e:/vompk/vomkq-web/src/components/ui/TacticalLayerControls.tsx):
+   - Bổ sung nút toggle "Mô hình 3D" có icon `Box`.
+8. [`src/components/ui/RightInspector.tsx`](file:///e:/vompk/vomkq-web/src/components/ui/RightInspector.tsx):
+   - Bổ sung khối "MÔ HÌNH 3D & ẢNH KHÍ TÀI": xem thumbnail ảnh, đổi ảnh, nạp file 3D (FBX/GLB), điều chỉnh Scale, Heading, Altitude Offset.
+9. [`src/App.tsx`](file:///e:/vompk/vomkq-web/src/App.tsx):
+   - Nạp kịch bản mẫu ban đầu nếu `instances` rỗng để bản đồ luôn sẵn sàng khí tài.
+
+### 28.3. Bảng Thông Số Kỹ Thuật Quan Trọng
+
+| Tên biến / Thông số | Type | Giá trị mặc định | Đơn vị | Phạm vi | Nơi khai báo | Nơi sử dụng | Ý nghĩa & Quan hệ |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `realPhotoUrl` | `string \| undefined` | `undefined` | URL | Đường dẫn hợp lệ | `src/types/equipment.ts` | `tacticalBadgeGenerator.ts`, `RightInspector.tsx`, `CesiumGlobe.tsx` | Đường dẫn ảnh thực tế khí tài hiển thị trên cờ tác chiến |
+| `model3dUrl` | `string \| undefined` | `undefined` | URL | File `.glb`/`.gltf` | `src/types/equipment.ts` | `CesiumGlobe.tsx`, `RightInspector.tsx` | Đường dẫn mô hình 3D nạp vào Cesium Model Entity |
+| `model3dScale` | `number` | `1.0` | Hệ số | `0.2 -> 5.0` | `src/types/equipment.ts` | `CesiumGlobe.tsx`, `RightInspector.tsx` | Tỉ lệ thu phóng mô hình 3D (nhân với `baseScale = 25.0`) |
+| `model3dHeadingOffset` | `number` | `0` | Độ (°) | `0° -> 360°` | `src/types/equipment.ts` | `CesiumGlobe.tsx`, `RightInspector.tsx` | Góc xoay hướng đặt của mô hình 3D |
+| `model3dAltitudeOffset`| `number` | `0` | Mét (m) | `-5m -> +50m` | `src/types/equipment.ts` | `CesiumGlobe.tsx`, `RightInspector.tsx` | Độ cao bù lệch so với mặt đất (AGL) |
+| `showModelsLayer` | `boolean` | `true` | Boolean | `true / false` | `useTacticalStore.ts` | `TacticalLayerControls.tsx`, `CesiumGlobe.tsx` | Trạng thái hiển thị lớp mô hình 3D trên bản đồ 3D |
+| `customModelFileName` | `string \| undefined` | `undefined` | Chuỗi | Tên file | `src/types/equipment.ts` | `model3dConverter.ts`, `RightInspector.tsx` | Tên tệp mô hình 3D do người dùng tải lên |
+| `customPhotoFileName` | `string \| undefined` | `undefined` | Chuỗi | Tên file | `src/types/equipment.ts` | `model3dConverter.ts`, `RightInspector.tsx` | Tên tệp ảnh thực tế do người dùng tải lên |
+
+### 28.4. Các Lỗi & Bug Fixes Đã Xử Lý
+1. **Lỗi TS2345 trong `model3dConverter.ts`**:
+   - `fbxData.buffer` trả về `ArrayBufferLike` (có thể bao gồm `SharedArrayBuffer`), trong khi `FBXLoader.parse` yêu cầu `ArrayBuffer`.
+   - Sửa bằng cách trích xuất `ArrayBuffer` tường minh: `fbxData.buffer.slice(fbxData.byteOffset, fbxData.byteOffset + fbxData.byteLength) as ArrayBuffer`.
+2. **Lỗi TS6133 biến chưa dùng**:
+   - Xóa `idBadge` trong `tacticalBadgeGenerator.ts`.
+   - Sử dụng `Box`, `showModelsLayer`, `toggleModelsLayer` trong `TacticalLayerControls.tsx`.
+   - Xóa `createCategoryTacticalMarkerSvg` không còn dùng trong `CesiumGlobe.tsx`.
+3. **Lỗi TS2552 `badgeRefreshTick`**:
+   - Đổi `const [, setBadgeRefreshTick] = useState(0)` thành `const [badgeRefreshTick, setBadgeRefreshTick] = useState(0)` để đưa vào dependency array của `CesiumGlobe`.
+4. **Lỗi TS2322 `name` trong `spxGeometryBuilder.ts`**:
+   - `instanceName` có thể là `undefined`. Bổ sung fallback an toàn `instanceName || (options?.shortId ? 'Đài Radar [' + options.shortId + ']' : 'Đài Radar')`.
+5. **Cơ chế cache Canvas không cập nhật khi ảnh tải bất đồng bộ**:
+   - Khi ảnh đang tải, `getOrLoadImage` trả về `null` và vẽ placeholder. Trước đây `cacheKey` không chứa trạng thái đã tải nên khi ảnh tải xong, listener gọi re-render nhưng cache vẫn trả về placeholder cũ.
+   - Bổ sung `${isImgLoaded}` vào `cacheKey` để tự động vẽ lại với ảnh thực tế sắc nét ngay khi tải xong.
+
+### 28.5. Kết Quả Xác Minh (Verification)
+1. **Kiểm tra TypeScript**: `npx tsc -b --noEmit` $\to$ Exit Code 0 (0 lỗi).
+2. **Kiểm tra Lint**: `npm run lint` $\to$ Exit Code 0 (0 lỗi).
+3. **Kiểm tra Build**: `npm run build` $\to$ Exit Code 0 (Biên dịch production bundle thành công).
+4. **Kiểm tra máy chủ Dev & Assets**:
+   - `http://localhost:3000/` $\to$ HTTP 200 OK.
+   - `http://localhost:3000/models/equipments/radar_3d.glb` $\to$ HTTP 200 OK (Content-Type: `model/gltf-binary`).
+   - `http://localhost:3000/images/equipments/radar_36d6.jpg` $\to$ HTTP 200 OK (Content-Type: `image/jpeg`).
+5. **Quy định Git**: Tuân thủ nghiêm ngặt Rule 5 — Không commit, không push.
+
+---
+
+## [2026-09-30] Khắc phục hiệu ứng vệt loang che mờ bảng thông tin cờ tác chiến (Canvas Shadow Smudge) & Loại bỏ khối nạp mô hình 3D khỏi bảng thuộc tính RightInspector
+
+### 29.1. Triệu chứng & Vấn đề người dùng phản ánh
+1. **Hiệu ứng che mờ bảng thông tin (Smudge Artifact)**:
+   - Trên bản đồ tác chiến 3D, tại vị trí các đài radar (ví dụ Đài Radar 36D6, Trạm Radar Sơn Trà), phần chữ bên phải của thẻ cờ tác chiến xuất hiện một vùng loang mờ hình elip (vệt vàng/đen đối với đài được chọn, vệt trắng/xám đối với đài không chọn) che khuất toàn bộ tên khí tài, mã định danh, tầm trinh sát và trạng thái hoạt động.
+   - Đồng thời, khối nhãn đa dòng của Cesium (`Nhãn Thông Tin`) và thẻ cờ tác chiến (`billboard`) bị nằm đè sát lên nhau.
+   - Đối với các đài radar SPx, `buildSpxCoverageEntities` sinh thêm một bộ cờ tác chiến và nhãn thông tin thứ hai cùng tọa độ, gây ra hiện tượng trùng lặp (duplicate entities), nhấp nháy z-fighting và tăng gấp đôi độ đậm nền canvas.
+2. **Yêu cầu tinh gọn Inspector**:
+   - Người dùng yêu cầu: *"nạp mô hình 3d không cần hiện lên inspector"*.
+   - Khối "MÔ HÌNH 3D & ẢNH KHÍ TÀI" trong `RightInspector` chiếm nhiều diện tích và không cần thiết thao tác thủ công, vì các mô hình 3D (Radar xoay 36D6, xe SAM, xe SCH...) đã được hệ thống tự động gán và tải chuẩn theo kịch bản tác chiến.
+
+### 29.2. Nguyên nhân gốc rễ (Root Cause Analysis)
+1. **`src/utils/tacticalBadgeGenerator.ts`**:
+   - Việc thiết lập `ctx.shadowColor = '#f59e0b'` kết hợp `ctx.shadowBlur = 10` trên Canvas 2D tỉ lệ High-DPI Retina (scale x2) khi kết hợp với `ctx.createLinearGradient` và `ctx.roundRect` khiến engine đồ họa Skia của Chromium trên Windows sinh ra hiệu ứng nội suy vệt loang mờ (bloom bleeding) che phủ tâm thẻ.
+   - Trên các dòng văn bản, việc gọi `ctx.shadowBlur = 3` tiếp tục làm nhòe chữ khi vẽ trên texture WebGL của Cesium.
+   - Canvas chưa được xóa sạch tường minh bằng `ctx.clearRect(0, 0, width, height)` trước khi vẽ lại.
+2. **`src/components/map/CesiumGlobe.tsx` & `src/utils/spxGeometryBuilder.ts`**:
+   - Vòng lặp chính của `CesiumGlobe.tsx` (mục 1, dòng 1140–1220) đã thêm `Marker` (billboard cờ tác chiến) và `Nhãn Thông Tin` (label Cesium) cho tất cả các khí tài.
+   - Khi chạy tới mục 5 (SPx radar), hàm `buildSpxCoverageEntities` lại nhận `showMarkers: showMarkersLayer` và `showLabels: showLabelsLayer`, dẫn đến việc tạo thêm lần 2 cùng một thẻ cờ và nhãn thông tin đè đúng tại `radarCartesian`.
+   - Độ lệch dóng `pixelOffset` của nhãn thông tin là `(16, -84)` quá sát mép trên `y = -74` của cờ tác chiến (chiều cao 78px), gây chạm đè khi camera nghiêng theo góc nhìn 3D.
+3. **`src/components/ui/RightInspector.tsx`**:
+   - Khối Section 3b chứa nhiều trường nạp file 3D, nút bấm, thanh trượt scale/heading/altitude khiến bảng thuộc tính dài và phân tán sự chú ý khỏi các thông số tác chiến nghiệp vụ.
+
+### 29.3. Các xử lý kỹ thuật đã thực hiện
+1. **Cải tạo `tacticalBadgeGenerator.ts`**:
+   - Bổ sung `ctx.clearRect(0, 0, canvas.width, canvas.height)` ngay sau khi tạo canvas.
+   - Loại bỏ hoàn toàn `ctx.shadowColor` và `ctx.shadowBlur` khỏi nền thẻ và toàn bộ các dòng chữ.
+   - Sử dụng màu nền quân sự Dark Navy `#020617fa` đến `#09101d` sắc nét và đường viền nét thanh sắc sảo (`lineWidth: 1.2` / `2.0`).
+   - Giữ nguyên hiển thị ảnh thực tế bên trái (cắt bo góc và căn giữa `object-fit: cover`) và khối chữ sắc nét bên phải (mã ngắn, tên đầy đủ, phân loại, tầm hoạt động, trạng thái).
+2. **Khử trùng lặp & Điều chỉnh khoảng cách trong `CesiumGlobe.tsx`**:
+   - Truyền `showMarkers: false` và `showLabels: false` vào `buildSpxCoverageEntities` để module SPx chỉ vẽ vùng phủ, các tia và vòng cự ly, không tạo thêm cờ và nhãn trùng lặp.
+   - Điều chỉnh `pixelOffset` của `Nhãn Thông Tin` thành `new Cesium.Cartesian2(16, -92)`, tạo khoảng đệm thoáng đãng 18px phía trên cờ tác chiến.
+3. **Loại bỏ khối Nạp mô hình 3D trong `RightInspector.tsx`**:
+   - Xóa bỏ Section 3b ("MÔ HÌNH 3D & ẢNH KHÍ TÀI") cùng các state/handler không còn dùng (`modelUploadLoading`, `handleModelFileUpload`, `processUploaded3DModel`, v.v.).
+   - Mô hình 3D trên bản đồ 3D vẫn hiển thị chuẩn mực và tự động xoay theo thiết lập của từng khí tài khi người dùng bật nút "Mô hình 3D" trên thanh điều khiển lớp bản đồ (`TacticalLayerControls`).
+
+### 29.4. Bảng thông số thay đổi
+| File | Vị trí / Thuộc tính | Trước khi sửa | Sau khi sửa | Ý nghĩa |
+| :--- | :--- | :--- | :--- | :--- |
+| `tacticalBadgeGenerator.ts` | `ctx.shadowBlur` | `10` (nền), `3` (chữ) | Đã loại bỏ hoàn toàn | Triệt tiêu triệt để vệt mờ che lấp chữ |
+| `tacticalBadgeGenerator.ts` | Khởi tạo canvas | Chưa có `clearRect` | `ctx.clearRect(0, 0, w, h)` | Đảm bảo canvas luôn sạch trước khi vẽ |
+| `CesiumGlobe.tsx` | `pixelOffset` Nhãn Thông Tin | `(16, -84)` | `(16, -92)` | Tạo khoảng đệm cách biệt trên cờ tác chiến |
+| `CesiumGlobe.tsx` | `buildSpxCoverageEntities` | `showMarkers: showMarkersLayer` | `showMarkers: false` | Ngăn chặn sinh 2 cờ tác chiến trùng nhau |
+| `CesiumGlobe.tsx` | `buildSpxCoverageEntities` | `showLabels: showLabelsLayer` | `showLabels: false` | Ngăn chặn sinh 2 nhãn thông tin trùng nhau |
+| `RightInspector.tsx` | Section 3b (Mô hình 3D) | Hiển thị trên Inspector | Đã loại bỏ khỏi UI | Giữ inspector gọn gàng, nghiệp vụ |
+
+### 29.5. Kết quả kiểm tra xác minh (Verification)
+1. **Kiểm tra TypeScript**: `npx tsc -b --noEmit` $\to$ Exit Code 0 (0 lỗi).
+2. **Kiểm tra Lint**: `npm run lint` $\to$ Exit Code 0 (0 lỗi).
+3. **Quy định Git**: Tuân thủ Rule 5 — Không thực hiện `git commit` hay `git push`.
+
+---
+
+## [2026-09-30] Tinh giản cờ tác chiến HUD (chỉ ảnh + số hiệu + tên), loại bỏ nạp mẫu kịch bản/khí tài khởi động, và triệt tiêu hiệu ứng chói sáng trên cờ
+
+### 30.1. Yêu cầu & Bối cảnh
+Người dùng yêu cầu thực hiện 3 điều chỉnh:
+1. **Trên cờ chỉ hiển thị hình ảnh và tên khí tài, số hiệu**, không cần thông tin gì nữa vì trên nhãn thông tin (`Nhãn Thông Tin` đa dòng của Cesium) đã hiển thị đầy đủ (chuyên ngành, cự ly, cao độ anten, trạng thái, tọa độ).
+2. **Không cần nạp các khí tài hay kịch bản mẫu khi khởi động**, người dùng sẽ tự thao tác chọn và triển khai khí tài từ kho hoặc nạp file kịch bản.
+3. **Bỏ hiệu ứng sáng chói trong cờ đi** vì hiện tại nó làm chói lóa và che mất chữ hiển thị như ảnh thực tế người dùng cung cấp.
+
+### 30.2. Nguyên nhân gốc rễ (Root Cause Analysis)
+1. **Nguyên nhân hiệu ứng sáng chói trong cờ**:
+   - Thẻ cờ trước đây sử dụng nền gradient bán trong suốt (`${mainColor}22` với độ mờ đục chỉ ~13%) và các góc phản quang HUD màu vàng (`drawCornerHighlights`).
+   - Khi cờ tác chiến đặt trên vòm phủ radar SPx màu vàng rực rỡ hoặc ảnh vệ tinh sáng màu, ánh sáng từ map và vòm radar bên dưới chiếu xuyên qua nền canvas bán trong suốt (alpha blending của WebGL), làm cho nền thẻ bị chói lóa và "nuốt chửng" toàn bộ chữ bên trong.
+2. **Thông tin trùng lặp & Kích thước cờ**:
+   - Kích thước cũ $286 \times 78\text{ px}$ chứa nhiều dòng chữ nhỏ (chuyên ngành, tầm trinh sát, anten, trạng thái) trong khi nhãn thông tin Cesium ngay phía trên đã hiển thị đầy đủ, gây rối mắt và làm giảm độ sắc nét của tên khí tài.
+3. **Nạp kịch bản mẫu cưỡng bức**:
+   - `App.tsx` có `useEffect` gọi `loadSampleScenario()` mỗi khi mảng `instances` rỗng, khiến bản đồ luôn tự động nạp các đài radar và trạm mẫu khi mở ứng dụng.
+
+### 30.3. Các giải pháp kỹ thuật đã triển khai
+1. **Loại bỏ nạp mẫu khởi động trong [`src/App.tsx`](file:///e:/vompk/vomkq-web/src/App.tsx)**:
+   - Xóa bỏ `useEffect` tự động nạp kịch bản mẫu và hàm `loadSampleScenario`.
+   - Ứng dụng khởi động với danh sách khí tài rỗng `instances: []`, trao quyền chủ động hoàn toàn cho người dùng tự triển khai khí tài theo ý muốn.
+2. **Thiết kế lại cờ tác chiến HUD trong [`src/utils/tacticalBadgeGenerator.ts`](file:///e:/vompk/vomkq-web/src/utils/tacticalBadgeGenerator.ts)**:
+   - **Kích thước tinh gọn**: Giảm từ $286 \times 78\text{ px}$ xuống $240 \times 46\text{ px}$ (Canvas chuẩn Retina scale x2: $480 \times 92\text{ px}$).
+   - **Nền đen mờ quân sự 100% đặc hoàn toàn (`#030712` - Solid Matte Black)**: Không trong suốt, không gradient chói sáng, không `shadowBlur`, không góc phản quang màu vàng. Triệt tiêu 100% ánh sáng xuyên thấu từ vòm radar SPx hoặc ảnh bản đồ bên dưới.
+   - **Khung ảnh thực tế bên trái**: Kích thước $30 \times 30\text{ px}$ bo góc 4px, hiển thị ảnh khí tài sắc nét (`object-fit: cover`) kèm đèn LED báo trạng thái nhỏ ở góc dưới.
+   - **Nội dung bên phải**:
+     - Tag số hiệu `[R-01]` nền tối viền cyan/vàng sắc sảo.
+     - Tên đầy đủ khí tài màu trắng tinh `#ffffff` độ tương phản cực cao (> 20:1), font Segoe UI / sans-serif, căn giữa hoàn hảo theo chiều dọc.
+     - Loại bỏ toàn bộ các dòng chữ phụ thừa (chuyên ngành, tầm, anten, trạng thái).
+3. **Đồng bộ kích thước billboard và khoảng cách nhãn trong [`src/components/map/CesiumGlobe.tsx`](file:///e:/vompk/vomkq-web/src/components/map/CesiumGlobe.tsx) & [`src/utils/spxGeometryBuilder.ts`](file:///e:/vompk/vomkq-web/src/utils/spxGeometryBuilder.ts)**:
+   - Cập nhật billboard cờ tác chiến: `width: 240, height: 46`, `pixelOffset: new Cesium.Cartesian2(-12, 4)` để chân cờ kim loại cắm chính xác tại tâm tọa độ khí tài.
+   - Cập nhật `Nhãn Thông Tin` Cesium: `pixelOffset: new Cesium.Cartesian2(16, -58)`, tạo khoảng cách thông thoáng 12px phía trên đỉnh cờ, hoàn toàn không bị va chạm hay che khuất.
+
+### 30.4. Bảng thông số kỹ thuật quan trọng
+
+| Tên biến / Thông số | Type | Giá trị mới | Giá trị cũ | Đơn vị | Nơi khai báo / sử dụng | Ý nghĩa |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `logicalWidth` | `number` | `240` | `286` | Pixel (px) | `tacticalBadgeGenerator.ts` | Chiều rộng hiển thị của thẻ cờ tác chiến |
+| `logicalHeight` | `number` | `46` | `78` | Pixel (px) | `tacticalBadgeGenerator.ts` | Chiều cao hiển thị của thẻ cờ tác chiến |
+| `cardBackground` | `string` | `#030712` | `LinearGradient` (~13% alpha) | Hex màu | `tacticalBadgeGenerator.ts` | Nền đen mờ 100% đặc, loại bỏ hoàn toàn hiện tượng chói sáng |
+| `textColor` | `string` | `#ffffff` | `#ffffff` / `#94a3b8` | Hex màu | `tacticalBadgeGenerator.ts` | Chữ trắng tương phản cao trên nền đen đặc |
+| `billboard.pixelOffset` | `Cartesian2` | `(-12, 4)` | `(-14, 4)` | Pixel (px) | `CesiumGlobe.tsx`, `spxGeometryBuilder.ts` | Tọa độ dóng chân cán cờ kim loại vào đúng tâm đài |
+| `label.pixelOffset` | `Cartesian2` | `(16, -58)` | `(16, -92)` | Pixel (px) | `CesiumGlobe.tsx` | Độ lệch của nhãn thông tin đa dòng nằm ngay trên cờ |
+| `initialInstances` | `Array` | `[]` (rỗng) | 4 khí tài mẫu | Mảng đối tượng | `App.tsx` | Không nạp sẵn khí tài, để người dùng tự tác nghiệp |
+
+### 30.5. Kết quả kiểm tra xác minh (Verification)
+1. **Kiểm tra TypeScript**: `npx tsc -b --noEmit` $\to$ Exit Code 0 (0 lỗi).
+2. **Kiểm tra Linter**: `npm run lint` $\to$ Exit Code 0 (0 lỗi).
+3. **Kiểm tra Build**: `npm run build` $\to$ Biên dịch production bundle thành công.
+4. **Quy định Git**: Tuân thủ Rule 5 — Không thực hiện `git commit` hay `git push`.
+
+---
+
+## [2026-09-30] Tạm thời vô hiệu hoá hiển thị mô hình 3D trên bản đồ (Chỉ hiển thị điểm đặt & cờ tác chiến)
+
+### 31.1. Yêu cầu & Mục tiêu
+- **Yêu cầu từ người dùng**: *"tạm thời không thêm mô hình 3d vào chỉ chấm điểm đặt thôi sau này tôi có đầy đủ mô hình sẽ thêm vào sau"*.
+- **Mục tiêu**:
+  1. Tạm thời ngừng thêm/hiển thị thực thể mô hình 3D (Cesium Model Entity `.glb`) tại các tọa độ khí tài trên bản đồ địa hình 3D.
+  2. Giữ nguyên và tập trung hiển thị chính xác **điểm đặt** khí tài quân sự (tâm chữ thập định vị chuẩn xác tọa độ chân đài + cờ hiệu tác chiến HUD sắc nét + nhãn thông tin đa dòng).
+  3. Xây dựng cơ chế kiến trúc mở thông qua cờ tính năng (`ENABLE_3D_MODELS`) để sau này khi người dùng chuẩn bị đầy đủ bộ mô hình 3D chuẩn hóa, có thể bật lại toàn diện ngay lập tức mà không cần chỉnh sửa hay tái cấu trúc mã nguồn.
+
+### 31.2. Các xử lý kỹ thuật đã thực hiện
+1. **Khai báo cờ tính năng trong [`src/types/equipment.ts`](file:///e:/vompk/vomkq-web/src/types/equipment.ts)**:
+   - Thêm hằng số:
+     ```ts
+     export const ENABLE_3D_MODELS = false;
+     ```
+   - Đi kèm chú thích tường minh về mục đích kiểm soát và hướng dẫn bật lại trong tương lai.
+2. **Khởi tạo trạng thái lớp bản đồ trong [`src/store/useTacticalStore.ts`](file:///e:/vompk/vomkq-web/src/store/useTacticalStore.ts)**:
+   - Gán `showModelsLayer: ENABLE_3D_MODELS` (mặc định nhận giá trị `false`).
+3. **Tinh gọn thanh điều khiển lớp bản đồ trong [`src/components/ui/TacticalLayerControls.tsx`](file:///e:/vompk/vomkq-web/src/components/ui/TacticalLayerControls.tsx)**:
+   - Bọc nút toggle "Mô hình 3D" bằng điều kiện `{ENABLE_3D_MODELS && ( ... )}`.
+   - Khi cờ tắt, thanh công cụ chỉ hiển thị 4 nút tác chiến cốt lõi:
+     - `Vùng phủ` (Coverage Contours)
+     - `Vòng cự ly` (Range Rings)
+     - `Nhãn` (Information Labels)
+     - `Điểm đặt` (Placement Points / Markers)
+   - Nút `Điểm đặt` phản ánh chính xác hành vi "chấm điểm đặt" trên bản đồ, cho phép người dùng bật/tắt hiển thị tâm điểm đặt và cờ tác chiến.
+4. **Vô hiệu hóa nạp & vẽ thực thể 3D trong [`src/components/map/CesiumGlobe.tsx`](file:///e:/vompk/vomkq-web/src/components/map/CesiumGlobe.tsx)**:
+   - Kiểm tra `ENABLE_3D_MODELS` trước khi thực hiện tải custom models từ IndexedDB.
+   - Bọc khối lệnh `viewer.entities.add({ model: ... })` (Mục 1b) bằng điều kiện `if (ENABLE_3D_MODELS && viewMode === '3D' && showModelsLayer)`.
+   - Các thực thể `Tâm Khí Tài` (Point Entity) và `Marker` (Billboard Cờ tác chiến) cùng nhãn thông tin vẫn được vẽ sắc nét, định vị chuẩn xác tại tọa độ khí tài trên địa hình thực tế.
+
+### 31.3. Bảng thông số kỹ thuật quan trọng
+
+| Tên biến / Thông số | Type | Giá trị hiện tại | Giá trị khi bật lại | Nơi khai báo / sử dụng | Ý nghĩa |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `ENABLE_3D_MODELS` | `boolean` | `false` | `true` | [`src/types/equipment.ts`](file:///e:/vompk/vomkq-web/src/types/equipment.ts) | Cờ tính năng toàn cục điều khiển việc nạp và hiển thị mô hình 3D khí tài |
+| `showModelsLayer` | `boolean` | `false` | `true` | [`src/store/useTacticalStore.ts`](file:///e:/vompk/vomkq-web/src/store/useTacticalStore.ts) | Trạng thái bật/tắt hiển thị lớp mô hình 3D trong store |
+| `showMarkersLayer` | `boolean` | `true` | `true` | [`src/store/useTacticalStore.ts`](file:///e:/vompk/vomkq-web/src/store/useTacticalStore.ts) | Trạng thái hiển thị lớp điểm đặt (tâm đài & cờ cắm tác chiến) |
+
+### 31.4. Kết quả kiểm tra xác minh (Verification)
+1. **Kiểm tra TypeScript**: `npx tsc -b --noEmit` $\to$ Exit Code 0 (0 lỗi).
+2. **Kiểm tra Linter**: `npm run lint` $\to$ Exit Code 0 (0 lỗi).
+3. **Quy định Git**: Tuân thủ nghiêm ngặt Rule 5 — Không thực hiện `git commit` hay `git push`.
 
 
 

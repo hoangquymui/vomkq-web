@@ -5,7 +5,7 @@ import type {
   EquipmentTemplate,
   PresetLocation,
 } from '../types/equipment';
-import { CATEGORY_META } from '../types/equipment';
+import { CATEGORY_META, ENABLE_3D_MODELS } from '../types/equipment';
 import type { LayoutSaveData, SavedEquipmentEntry } from '../types/layout';
 import { EQUIPMENT_TEMPLATES, PRESET_LOCATIONS } from '../data/equipmentTemplates';
 import { DEFAULT_SPX_CONFIG } from '../types/spxRadarCoverage';
@@ -228,12 +228,14 @@ interface TacticalState {
   showRangeRingsLayer: boolean;
   showLabelsLayer: boolean;
   showMarkersLayer: boolean;
+  showModelsLayer: boolean;
   categoryFilter: EquipmentCategory | 'All';
 
   toggleCoverageLayer: () => void;
   toggleRangeRingsLayer: () => void;
   toggleLabelsLayer: () => void;
   toggleMarkersLayer: () => void;
+  toggleModelsLayer: () => void;
   setCategoryFilter: (category: EquipmentCategory | 'All') => void;
 
   // Radar Coverage Actions
@@ -310,11 +312,12 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   showSweeps: true,
   showSensorNetwork: true,
 
-  // 2D Tactical Layer Controls & Filters
+  // 2D & 3D Tactical Layer Controls & Filters
   showCoverageLayer: true,
   showRangeRingsLayer: true,
   showLabelsLayer: true,
   showMarkersLayer: true,
+  showModelsLayer: ENABLE_3D_MODELS,
   categoryFilter: 'All',
 
   measurePoints: [],
@@ -341,6 +344,11 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         guidanceMethodVi: instance.guidanceMethodVi ?? tmpl?.guidanceMethodVi,
         frequencyRangeGhz: instance.frequencyRangeGhz ?? tmpl?.frequencyRangeGhz,
         networkGroupId: instance.networkGroupId ?? tmpl?.networkGroupId,
+        realPhotoUrl: instance.realPhotoUrl || tmpl?.realPhotoUrl,
+        model3dUrl: instance.model3dUrl || tmpl?.model3dUrl,
+        model3dScale: instance.model3dScale ?? tmpl?.model3dScale ?? 1.0,
+        model3dHeadingOffset: instance.model3dHeadingOffset ?? tmpl?.model3dHeadingOffset ?? 0,
+        model3dAltitudeOffset: instance.model3dAltitudeOffset ?? tmpl?.model3dAltitudeOffset ?? 0,
       };
       return {
         instances: [...state.instances, instanceWithProfile],
@@ -461,6 +469,8 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     set((state) => ({ showLabelsLayer: !state.showLabelsLayer })),
   toggleMarkersLayer: () =>
     set((state) => ({ showMarkersLayer: !state.showMarkersLayer })),
+  toggleModelsLayer: () =>
+    set((state) => ({ showModelsLayer: !state.showModelsLayer })),
   setCategoryFilter: (category) => set({ categoryFilter: category }),
 
   // Radar Coverage Initial State & Actions
@@ -1110,15 +1120,17 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         instanceId: 'eq_sam_spyder_haiphong',
         shortId: 'SAM-02',
         templateId: 'sam_spyder',
-        name: 'Trận Địa Tên Lửa Spyder-MR Cảng Hải Phòng',
+        name: 'Trận Địa Tên Lửa Spyder (SR/MR) Cảng Hải Phòng',
         category: 'TenLuaPhongKhong',
         latitude: 20.86,
         longitude: 106.72,
         altitude: 10,
         antennaHeightAGL: 5,
         rangeKm: 50,
-        minEngagementRangeKm: 1,
+        minEngagementRangeKm: 2,
         maxEngagementAltitudeM: 16000,
+        minEngagementAltitudeM: 20,
+        maxTargetSpeedMps: 800,
         reactionTimeSeconds: 9,
         guidanceMethodVi: 'Chủ động sóng milimet Derby-MR & Hồng ngoại IIR Python-5',
         scanSpeed: 0,
@@ -1127,9 +1139,11 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         coverageHeightKm: 16,
         status: 'Active',
         commandedByInstanceId: c2Id,
-        color: '#f97316',
+        color: '#0ea5e9',
         showDome: true,
         showSweep: false,
+        spyderConfig: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_spyder')?.spyderConfig,
+        samProfiles: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_spyder')?.samProfiles,
         coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_spyder')?.coverageProfile,
       },
       {
@@ -1167,8 +1181,18 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       },
     ];
 
+    const sampleWithModels = sample.map((item) => {
+      const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === item.templateId);
+      return {
+        ...item,
+        realPhotoUrl: item.realPhotoUrl || tmpl?.realPhotoUrl,
+        model3dUrl: item.model3dUrl || tmpl?.model3dUrl,
+        model3dScale: item.model3dScale ?? tmpl?.model3dScale ?? 1.0,
+      };
+    });
+
     set({
-      instances: sample,
+      instances: sampleWithModels,
       selectedInstanceId: 'eq_radar_tamdao',
     });
   },

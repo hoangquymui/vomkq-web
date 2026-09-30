@@ -119,7 +119,7 @@ export interface RadarCoverageResult {
   coneOfSilenceRadiusKm: number; // R_kh_mu = H_mt * cot(eps_max)
   radarHorizonKm: number; // D_nt = 4.12 * (sqrt(ha) + sqrt(Hmt))
   profiles: RayProfile[];
-  
+
   // Thống kê vùng phủ
   totalRays: number;
   blockedRaysCount: number;
