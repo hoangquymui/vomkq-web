@@ -1117,8 +1117,8 @@ export const CesiumGlobe: React.FC = () => {
       const caps = getAssetCapabilities(inst.category);
       const isSpxActive = (viewMode === '2D' || showSpxPanel) && !!spxRes && caps.hasRadarCoverage;
 
-      // 1. Cờ cắm tác chiến & Nhãn thông tin bám địa hình thực (hoặc toạ độ phẳng trong 2D) khi không có SPx
-      if (!isSpxActive) {
+      // 1. Cờ cắm tác chiến & Nhãn thông tin bám địa hình thực (hoặc toạ độ phẳng trong 2D)
+      // Luôn hiển thị độc lập với SPx để đảm bảo đồng bộ UI
         const isPendingCalc = isCalculatingSpx && !spxRes && caps.hasRadarCoverage;
         const shortPrefix = inst.shortId ? `[${inst.shortId}] ` : '';
         const displayName = `${shortPrefix}${inst.name}`;
@@ -1221,7 +1221,6 @@ export const CesiumGlobe: React.FC = () => {
             },
           });
         }
-      }
 
       // 1b. Mô Hình 3D Khí Tài tại Tâm Toạ Độ trên Địa Hình 3D
       // TẠM THỜI TẮT THEO YÊU CẦU: Tạm thời không thêm mô hình 3D vào mà chỉ chấm điểm đặt (tâm đài & cờ tác chiến).
@@ -1937,13 +1936,12 @@ export const CesiumGlobe: React.FC = () => {
           ...(inst.spxConfig || {}),
         };
         // Render vùng phủ đa tầng màu SPx + vòng cự ly đồng tâm + cờ cắm tác chiến & nhãn thông số với Focus/Dimming
-        const spxEntities = buildSpxCoverageEntities(spxRes, instConfig, inst.name, {
+        const spxEntities = buildSpxCoverageEntities(spxRes, instConfig, {
           isSelected,
           hasAnySelected,
           showCoverage: showCoverageLayer,
           showRangeRings: showRangeRingsLayer,
-          showLabels: false, // Cờ tác chiến và nhãn thông tin đã được hiển thị đồng bộ ở mục 1
-          showMarkers: false,
+          showLabels: showLabelsLayer, // Hiển thị nhãn số trên vòng cự ly nếu được bật
           shortId: inst.shortId,
           status: inst.status,
           category: inst.category,

@@ -40,7 +40,7 @@ export const SPYDER_SYSTEM_DEFAULT_CONFIG: SpyderSystemConfig = {
 export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   {
     id: 'radar_36d6',
-    name: 'Đài Radar 36D6 (ST-68UM)',
+    name: 'Đài Radar 36D6',
     category: 'RadarCanhGioi',
     categoryNameVi: 'Radar Cảnh Giới',
     description: 'Radar 3D cảnh giới và chỉ thị mục tiêu tầm trung-xa, bám sát các mục tiêu bay thấp và tên lửa hành trình.',
@@ -87,7 +87,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   },
   {
     id: 'radar_p18',
-    name: 'Đài Radar P-18M (Spoon Rest)',
+    name: 'Đài Radar P-18M',
     category: 'RadarCanhGioi',
     categoryNameVi: 'Radar Cảnh Giới',
     description: 'Radar cảnh giới sóng mét (VHF) chống máy bay tàng hình, tầm phát hiện theo độ cao mục tiêu từ 30km (200m) đến 230km (20.000m).',
@@ -283,7 +283,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   },
   {
     id: 'radar_kolchuga',
-    name: 'Trạm Trinh Sát Thụ Động Kolchuga-M (ESM)',
+    name: 'Trạm Trinh Sát Thụ Động Kolchuga-M',
     category: 'CamBienThuDong',
     categoryNameVi: 'Cảm Biến Thụ Động (ESM)',
     description: 'Hệ thống định vị vô tuyến thụ động (ESM/ELINT), không phát sóng radar, phát hiện mục tiêu qua bức xạ điện từ và đo đài định vị TDoA mạng đa trạm.',
@@ -315,7 +315,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   },
   {
     id: 'sam_s300',
-    name: 'Tổ hợp Tên lửa SAM S-300PMU2 (Favorit)',
+    name: 'Tổ hợp Tên lửa S-300PMU2 (Favorit)',
     category: 'TenLuaPhongKhong',
     categoryNameVi: 'Tên Lửa Phòng Không',
     description: 'Tổ hợp tên lửa phòng không tầm xa chiến lược, đánh chặn máy bay tàng hình, tên lửa hành trình và đạn đạo chiến thuật.',
@@ -361,7 +361,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   },
   {
     id: 'sam_c125_2tm',
-    name: 'Tổ hợp Tên lửa SAM C-125-2TM Pechora-2TM',
+    name: 'Tổ hợp Tên lửa C-125-2TM Pechora-2TM',
     category: 'TenLuaPhongKhong',
     categoryNameVi: 'Tên Lửa Phòng Không',
     description: 'Tổ hợp tên lửa phòng không cơ động cải tiến Pechora-2TM của QĐNDVN, tiêu diệt mục tiêu bay vận tốc đến 900 m/s, cự ly đón 35.4 km, trần bắn 25 km, bám sát và tiêu diệt đồng thời 2 mục tiêu, kháng nhiễu cao, tích hợp ngắm quang truyền hình Karat.',
@@ -408,7 +408,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   },
   {
     id: 'sam_c125m',
-    name: 'Tổ hợp Tên lửa SAM C-125M Pechora',
+    name: 'Tổ hợp Tên lửa C-125M Pechora',
     category: 'TenLuaPhongKhong',
     categoryNameVi: 'Tên Lửa Phòng Không',
     description: 'Tổ hợp tên lửa phòng không tầm trung C-125M (Bảng II.13 - Đài điều khiển C125M), cự ly tiêu diệt đón 25 km, đuổi 22 km, trần bắn 18 km, vận tốc mục tiêu 700 m/s, tham số 16.5 km.',

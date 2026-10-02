@@ -2745,3 +2745,69 @@ Người dùng yêu cầu thực hiện 3 điều chỉnh:
 
 
 
+
+### Vấn đề 30: Vùng mù địa hình (Radar Shadow) trong Mặt cắt 2D và Khu mù đỉnh đầu (Cone of Silence) vòm 3D
+- **Ngày**: 02/10/2026
+- **Tính năng / Module**: RadarCrossSectionPanel (2D), radarDomeGeometry (3D)
+- **Vấn đề / Mục tiêu**:
+  1. Mặt cắt 2D không hiển thị vùng bóng tối (shadow) ngay sau đỉnh núi chắn. Lý do là logic cũ tính "Đoạn không nhìn thấy" dựa trên quỹ đạo mục tiêu ở độ cao H_mt (vd: 10000m). Vì mục tiêu bay quá cao so với núi, nó không rơi vào vùng mù ngay lập tức. Người dùng muốn xem "Vùng mù địa hình" (Radar Shadow) thực sự của đài radar, kéo dài từ mặt đất lên tới tia chắn.
+  2. Nắp vòm 3D (Cone of Silence) đang bị bịt kín bởi một nắp phẳng ở `maxElevationDeg` nối vào centroid. Điều này làm sai lệch vật lý radar, vì vùng mù đỉnh đầu phải lõm xuống tạo thành một cái phễu (nối về tâm ăng-ten).
+- **File đã thay đổi**:
+  - `src/components/ui/RadarCrossSectionPanel.tsx`
+  - `src/utils/radarDomeGeometry.ts`
+- **Tên thông số / biến quan trọng**:
+  - `thetaTarget`, `thetaTerrain`, `maxTheta`: Tính toán góc che khuất.
+  - `isShadowed`: Biến định nghĩa vùng bóng tối của địa hình.
+  - `tgtAltM` -> `terrAlt`: Đáy của polygon vùng mù trong 2D.
+  - `apexVertexIndex` -> `(0, 0, 0)`: Đỉnh chóp của vòm 3D.
+- **Giá trị mặc định & Đơn vị**:
+  - Độ cao mục tiêu (H_mt): `10000m` (hoặc tuỳ chỉnh trong UI).
+  - Tọa độ đỉnh vòm 3D hệ ENU cục bộ: `(0,0,0)` (tâm ăng-ten).
+- **Giá trị đầu vào / đầu ra (Kỳ vọng)**:
+  - Đầu vào 2D: Tia sóng tại góc chắn lớn nhất `maxTheta` và độ cao mặt đất `terrAlt`. Đầu ra: Polygon đổ vạch đỏ từ mặt đất lên tới `rayAltAtDist`.
+  - Đầu vào 3D: Vòng cuối cùng tại `maxElevationDeg`. Đầu ra: Vuốt nối mượt về `(0,0,0)` tạo phễu rỗng.
+- **Công thức logic liên quan**:
+  - Vùng mù địa hình 2D: `thetaTerrain < maxTheta - 0.00005`.
+- **Kết quả thực tế**: Polygon bóng tối bám theo mặt đất phía sau núi. Vòm 3D có phễu mù đỉnh đầu chính xác.
+- **Cách kiểm tra**: Mở mặt cắt 2D tại hướng có núi, quan sát vùng gạch chéo đỏ phía sau núi. Mở 3D, nhìn từ trên xuống để thấy lỗ hổng hình nón của vòm radar.
+- **Kết luận**: Đã sửa đúng logic vật lý radar 2D & 3D, không làm hỏng các tính năng liên quan.
+
+### Vấn đề 31: Sự khác biệt hình dáng vòm sóng giữa 2D (Cánh bướm) và 3D (Chiếc đĩa)
+- **Ngày**: 02/10/2026
+- **Tính năng / Module**: RadarCrossSectionPanel (2D), radarDomeGeometry (3D)
+- **Câu hỏi của người dùng**: Vòm trên mặt cắt 2D có hình "cánh bướm" nhưng trên 3D lại như "chiếc đĩa" dẹt, có phải 2D chưa hiển thị hết cự ly hay 3D dựng sai?
+- **Phân tích nguyên nhân**:
+  1. **Tỷ lệ thực (True Scale 1:1) trong 3D**: Vòm 3D được dựng trong không gian Cesium với tỷ lệ thật. Đối với radar 36D6, bán kính phủ sóng (Range) là 300km (đường kính 600km), trong khi trần phủ sóng (Coverage Height) chỉ là 30km. Tỷ lệ Chiều cao / Đường kính = 30 / 600 = 1/20. Trong không gian 1:1, một vật thể rộng gấp 20 lần chiều cao chắc chắn sẽ trông rất dẹt, giống như một "chiếc đĩa" (flat disc). Đây là hình dáng vật lý thực tế của chùm sóng radar.
+  2. **Phóng đại trục đứng (Vertical Exaggeration) trong 2D**: Các giản đồ phủ sóng (Coverage Profile) hay mặt cắt 2D trong kỹ thuật radar luôn cố tình phóng đại trục dọc (Độ cao) lên nhiều lần (thường là 10x đến 20x) so với trục ngang (Cự ly) để dễ đọc thông số. Sự kéo giãn trục Y này biến hình "chiếc đĩa" thành hình "cánh bướm" cao vút.
+- **Kết luận**: Cả hai module đều hoạt động chính xác. Mặt cắt 2D hiển thị đủ cự ly nhưng đã kéo giãn trục cao độ để phục vụ phân tích (phân tích mặt cắt quang tuyến). Vòm 3D phản ánh đúng hình dáng quang học thực tế (1:1) của sóng radar trong không gian địa lý.
+- **Xác minh**: Kiểm tra tỷ số `coverageHeightKm` và `defaultRangeKm` trong `equipmentTemplates.ts`, xác nhận tỷ lệ 1/10 đến 1/20 ở hầu hết các đài radar cảnh giới.
+
+### Vấn đề 32: Lỗi mất Nhãn vòng cự ly và Nhãn tâm đài khi bật SPx
+- **Ngày**: 02/10/2026
+- **Tính năng / Module**: CesiumGlobe.tsx, spxGeometryBuilder.ts
+- **Vấn đề**:
+  1. Trong chế độ 2D/3D khi bật SPx, các vòng cự ly không hiện nhãn số khoảng cách (ví dụ 10km, 25km).
+  2. Tại tâm đài radar không hiển thị Cờ tác chiến và Nhãn thông số tọa độ/độ cao (Mất marker tâm đài).
+- **Nguyên nhân**:
+  1. **Mất Cờ và Nhãn Tâm**: Trong `CesiumGlobe.tsx`, block code sinh Cờ tác chiến và Nhãn thông số (mục 1) bị bọc bởi điều kiện `if (!isSpxActive)`. Do đó, khi SPx bật, marker tâm đài bị ẩn đi.
+  2. **Mất Nhãn vòng cự ly**: Để tránh việc trùng lặp render nhãn tâm đài, khi gọi hàm `buildSpxCoverageEntities`, biến `showLabels` đã bị gán cứng thành `false` (`showLabels: false`). Tuy nhiên, biến này trong `spxGeometryBuilder.ts` lại chịu trách nhiệm render **cả** Nhãn vòng cự ly (Range Rings) và Nhãn tâm đài. Do đó, nhãn vòng cự ly cũng bị tắt theo.
+- **Cách sửa**:
+  1. Tại `CesiumGlobe.tsx`: Xóa bỏ điều kiện `if (!isSpxActive)` bọc quanh mục 1. Mục 1 giờ đây sẽ **luôn luôn** render Cờ tác chiến và Nhãn thông số tâm đài để đảm bảo UI đồng bộ xuyên suốt mọi trạng thái.
+  2. Tại `spxGeometryBuilder.ts`: Xóa bỏ hoàn toàn phần code render Nhãn tâm đài và Cờ tác chiến (Phần 3 và 4 ở cuối hàm) vì nó đã dư thừa. Từ nay `showLabels` trong file này chỉ dùng để quản lý Nhãn vòng cự ly.
+  3. Tại `CesiumGlobe.tsx`: Đổi tham số khi gọi `buildSpxCoverageEntities` thành `showLabels: showLabelsLayer` để nhãn vòng cự ly phản hồi đúng theo nút bật/tắt Layer Nhãn trên giao diện.
+- **Kết quả**: Cờ tác chiến, Nhãn tọa độ tâm đài và Nhãn khoảng cách trên các vòng cự ly đã hiển thị bình thường ở cả chế độ 2D và 3D.
+
+### Vấn đề 16: Thiếu mặt cắt địa hình (Terrain Profile) trong màn hình WEZ 2D của Khí tài Tên Lửa (SAM)
+- **Ngày**: 20/09/2026 (hoặc tương đương)
+- **Tính năng / Module**: RadarCrossSectionPanel (Mặt cắt 2D WEZ) & MissileVolumeEngine
+- **Vấn đề & Mục tiêu**:
+  1. Trong chế độ xem mặt cắt đứng 2D của khí tài tên lửa (SAM), đường địa hình (từ mặt nước biển) không hiển thị. Khi đặt khí tài trên núi, người dùng muốn thấy cả mặt cắt của núi phía dưới khí tài.
+  2. Nguyên nhân: Khí tài SAM được thiết lập \hasRadarCoverage: false\, dẫn đến hệ thống không tính toán \coverageFields\ cho SAM. Mặt cắt 2D lại đang trích xuất điểm địa hình (\	errainPoints\) thông qua \aysOnAzimuth\ của \coverageFields\, nên với SAM, \	errainPoints\ luôn trống.
+- **Giải pháp**:
+  - Trong \src/utils/missileVolumeEngine.ts\: Bổ sung \	errainMap?: Map<string, number>\ và \sampleDistances?: number[]\ vào interface \SamEngagementVolume\. Các thông số này thực tế đã được lấy mẫu qua \sampleTerrainGridAndMasks\ nhưng chưa được phơi bày ra object trả về.
+  - Trong \src/components/ui/RadarCrossSectionPanel.tsx\:
+    - Đưa biến \samVolume\ lên trên để tái sử dụng.
+    - Sửa logic lấy \vailableAzimuths\: Nếu là SAM, trích xuất từ \samVolume.azimuthSamples\.
+    - Sửa logic \	errainPoints\: Nếu là SAM, đọc trực tiếp điểm địa hình từ \samVolume.terrainMap\ và \samVolume.sampleDistances\.
+- **Kết quả**: Đường địa hình SVG đã hiển thị hoàn chỉnh trong bảng WEZ 2D của tên lửa phòng không.
+

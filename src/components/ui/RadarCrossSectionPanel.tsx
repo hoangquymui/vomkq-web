@@ -107,14 +107,20 @@ export const RadarCrossSectionPanel: React.FC = () => {
     setViewAltMinM(0);
     setViewAltMaxM(null);
   }
+  // === DỮ LIỆU ĐẶC THÙ CHO SAM ===
+  const samVolume = useMemo(
+    () => (selectedInst && isSam ? samVolumes[selectedInst.instanceId] : null),
+    [samVolumes, selectedInst, isSam]
+  );
 
   // Tìm góc Azimuth gần nhất có trong Coverage Field
   const availableAzimuths = useMemo(() => {
+    if (isSam && samVolume) return samVolume.azimuthSamples || [];
     if (!field || !field.azimuthRays) return [];
     return Object.keys(field.azimuthRays)
       .map(Number)
       .sort((a, b) => a - b);
-  }, [field]);
+  }, [field, isSam, samVolume]);
 
   const currentAzimuth = useMemo(() => {
     if (availableAzimuths.length === 0) return selectedAzimuthDeg;
@@ -136,12 +142,6 @@ export const RadarCrossSectionPanel: React.FC = () => {
     if (!field || !field.azimuthRays) return [];
     return field.azimuthRays[currentAzimuth] || [];
   }, [field, currentAzimuth]);
-
-  // === DỮ LIỆU ĐẶC THÙ CHO SAM ===
-  const samVolume = useMemo(
-    () => (selectedInst && isSam ? samVolumes[selectedInst.instanceId] : null),
-    [samVolumes, selectedInst, isSam]
-  );
 
   const activeSamMode: SamEngagementMode = useMemo(() => {
     if (!selectedInst) return 'head_on';
@@ -253,12 +253,29 @@ export const RadarCrossSectionPanel: React.FC = () => {
 
   // Đường cắt địa hình núi non (Terrain Profile)
   const terrainPoints = useMemo(() => {
+    const groundAlt = selectedInst?.altitude || 0;
+
+    if (isSam && samVolume && samVolume.terrainMap && samVolume.sampleDistances) {
+      const points = samVolume.sampleDistances.map((dist) => {
+        const altM = samVolume.terrainMap!.get(`${currentAzimuth}_${dist}`) || 0;
+        return { distM: dist, altM };
+      });
+      if (points.length === 0 || points[0].distM > 0) {
+        points.unshift({ distM: 0, altM: groundAlt });
+      }
+      return points;
+    }
+
     if (raysOnAzimuth.length === 0) return [];
-    return (raysOnAzimuth[0]?.samples || []).map((s) => ({
+    const points = (raysOnAzimuth[0]?.samples || []).map((s) => ({
       distM: s.distanceM,
       altM: s.terrainAltM,
     }));
-  }, [raysOnAzimuth]);
+    if (points.length === 0 || points[0].distM > 0) {
+      points.unshift({ distM: 0, altM: groundAlt });
+    }
+    return points;
+  }, [raysOnAzimuth, isSam, samVolume, currentAzimuth, selectedInst]);
 
   // Cao độ địa hình cao nhất trên hướng quét này
   const maxTerrainAltM = useMemo(() => {
@@ -293,11 +310,10 @@ export const RadarCrossSectionPanel: React.FC = () => {
       const pt = terrainPoints[i];
       const dist = pt.distM;
       const terrAlt = pt.altM;
-      const tgtAlt = isTargetAgl ? terrAlt + hMt : hMt;
+
 
       const hz = (dist * dist) / (2 * RePrime);
       const thetaTerrain = Math.atan2(terrAlt - hRad - hz, dist);
-      const thetaTarget = Math.atan2(tgtAlt - hRad - hz, dist);
 
       // Cập nhật đỉnh núi chắn mới nếu góc chắn lớn hơn
       if (thetaTerrain > maxTheta) {
@@ -307,17 +323,18 @@ export const RadarCrossSectionPanel: React.FC = () => {
 
       // Cao độ của tia sóng tiếp tuyến phát ra từ đỉnh núi chắn hiện tại
       const rayAltAtDist = hRad + dist * Math.tan(maxTheta) + hz;
-      // Mục tiêu bị che khuất nếu góc tà của nó nhỏ hơn góc chắn cực đại của địa hình
-      const isPointBlind = thetaTarget < maxTheta - 0.00005 && dist > currentPeak.distM;
+      // Vùng bóng tối (shadow) là khi địa hình thấp hơn tia sóng maxTheta
+      const isShadowed = thetaTerrain < maxTheta - 0.00005 && dist > currentPeak.distM;
 
-      if (isPointBlind) {
+      if (isShadowed) {
         if (!inBlind) {
           inBlind = true;
           segPeakDistM = currentPeak.distM;
           segPeakAltM = currentPeak.altM;
           currentSegPoints = [];
         }
-        currentSegPoints.push({ distM: dist, rayAltM: rayAltAtDist, tgtAltM: tgtAlt });
+        // Lưu terrAlt để vẽ polygon từ mặt đất lên đến tia sóng (Radar Shadow)
+        currentSegPoints.push({ distM: dist, rayAltM: rayAltAtDist, tgtAltM: terrAlt });
       } else {
         if (inBlind && currentSegPoints.length > 1) {
           const rBdM = currentSegPoints[0].distM;
@@ -1732,7 +1749,7 @@ export const RadarCrossSectionPanel: React.FC = () => {
                         fontFamily="sans-serif"
                         fontWeight="bold"
                       >
-                        Đoạn không nhìn thấy khi Hmt = {blindAnalysis.hMt}m
+                        Vùng mù địa hình (Radar Shadow)
                       </text>
                     </g>
                   </g>

@@ -4,7 +4,7 @@ import type {
   SpxRadarCoverageConfig,
 } from '../types/spxRadarCoverage';
 import { destinationPoint } from './spxCoverageEngine';
-import { getTacticalBadgeDataUrl } from './tacticalBadgeGenerator';
+
 
 /**
  * Helper chuyển toạ độ thập phân sang định dạng DMS (Độ, Phút, Giây)
@@ -151,7 +151,7 @@ export function createTacticalFlagSvg(
 export function buildSpxCoverageEntities(
   result: SpxCoverageResult,
   config: SpxRadarCoverageConfig,
-  instanceName?: string,
+
   options?: SpxRenderOptions
 ): Cesium.Entity[] {
   const entities: Cesium.Entity[] = [];
@@ -163,7 +163,7 @@ export function buildSpxCoverageEntities(
   const showCoverage = options?.showCoverage !== false;
   const showRangeRings = options?.showRangeRings !== false;
   const showLabels = options?.showLabels !== false;
-  const showMarkers = options?.showMarkers !== false;
+
   const is2D = Boolean(options?.is2D);
 
   const safeLat = typeof radarLat === 'number' && !isNaN(radarLat) && isFinite(radarLat) ? radarLat : 16.043;
@@ -421,108 +421,6 @@ export function buildSpxCoverageEntities(
         }
       });
     }
-  }
-
-  // 3. Render CỜ CẮM TÁC CHIẾN & TÂM ĐÀI RADAR (Tactical Flag Pin & Anchor Crosshair)
-  if (showMarkers) {
-    const badgeUrl = getTacticalBadgeDataUrl({
-      instanceId: options?.instanceId || `spx_${instanceName || 'radar'}`,
-      name: instanceName || (options?.shortId ? `Đài Radar [${options.shortId}]` : 'Đài Radar'),
-      shortId: options?.shortId,
-      category: options?.category || 'RadarCanhGioi',
-      rangeKm: options?.rangeKm,
-      antennaHeightAGL: options?.antennaHeightAGL,
-      status: (options?.status as import('../types/equipment').OperationalStatus) || 'Active',
-      isSelected: !!isSelected,
-      realPhotoUrl: options?.realPhotoUrl || '',
-      themeColor: options?.color || '#06b6d4',
-    });
-
-    // A. Cờ cắm tác chiến HUD to rõ với ảnh thực tế và tên đầy đủ
-    entities.push(
-      new Cesium.Entity({
-        name: `Cờ Tác Chiến Tâm Đài ${options?.shortId || ''}`,
-        position: radarCartesian,
-        properties: options?.instanceId ? new Cesium.PropertyBag({ instanceId: options.instanceId }) : undefined,
-        billboard: {
-          image: badgeUrl,
-          width: 240,
-          height: 46,
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-          pixelOffset: new Cesium.Cartesian2(-12, 4),
-          eyeOffset: new Cesium.Cartesian3(0, 0, -450), // Nổi lên trên vòng cự ly
-          heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-      })
-    );
-
-    // B. Tâm chữ thập định vị chính xác vị trí chân đài
-    entities.push(
-      new Cesium.Entity({
-        name: `Tâm Đài Radar ${options?.shortId || ''}`,
-        position: radarCartesian,
-        point: {
-          pixelSize: isSelected ? 10 : 8,
-          color: isSelected ? Cesium.Color.fromCssColorString('#fde047') : Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-      })
-    );
-  }
-
-  // 4. Render NHÃN THÔNG TIN CHI TIẾT ĐÀI RADAR (Tactical Military Info Card)
-  // eyeOffset: -500 để nhãn thông tin LUÔN LUÔN NỔI LÊN TRÊN CÁC TẦM CỰ LY VÀ ĐƯỜNG VÒNG
-  if (showLabels) {
-    const latDms = toDmsString(safeLat, true);
-    const lonDms = toDmsString(safeLon, false);
-    const latDec = safeLat.toFixed(4);
-    const lonDec = safeLon.toFixed(4);
-    const groundMslText = `${Math.round(safeGroundAlt)}m`;
-    const antennaAglText = `${Math.round(options?.antennaHeightAGL || config.radarHeightAGL || 40)}m`;
-    const rangeKmText = options?.rangeKm ? `${options.rangeKm}km` : `${Math.round(config.endRangeM / 1000)}km`;
-    const statusVi = options?.status === 'Active' ? 'Sẵn sàng CĐ' : options?.status === 'Standby' ? 'Trực ban' : options?.status || 'Hoạt động';
-
-    const infoCardText = formatRadarInfoCardText({
-      shortId: options?.shortId,
-      name: instanceName,
-      latDms,
-      lonDms,
-      latDec,
-      lonDec,
-      groundMsl: groundMslText,
-      antennaAgl: antennaAglText,
-      rangeKm: rangeKmText,
-      statusVi,
-    });
-
-    entities.push(
-      new Cesium.Entity({
-        name: `Nhãn Thông Tin Tâm Đài ${options?.shortId || ''}`,
-        position: radarCartesian,
-        label: {
-          text: infoCardText,
-          font: isSelected ? 'bold 12px "JetBrains Mono", monospace' : '11px "JetBrains Mono", monospace',
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          fillColor: isSelected ? Cesium.Color.fromCssColorString('#fde047') : Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 4,
-          showBackground: true,
-          backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.92),
-          backgroundPadding: new Cesium.Cartesian2(10, 6),
-          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-          pixelOffset: new Cesium.Cartesian2(16, -84),
-          eyeOffset: new Cesium.Cartesian3(0, 0, -500), // LUÔN NẰM TRÊN CÁC TẦM CỰ LY VÀ ĐƯỜNG VÒNG
-          heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-      })
-    );
   }
 
   return entities;

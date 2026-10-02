@@ -287,41 +287,27 @@ export function buildRadarDomeGeometry(
     st[vertexIndex * 2 + 1] = heightFraction;
   }
 
-  // Nắp đỉnh: nối vòng cuối về centroid của vòng cuối (giống BuildDome của Unity).
-  // KHÔNG nắp về tâm ăng-ten (Unity cố ý bỏ) để vòm không che chính khí tài.
+  // Nắp đỉnh: Để vòm 3D đúng với vật lý radar, vòng góc tà cao nhất (maxElevationDeg)
+  // phải được nối vuốt xuống tâm ăng-ten, tạo thành một cái phễu rỗng ở giữa.
+  // Đây chính là "Khu mù đỉnh đầu" (Cone of Silence).
+  // Nếu nối về centroid như cũ sẽ tạo ra một nắp phẳng bịt kín khu mù này, làm sai logic radar.
   const topRingStart = elevationRings * azimuthSegments;
-  let centroidEast = 0;
-  let centroidNorth = 0;
-  let centroidUp = 0;
-  for (let azimuthIndex = 0; azimuthIndex < azimuthSegments; azimuthIndex++) {
-    const i3 = (topRingStart + azimuthIndex) * 3;
-    centroidEast += positions[i3];
-    centroidNorth += positions[i3 + 1];
-    centroidUp += positions[i3 + 2];
-  }
-  centroidEast /= azimuthSegments;
-  centroidNorth /= azimuthSegments;
-  centroidUp /= azimuthSegments;
 
   const apexVertexIndex = vertexCount - 1;
   const apexI3 = apexVertexIndex * 3;
-  positions[apexI3] = centroidEast;
-  positions[apexI3 + 1] = centroidNorth;
-  positions[apexI3 + 2] = centroidUp;
 
-  const centroidLength = Math.hypot(centroidEast, centroidNorth, centroidUp);
-  if (centroidLength > 1e-6) {
-    normals[apexI3] = centroidEast / centroidLength;
-    normals[apexI3 + 1] = centroidNorth / centroidLength;
-    normals[apexI3 + 2] = centroidUp / centroidLength;
-  } else {
-    normals[apexI3] = 0;
-    normals[apexI3 + 1] = 0;
-    normals[apexI3 + 2] = 1;
-  }
+  // Tâm ăng-ten trong hệ ENU cục bộ là (0, 0, 0)
+  positions[apexI3] = 0;
+  positions[apexI3 + 1] = 0;
+  positions[apexI3 + 2] = 0;
+
+  // Normal hướng lên trên
+  normals[apexI3] = 0;
+  normals[apexI3 + 1] = 0;
+  normals[apexI3 + 2] = 1;
 
   st[apexVertexIndex * 2] = 0.5;
-  st[apexVertexIndex * 2 + 1] = Math.min(1, Math.max(0, centroidUp / apexDivisor));
+  st[apexVertexIndex * 2 + 1] = 0; // Độ cao 0 -> heightFraction = 0
 
   // Tam giác: lưới quad giữa các vòng + quạt nắp ở vòng cuối.
   // Chỉ sinh 1 chiều winding; renderState `cull: { enabled: false }` (tương đương `Cull Off`

@@ -58,6 +58,8 @@ export interface SamEngagementVolume {
   terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error';
   cacheKey: string;
   maxMaskInfoByAzDist?: Map<string, { maxTan: number; peakDist: number; peakAlt: number }>;
+  terrainMap?: Map<string, number>;
+  sampleDistances?: number[];
   isSpyderDualDome?: boolean;
   spyderSrVolume?: SamEngagementVolume;
 }
@@ -449,6 +451,8 @@ export async function computeSamEngagementVolume(
       terrainStatus,
       cacheKey: `${cacheKey}_sr`,
       maxMaskInfoByAzDist,
+      terrainMap,
+      sampleDistances,
       isSpyderDualDome: true,
     };
   }
@@ -481,6 +485,8 @@ export async function computeSamEngagementVolume(
     terrainStatus,
     cacheKey,
     maxMaskInfoByAzDist,
+    terrainMap,
+    sampleDistances,
     isSpyderDualDome: isSpyder,
     spyderSrVolume: srVolume,
   };
