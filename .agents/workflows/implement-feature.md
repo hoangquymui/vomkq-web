@@ -1,0 +1,16 @@
+# Implement Feature
+
+1. Đọc North Star + applicable rules + feature plan.
+2. Kiểm tra `git status` và không đụng unrelated changes.
+3. Sửa domain contract trước.
+4. Sửa application/state transition.
+5. Sửa analysis/simulation engine nếu có.
+6. Nối UI/2D/3D vào shared state/result.
+7. Thêm incomplete/stale/error states.
+8. Thêm tests/regression.
+9. Chạy typecheck/lint/test/build phù hợp.
+10. Kiểm tra provenance + debug context.
+11. Review diff.
+12. Báo cáo files changed, tests, limitations, important parameters.
+
+Không tự git push.
