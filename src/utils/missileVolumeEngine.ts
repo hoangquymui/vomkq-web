@@ -343,8 +343,8 @@ export async function computeSamEngagementVolume(
         nomMaxRangeM = isTopBand ? Math.max(80, rawDome) : rawDome;
         nomMaxRangeM = Math.max(innerConeM, nomMaxRangeM);
       } else {
-        const launchLimitM = Math.round(deltaH * cotMinElev);
         const aeroMaxM = calculateSamPearMaxRange(deltaH, envelopeMaxM, 0, envelopeHeightM, envelopeOptM);
+        const launchLimitM = minElevationDeg > 0 ? Math.round(deltaH * cotMinElev) : Infinity;
         nomMaxRangeM = Math.min(aeroMaxM, launchLimitM);
         nomMaxRangeM = Math.max(innerConeM, nomMaxRangeM);
       }

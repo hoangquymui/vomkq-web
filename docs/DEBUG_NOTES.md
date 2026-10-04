@@ -2811,3 +2811,37 @@ Người dùng yêu cầu thực hiện 3 điều chỉnh:
     - Sửa logic \	errainPoints\: Nếu là SAM, đọc trực tiếp điểm địa hình từ \samVolume.terrainMap\ và \samVolume.sampleDistances\.
 - **Kết quả**: Đường địa hình SVG đã hiển thị hoàn chỉnh trong bảng WEZ 2D của tên lửa phòng không.
 
+### Bổ sung Pháo Phòng Không 57mm và 37mm Đánh Đêm
+- **Ngày**: 03/10/2026
+- **Tính năng / module**: Khí tài tác chiến (Pháo Phòng Không)
+- **Vấn đề hoặc mục tiêu**: Lên kế hoạch và thêm 2 loại pháo phòng không (57mm và 37mm) vào danh sách khí tài để hiển thị vòm cự ly bắn.
+- **File đã thay đổi**: `src/data/equipmentTemplates.ts`
+- **Tên thông số/biến quan trọng**:
+  - Pháo 57mm (`aaa_57mm`): 
+    - `defaultRangeKm`: 6.0 (Cự ly bắn đón có máy chỉ huy)
+    - `maxEngagementAltitudeM`: 5000 (Độ cao bắn hiệu quả)
+  - Pháo 37mm (`aaa_37mm`):
+    - `defaultRangeKm`: 3.5 (Cự ly bắn đón hiệu quả)
+    - `maxEngagementAltitudeM`: 3000 (Độ cao bắn hiệu quả)
+- **Giá trị mặc định**: 
+  - 57mm: Tầm xa nhất 12km, cao nhất 8.8km. Cự ly hiệu quả 6km (Dys), cao hiệu quả 5000m.
+  - 37mm: Tầm xa nhất 8.5km, cao nhất 6.7km. Cự ly hiệu quả 3.5km (Dys), cao hiệu quả 3000m.
+- **Kỳ vọng**: 2 loại pháo xuất hiện trong danh mục Khí tài, khi đặt lên bản đồ sẽ được render thành vòm cự ly hỏa lực (Engagement Envelope) chính xác theo bán kính `defaultRangeKm` và chiều cao `maxEngagementAltitudeM`.
+- **Kết quả thực tế**: Thành công. Dữ liệu khí tài được tích hợp theo kiến trúc mở hiện có, phục vụ việc thử nghiệm đánh chặn mục tiêu sau này.
+- **Cách kiểm tra**: Xem trên UI Cesium Globe có vùng hỏa lực hiển thị đúng thông số.
+
+### Sửa lỗi vòm hỏa lực AAA bị teo lại thành vòm mù đỉnh đầu khi có góc ngẩng âm
+- **Ngày**: 03/10/2026
+- **Tính năng / module**: Missile Volume Engine (`missileVolumeEngine.ts`)
+- **Triệu chứng**: Khi đặt pháo 57mm hoặc 37mm lên bản đồ, vòm 3D (Engagement Envelope) không hiển thị phần mở rộng ra ngoài mà chỉ hiển thị hình nón lộn ngược cắm xuống đất (Cone of Silence / Vòm mù đỉnh đầu).
+- **Nguyên nhân**:
+  - Code trong engine thiết kế ban đầu cho SAM (Tên lửa) với góc ngẩng tối thiểu mặc định là `6°` (dương). Khi đó, engine sử dụng `launchLimitM = Math.round(deltaH * cotMinElev)` để cắt vòm ở phía dưới sao cho tên lửa không đâm xuống đất.
+  - Tuy nhiên, Pháo phòng không (AAA) có thể bắn chúi xuống (`minElevationDeg` = `-2°` hoặc `-5°`). Lúc này, `tanMinElev` âm, dẫn tới `cotMinElev` âm.
+  - Khi tính `launchLimitM = deltaH * cotMinElev`, giá trị trở thành số âm. Sau đó `nomMaxRangeM = Math.min(aeroMaxM, launchLimitM)` khiến bán kính ngoài cùng cũng bị ép xuống thành số âm.
+  - Cuối cùng `nomMaxRangeM = Math.max(innerConeM, nomMaxRangeM)` lấy giá trị lớn hơn giữa nón mù (số dương) và số âm kia. Kết quả là toàn bộ vỏ ngoài bị ép chặt vào đúng hình dạng của nón mù.
+- **File đã thay đổi**: `src/utils/missileVolumeEngine.ts`
+- **Tên thông số/biến quan trọng**: `minElevationDeg`, `cotMinElev`, `launchLimitM`, `nomMaxRangeM`
+- **Giá trị trước**: `const launchLimitM = Math.round(deltaH * cotMinElev);`
+- **Giá trị sau**: `const launchLimitM = minElevationDeg > 0 ? Math.round(deltaH * cotMinElev) : Infinity;`
+- **Cách xác minh**: Chọn lại tổ hợp pháo 57mm trên bản đồ, vòm xanh lá (Emerald) bung tỏa dạng nón úp bao phủ từ mặt đất/mặt biển lên đến độ cao 5.000m, với lõi nón mù ở chính giữa, đúng với thông số thực chiến.
+

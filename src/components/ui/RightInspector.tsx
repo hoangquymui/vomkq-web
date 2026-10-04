@@ -74,8 +74,8 @@ const DomeToggle: React.FC<{
     onClick={onToggle}
     title={hint}
     className={`w-full py-1.5 px-2 rounded border text-[11px] font-medium transition-all flex items-center justify-between ${checked
-        ? 'border-emerald-500/50 bg-emerald-950/40 text-emerald-300'
-        : 'border-slate-800 bg-slate-950/70 text-slate-400 hover:border-slate-700'
+      ? 'border-emerald-500/50 bg-emerald-950/40 text-emerald-300'
+      : 'border-slate-800 bg-slate-950/70 text-slate-400 hover:border-slate-700'
       }`}
   >
     <span>{label}</span>
@@ -433,12 +433,12 @@ export const RightInspector: React.FC = () => {
             </span>
             <span
               className={`w-2 h-2 rounded-full ${selected.status === 'Active'
-                  ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]'
-                  : selected.status === 'Standby'
-                    ? 'bg-amber-400'
-                    : selected.status === 'Maintenance'
-                      ? 'bg-orange-400'
-                      : 'bg-rose-500'
+                ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]'
+                : selected.status === 'Standby'
+                  ? 'bg-amber-400'
+                  : selected.status === 'Maintenance'
+                    ? 'bg-orange-400'
+                    : 'bg-rose-500'
                 }`}
             />
           </div>
@@ -476,8 +476,8 @@ export const RightInspector: React.FC = () => {
                   })
                 }
                 className={`py-1.5 px-2 rounded-lg border text-[10.5px] font-medium transition-all cursor-pointer ${selected.status === st.id
-                    ? `${st.color} shadow-sm font-bold`
-                    : 'border-slate-800/90 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                  ? `${st.color} shadow-sm font-bold`
+                  : 'border-slate-800/90 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                   }`}
               >
                 {st.label}
@@ -490,8 +490,8 @@ export const RightInspector: React.FC = () => {
             <button
               onClick={() => setActiveTool(activeTool === 'move' ? 'select' : 'move')}
               className={`py-1.5 px-2 rounded-lg border font-semibold text-[10.5px] flex items-center justify-center gap-1 transition-all cursor-pointer ${activeTool === 'move'
-                  ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.5)] animate-pulse'
-                  : 'bg-slate-950 hover:bg-slate-900 text-cyan-300 border-slate-800 hover:border-cyan-500/40'
+                ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.5)] animate-pulse'
+                : 'bg-slate-950 hover:bg-slate-900 text-cyan-300 border-slate-800 hover:border-cyan-500/40'
                 }`}
               title="Di chuyển đài sang vị trí tọa độ mới trên bản đồ"
             >
@@ -717,8 +717,8 @@ export const RightInspector: React.FC = () => {
             <button
               onClick={() => setActiveTab('2d')}
               className={`py-1.5 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${activeTab === '2d'
-                  ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
-                  : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
+                : 'text-slate-400 hover:text-slate-200'
                 }`}
             >
               <Radio className="w-3.5 h-3.5" />
@@ -727,8 +727,8 @@ export const RightInspector: React.FC = () => {
             <button
               onClick={() => setActiveTab('3d')}
               className={`py-1.5 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${activeTab === '3d'
-                  ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
-                  : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]'
+                : 'text-slate-400 hover:text-slate-200'
                 }`}
             >
               <Compass className="w-3.5 h-3.5" />
@@ -786,8 +786,8 @@ export const RightInspector: React.FC = () => {
                           key={chip.m}
                           onClick={() => updateSelectedSpx({ endRangeM: chip.m })}
                           className={`py-1 rounded text-[10px] font-mono border transition-all cursor-pointer ${instSpxConfig.endRangeM === chip.m
-                              ? 'bg-cyan-900 text-cyan-300 border-cyan-400 font-bold'
-                              : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
+                            ? 'bg-cyan-900 text-cyan-300 border-cyan-400 font-bold'
+                            : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
                             }`}
                         >
                           {chip.label}
@@ -1072,11 +1072,10 @@ export const RightInspector: React.FC = () => {
                             <button
                               key={m.id}
                               onClick={() => setSamEngagementMode(selected.instanceId, m.id)}
-                              className={`px-2 py-1 text-[10px] font-mono rounded border transition-all text-left truncate ${
-                                isActive
+                              className={`px-2 py-1 text-[10px] font-mono rounded border transition-all text-left truncate ${isActive
                                   ? 'bg-rose-950/80 border-rose-500 text-rose-300 font-bold shadow-sm'
                                   : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                              }`}
+                                }`}
                             >
                               {m.label}
                             </button>
@@ -1144,8 +1143,8 @@ export const RightInspector: React.FC = () => {
                       <button
                         onClick={toggleSensorNetwork}
                         className={`px-2 py-0.5 rounded text-[9px] font-mono border font-bold cursor-pointer transition-all ${showSensorNetwork
-                            ? 'bg-purple-950 text-purple-300 border-purple-500/60'
-                            : 'bg-slate-900 text-slate-500 border-slate-800'
+                          ? 'bg-purple-950 text-purple-300 border-purple-500/60'
+                          : 'bg-slate-900 text-slate-500 border-slate-800'
                           }`}
                       >
                         {showSensorNetwork ? 'BẬT MẠNG' : 'ẨN MẠNG'}
@@ -1225,11 +1224,10 @@ export const RightInspector: React.FC = () => {
                             showDome: !selected.showDome,
                           })
                         }
-                        className={`px-2 py-0.5 rounded-md border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                          selected.showDome
+                        className={`px-2 py-0.5 rounded-md border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${selected.showDome
                             ? 'bg-cyan-950 text-cyan-300 border-cyan-500/60 shadow-[0_0_8px_rgba(6,182,212,0.3)]'
                             : 'bg-slate-950 text-slate-500 border-slate-800'
-                        }`}
+                          }`}
                       >
                         {selected.showDome ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                         <span>{selected.showDome ? 'Đang bật' : 'Đang ẩn'}</span>
@@ -1243,11 +1241,10 @@ export const RightInspector: React.FC = () => {
                           setDome3DMode('nominal');
                           setDomeTerrainMasked(false);
                         }}
-                        className={`py-1.5 px-2 rounded-md font-mono text-[10.5px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${
-                          dome3DMode === 'nominal'
+                        className={`py-1.5 px-2 rounded-md font-mono text-[10.5px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${dome3DMode === 'nominal'
                             ? 'bg-cyan-900/60 text-cyan-200 border border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.4)]'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                        }`}
+                          }`}
                       >
                         <span>DANH NGHĨA</span>
                         <span className="text-[9px] font-normal text-slate-400">(Lý thuyết)</span>
@@ -1258,11 +1255,10 @@ export const RightInspector: React.FC = () => {
                           setDome3DMode('terrain-aware');
                           setDomeTerrainMasked(true);
                         }}
-                        className={`py-1.5 px-2 rounded-md font-mono text-[10.5px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${
-                          dome3DMode === 'terrain-aware'
+                        className={`py-1.5 px-2 rounded-md font-mono text-[10.5px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${dome3DMode === 'terrain-aware'
                             ? 'bg-emerald-900/60 text-emerald-200 border border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.4)]'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                        }`}
+                          }`}
                       >
                         <span>CẮT ĐỊA HÌNH</span>
                         <span className="text-[9px] font-normal text-emerald-400/80">(Thực tế LOS)</span>
@@ -1368,9 +1364,8 @@ export const RightInspector: React.FC = () => {
                               {activeDetectionTable.headers.map((h, i) => (
                                 <th
                                   key={i}
-                                  className={`p-1.5 font-bold ${
-                                    i === 0 ? 'text-slate-300' : 'text-cyan-300 text-center'
-                                  }`}
+                                  className={`p-1.5 font-bold ${i === 0 ? 'text-slate-300' : 'text-cyan-300 text-center'
+                                    }`}
                                 >
                                   {h}
                                 </th>
@@ -1405,9 +1400,8 @@ export const RightInspector: React.FC = () => {
                               return (
                                 <tr
                                   key={idx}
-                                  className={`transition-colors ${
-                                    isRowAltitudeActive ? 'bg-cyan-950/40' : 'hover:bg-slate-900/50'
-                                  }`}
+                                  className={`transition-colors ${isRowAltitudeActive ? 'bg-cyan-950/40' : 'hover:bg-slate-900/50'
+                                    }`}
                                 >
                                   {/* Cột Độ cao (m) */}
                                   <td className="p-1 font-bold text-amber-300 whitespace-nowrap border-r border-slate-800/60">
@@ -1429,11 +1423,10 @@ export const RightInspector: React.FC = () => {
                                           });
                                         }
                                       }}
-                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                                        isRowAltitudeActive
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${isRowAltitudeActive
                                           ? 'bg-amber-500/20 text-amber-200 border border-amber-500/50'
                                           : 'text-amber-300 hover:text-white'
-                                      }`}
+                                        }`}
                                       title={`Chọn tầng độ cao ${row.altitudeM} m`}
                                     >
                                       {row.altitudeM >= 1000
@@ -1456,11 +1449,10 @@ export const RightInspector: React.FC = () => {
                                           setTargetHeightMeters(row.altitudeM);
                                           setSelectedAltitudeM(row.altitudeM);
                                         }}
-                                        className={`w-full py-1 px-1.5 rounded font-mono font-bold text-[10px] transition-all cursor-pointer border ${
-                                          isCol1Active
+                                        className={`w-full py-1 px-1.5 rounded font-mono font-bold text-[10px] transition-all cursor-pointer border ${isCol1Active
                                             ? 'bg-cyan-600 text-white border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.6)] animate-pulse'
                                             : 'bg-slate-900/90 text-cyan-300 border-slate-800 hover:border-cyan-500/50 hover:bg-cyan-950/50'
-                                        }`}
+                                          }`}
                                         title={`Áp dụng cự ly ${row.val1} km tại độ cao ${row.altitudeM}m`}
                                       >
                                         {row.val1} km
@@ -1485,11 +1477,10 @@ export const RightInspector: React.FC = () => {
                                             setTargetHeightMeters(row.altitudeM);
                                             setSelectedAltitudeM(row.altitudeM);
                                           }}
-                                          className={`w-full py-1 px-1.5 rounded font-mono font-bold text-[10px] transition-all cursor-pointer border ${
-                                            isCol2Active
+                                          className={`w-full py-1 px-1.5 rounded font-mono font-bold text-[10px] transition-all cursor-pointer border ${isCol2Active
                                               ? 'bg-emerald-600 text-white border-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.6)] animate-pulse'
                                               : 'bg-slate-900/90 text-emerald-400 border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-950/50'
-                                          }`}
+                                            }`}
                                           title={`Áp dụng cự ly ${row.val2} km tại độ cao ${row.altitudeM}m`}
                                         >
                                           {row.val2} km
@@ -1568,11 +1559,10 @@ export const RightInspector: React.FC = () => {
                       </div>
                       <button
                         onClick={toggleOccludedVolume}
-                        className={`px-2 py-1 rounded text-[10px] font-mono font-bold border transition-all cursor-pointer ${
-                          showOccludedVolume
+                        className={`px-2 py-1 rounded text-[10px] font-mono font-bold border transition-all cursor-pointer ${showOccludedVolume
                             ? 'bg-rose-950/80 text-rose-300 border-rose-500/60 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
                             : 'bg-slate-900 text-slate-500 border-slate-800'
-                        }`}
+                          }`}
                       >
                         {showOccludedVolume ? 'BẬT SHADOW' : 'ẨN SHADOW'}
                       </button>
@@ -1621,11 +1611,10 @@ export const RightInspector: React.FC = () => {
                     {/* Nút Mở Mặt Cắt Quang Tuyến 2D */}
                     <button
                       onClick={toggleCrossSection}
-                      className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                        showCrossSection
+                      className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${showCrossSection
                           ? 'bg-cyan-950 text-cyan-300 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.4)] ring-1 ring-cyan-400'
                           : 'bg-slate-950 hover:bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/50'
-                      }`}
+                        }`}
                     >
                       <Compass
                         className={`w-4 h-4 ${showCrossSection ? 'animate-spin' : ''}`}
@@ -1687,11 +1676,10 @@ export const RightInspector: React.FC = () => {
                           </div>
                           <button
                             onClick={() => setDomeColorOverride(null)}
-                            className={`mt-4 px-2 py-1.5 rounded border text-[10px] font-mono transition-colors ${
-                              domeColorOverride
+                            className={`mt-4 px-2 py-1.5 rounded border text-[10px] font-mono transition-colors ${domeColorOverride
                                 ? 'border-slate-700 bg-slate-950 text-slate-300 hover:border-rose-500/60'
                                 : 'border-slate-800 bg-slate-950/60 text-slate-600'
-                            }`}
+                              }`}
                             title="Bỏ ghi đè, quay về màu theo template/màu khí tài"
                           >
                             BỎ GHI ĐÈ
@@ -1828,15 +1816,13 @@ export const RightInspector: React.FC = () => {
                 const activeSamVolume = samVolumes[selected.instanceId];
 
                 return (
-                  <div className={`p-2.5 rounded-xl border space-y-2.5 ${
-                    isSpyder
+                  <div className={`p-2.5 rounded-xl border space-y-2.5 ${isSpyder
                       ? 'bg-slate-900/60 border-sky-500/40'
                       : 'bg-slate-900/60 border-rose-500/40'
-                  }`}>
+                    }`}>
                     <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-                      <span className={`text-[10px] font-bold font-mono flex items-center gap-1 ${
-                        isSpyder ? 'text-sky-300' : 'text-rose-300'
-                      }`}>
+                      <span className={`text-[10px] font-bold font-mono flex items-center gap-1 ${isSpyder ? 'text-sky-300' : 'text-rose-300'
+                        }`}>
                         <Target className={`w-3.5 h-3.5 ${isSpyder ? 'text-sky-400' : 'text-rose-400'}`} />
                         {isSpyder ? 'VÒM HỎA LỰC SPYDER (KÉP SR/MR)' : 'VÒM HỎA LỰC ĐÁNH CHẶN 3D'}
                       </span>
@@ -1846,13 +1832,12 @@ export const RightInspector: React.FC = () => {
                             showDome: !selected.showDome,
                           })
                         }
-                        className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                          selected.showDome
+                        className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${selected.showDome
                             ? isSpyder
                               ? 'bg-sky-950 text-sky-300 border-sky-500/60 shadow-[0_0_8px_rgba(14,165,233,0.3)]'
                               : 'bg-rose-950 text-rose-300 border-rose-500/60 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
                             : 'bg-slate-950 text-slate-500 border-slate-800'
-                        }`}
+                          }`}
                       >
                         {selected.showDome ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                         <span>{selected.showDome ? 'Đang bật' : 'Đang ẩn'}</span>
@@ -1883,13 +1868,12 @@ export const RightInspector: React.FC = () => {
                     <div className="grid grid-cols-2 gap-1 p-1 bg-slate-950 rounded-lg border border-slate-800">
                       <button
                         onClick={() => setDome3DMode('nominal')}
-                        className={`py-1 px-1.5 rounded-md font-mono text-[10px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${
-                          dome3DMode === 'nominal'
+                        className={`py-1 px-1.5 rounded-md font-mono text-[10px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${dome3DMode === 'nominal'
                             ? isSpyder
                               ? 'bg-sky-900/60 text-sky-200 border border-sky-500/80 shadow-[0_0_8px_rgba(14,165,233,0.3)]'
                               : 'bg-rose-900/60 text-rose-200 border border-rose-500/80 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                        }`}
+                          }`}
                       >
                         <span>DANH NGHĨA</span>
                         <span className="text-[8.5px] font-normal text-slate-400">
@@ -1898,11 +1882,10 @@ export const RightInspector: React.FC = () => {
                       </button>
                       <button
                         onClick={() => setDome3DMode('terrain-aware')}
-                        className={`py-1 px-1.5 rounded-md font-mono text-[10px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${
-                          dome3DMode === 'terrain-aware'
+                        className={`py-1 px-1.5 rounded-md font-mono text-[10px] font-bold flex flex-col items-center justify-center transition-all cursor-pointer ${dome3DMode === 'terrain-aware'
                             ? 'bg-emerald-900/60 text-emerald-200 border border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                        }`}
+                          }`}
                       >
                         <span>CẮT ĐỊA HÌNH</span>
                         <span className="text-[8.5px] font-normal text-emerald-400/80">(Thực tế LOS)</span>
@@ -2036,11 +2019,10 @@ export const RightInspector: React.FC = () => {
                               <button
                                 key={m.id}
                                 onClick={() => setSamEngagementMode(selected.instanceId, m.id)}
-                                className={`px-2 py-1 text-[9.5px] font-mono rounded border transition-all text-left truncate cursor-pointer ${
-                                  isActive
+                                className={`px-2 py-1 text-[9.5px] font-mono rounded border transition-all text-left truncate cursor-pointer ${isActive
                                     ? 'bg-rose-950 border-rose-500 text-rose-200 font-bold shadow-sm'
                                     : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                                }`}
+                                  }`}
                               >
                                 {m.label}
                               </button>
@@ -2088,15 +2070,14 @@ export const RightInspector: React.FC = () => {
                     {/* Nút bấm Mở Mặt Cắt Đứng 2D (Cross Section) */}
                     <button
                       onClick={toggleCrossSection}
-                      className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                        showCrossSection
+                      className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${showCrossSection
                           ? isSpyder
                             ? 'bg-sky-950 text-sky-300 border-sky-400 shadow-[0_0_15px_rgba(14,165,233,0.4)] ring-1 ring-sky-400'
                             : 'bg-rose-950 text-rose-300 border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.4)] ring-1 ring-rose-400'
                           : isSpyder
-                          ? 'bg-slate-950 hover:bg-slate-900 text-slate-300 border-slate-700 hover:border-sky-500/50'
-                          : 'bg-slate-950 hover:bg-slate-900 text-slate-300 border-slate-700 hover:border-rose-500/50'
-                      }`}
+                            ? 'bg-slate-950 hover:bg-slate-900 text-slate-300 border-slate-700 hover:border-sky-500/50'
+                            : 'bg-slate-950 hover:bg-slate-900 text-slate-300 border-slate-700 hover:border-rose-500/50'
+                        }`}
                     >
                       <Compass
                         className={`w-4 h-4 ${showCrossSection ? 'animate-spin' : ''}`}
@@ -2108,8 +2089,8 @@ export const RightInspector: React.FC = () => {
                             ? 'Đang Xem Mặt Cắt Đứng Vòm Kép 2D (SR/MR)'
                             : 'Đang Xem Mặt Cắt Đứng 2D (WEZ)'
                           : isSpyder
-                          ? 'Mở Mặt Cắt Đứng Vòm Kép (2D)'
-                          : 'Mở Mặt Cắt Đứng 2D (Cross Section)'}
+                            ? 'Mở Mặt Cắt Đứng Vòm Kép (2D)'
+                            : 'Mở Mặt Cắt Đứng 2D (Cross Section)'}
                       </span>
                     </button>
                   </div>
@@ -2130,11 +2111,10 @@ export const RightInspector: React.FC = () => {
                           showDome: !selected.showDome,
                         })
                       }
-                      className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                        selected.showDome
+                      className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${selected.showDome
                           ? 'bg-purple-950 text-purple-300 border-purple-500/60 shadow-[0_0_8px_rgba(168,85,247,0.3)]'
                           : 'bg-slate-950 text-slate-500 border-slate-800'
-                      }`}
+                        }`}
                     >
                       {selected.showDome ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                       <span>{selected.showDome ? 'Đang bật' : 'Đang ẩn'}</span>
@@ -2187,125 +2167,125 @@ export const RightInspector: React.FC = () => {
           )}
         </div>
 
-        {/* ======================================================================= */ }
-  {/* 5. NÂNG CAO (ADVANCED SECTIONS — PROGRESSIVE DISCLOSURE: ĐÓNG MẶC ĐỊNH) */ }
-  {/* ======================================================================= */ }
-  <div className="space-y-2 pt-1 border-t border-slate-800/80">
-    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">
-      Dữ liệu kỹ thuật chuyên sâu
-    </span>
+        {/* ======================================================================= */}
+        {/* 5. NÂNG CAO (ADVANCED SECTIONS — PROGRESSIVE DISCLOSURE: ĐÓNG MẶC ĐỊNH) */}
+        {/* ======================================================================= */}
+        <div className="space-y-2 pt-1 border-t border-slate-800/80">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">
+            Dữ liệu kỹ thuật chuyên sâu
+          </span>
 
-    {/* Accordion 0: Thông Số Vũ Khí & Khí Tài Chuyên Sâu */}
-    {(selected.guidanceMethodVi || selected.frequencyRangeGhz || selected.reactionTimeSeconds) && (
-      <div className="bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden transition-all">
-        <button
-          onClick={() => setIsSpecsOpen(!isSpecsOpen)}
-          className="w-full p-2.5 flex items-center justify-between text-left hover:bg-slate-850 transition-colors cursor-pointer"
-        >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Activity className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="text-xs font-semibold text-slate-200 truncate">
-              Thông số Tác chiến & Quân sự Chi Tiết
-            </span>
-          </div>
-          <div className="flex items-center gap-1 text-slate-400 shrink-0 ml-1">
-            <span className="text-[10px] font-mono text-amber-400">
-              Chi tiết
-            </span>
-            {isSpecsOpen ? (
-              <ChevronDown className="w-4 h-4 text-amber-400" />
-            ) : (
-              <ChevronRight className="w-4 h-4" />
-            )}
-          </div>
-        </button>
-
-        {isSpecsOpen && (
-          <div className="p-2.5 pt-0 border-t border-slate-800/60 space-y-2 text-xs font-mono">
-            {selected.guidanceMethodVi && (
-              <div className="pt-2">
-                <span className="text-[10px] text-slate-500 block uppercase">Hệ thống dẫn bắn & Điều khiển:</span>
-                <span className="text-slate-200 font-semibold">{selected.guidanceMethodVi}</span>
-              </div>
-            )}
-            {selected.minEngagementRangeKm !== undefined && (
-              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">Cự ly tiêu diệt cực cận (R_min):</span>
-                <strong className={selected.templateId === 'sam_spyder' ? 'text-sky-300' : 'text-rose-300'}>
-                  {selected.templateId === 'sam_spyder' ? '1 km (SR) / 2 km (MR)' : `${selected.minEngagementRangeKm} km`}
-                </strong>
-              </div>
-            )}
-            {selected.maxEngagementAltitudeM !== undefined && (
-              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">Trần hỏa lực (H_max):</span>
-                <strong className={selected.templateId === 'sam_spyder' ? 'text-sky-300' : 'text-rose-300'}>
-                  {selected.templateId === 'sam_spyder' ? '9 km (SR) / 16 km (MR)' : `${(selected.maxEngagementAltitudeM / 1000).toFixed(0)} km (${selected.maxEngagementAltitudeM}m)`}
-                </strong>
-              </div>
-            )}
-            {selected.reactionTimeSeconds !== undefined && (
-              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">Thời gian phản ứng hệ thống (T_pư):</span>
-                <strong className="text-amber-300">{selected.reactionTimeSeconds} giây</strong>
-              </div>
-            )}
-            {selected.frequencyRangeGhz && (
-              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">Dải tần công tác tiếp nhận:</span>
-                <strong className="text-purple-300">{selected.frequencyRangeGhz}</strong>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    )}
-
-    {/* Accordion 1: Coverage Profile (Giản đồ búp sóng) */}
-    {selected.coverageProfile && (
-      <div className="bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden transition-all">
-        <button
-          onClick={() => setIsProfileOpen(!isProfileOpen)}
-          className="w-full p-2.5 flex items-center justify-between text-left hover:bg-slate-850 transition-colors cursor-pointer"
-        >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Layers className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <span className="text-xs font-semibold text-slate-200 truncate">
-              Coverage Profile ({selected.coverageProfile.name})
-            </span>
-          </div>
-          <div className="flex items-center gap-1 text-slate-400 shrink-0 ml-1">
-            <span className="text-[10px] font-mono text-cyan-400">
-              {selected.coverageProfile.points.length} điểm
-            </span>
-            {isProfileOpen ? (
-              <ChevronDown className="w-4 h-4 text-cyan-400" />
-            ) : (
-              <ChevronRight className="w-4 h-4" />
-            )}
-          </div>
-        </button>
-
-        {isProfileOpen && (
-          <div className="p-2.5 pt-0 border-t border-slate-800/60 space-y-2 text-xs">
-            <p className="text-[10px] text-slate-400 pt-2">
-              Giới hạn cự ly theo từng góc tà (nội suy liên tục theo búp sóng thực tế):
-            </p>
-            <div className="grid grid-cols-3 gap-1 font-mono text-[10px]">
-              {selected.coverageProfile.points.map((pt, idx) => (
-                <div
-                  key={idx}
-                  className="bg-slate-950 p-1.5 rounded border border-slate-800 text-center"
-                >
-                  <span className="text-slate-500 block">{pt.elevationDeg}°</span>
-                  <span className="text-cyan-300 font-bold">{pt.maxRangeKm} km</span>
+          {/* Accordion 0: Thông Số Vũ Khí & Khí Tài Chuyên Sâu */}
+          {(selected.guidanceMethodVi || selected.frequencyRangeGhz || selected.reactionTimeSeconds) && (
+            <div className="bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden transition-all">
+              <button
+                onClick={() => setIsSpecsOpen(!isSpecsOpen)}
+                className="w-full p-2.5 flex items-center justify-between text-left hover:bg-slate-850 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Activity className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="text-xs font-semibold text-slate-200 truncate">
+                    Thông số Tác chiến & Quân sự Chi Tiết
+                  </span>
                 </div>
-              ))}
+                <div className="flex items-center gap-1 text-slate-400 shrink-0 ml-1">
+                  <span className="text-[10px] font-mono text-amber-400">
+                    Chi tiết
+                  </span>
+                  {isSpecsOpen ? (
+                    <ChevronDown className="w-4 h-4 text-amber-400" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                </div>
+              </button>
+
+              {isSpecsOpen && (
+                <div className="p-2.5 pt-0 border-t border-slate-800/60 space-y-2 text-xs font-mono">
+                  {selected.guidanceMethodVi && (
+                    <div className="pt-2">
+                      <span className="text-[10px] text-slate-500 block uppercase">Hệ thống dẫn bắn & Điều khiển:</span>
+                      <span className="text-slate-200 font-semibold">{selected.guidanceMethodVi}</span>
+                    </div>
+                  )}
+                  {selected.minEngagementRangeKm !== undefined && (
+                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Cự ly tiêu diệt cực cận (R_min):</span>
+                      <strong className={selected.templateId === 'sam_spyder' ? 'text-sky-300' : 'text-rose-300'}>
+                        {selected.templateId === 'sam_spyder' ? '1 km (SR) / 2 km (MR)' : `${selected.minEngagementRangeKm} km`}
+                      </strong>
+                    </div>
+                  )}
+                  {selected.maxEngagementAltitudeM !== undefined && (
+                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Trần hỏa lực (H_max):</span>
+                      <strong className={selected.templateId === 'sam_spyder' ? 'text-sky-300' : 'text-rose-300'}>
+                        {selected.templateId === 'sam_spyder' ? '9 km (SR) / 16 km (MR)' : `${(selected.maxEngagementAltitudeM / 1000).toFixed(0)} km (${selected.maxEngagementAltitudeM}m)`}
+                      </strong>
+                    </div>
+                  )}
+                  {selected.reactionTimeSeconds !== undefined && (
+                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Thời gian phản ứng hệ thống (T_pư):</span>
+                      <strong className="text-amber-300">{selected.reactionTimeSeconds} giây</strong>
+                    </div>
+                  )}
+                  {selected.frequencyRangeGhz && (
+                    <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                      <span className="text-slate-400">Dải tần công tác tiếp nhận:</span>
+                      <strong className="text-purple-300">{selected.frequencyRangeGhz}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        )}
-      </div>
-    )}
+          )}
+
+          {/* Accordion 1: Coverage Profile (Giản đồ búp sóng) */}
+          {selected.coverageProfile && (
+            <div className="bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden transition-all">
+              <button
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className="w-full p-2.5 flex items-center justify-between text-left hover:bg-slate-850 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Layers className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span className="text-xs font-semibold text-slate-200 truncate">
+                    Coverage Profile ({selected.coverageProfile.name})
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 text-slate-400 shrink-0 ml-1">
+                  <span className="text-[10px] font-mono text-cyan-400">
+                    {selected.coverageProfile.points.length} điểm
+                  </span>
+                  {isProfileOpen ? (
+                    <ChevronDown className="w-4 h-4 text-cyan-400" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
+                </div>
+              </button>
+
+              {isProfileOpen && (
+                <div className="p-2.5 pt-0 border-t border-slate-800/60 space-y-2 text-xs">
+                  <p className="text-[10px] text-slate-400 pt-2">
+                    Giới hạn cự ly theo từng góc tà (nội suy liên tục theo búp sóng thực tế):
+                  </p>
+                  <div className="grid grid-cols-3 gap-1 font-mono text-[10px]">
+                    {selected.coverageProfile.points.map((pt, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-slate-950 p-1.5 rounded border border-slate-800 text-center"
+                      >
+                        <span className="text-slate-500 block">{pt.elevationDeg}°</span>
+                        <span className="text-cyan-300 font-bold">{pt.maxRangeKm} km</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
         </div>
       </div>
