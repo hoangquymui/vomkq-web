@@ -192,3 +192,111 @@ export function parseLegacyInstance(inst: EquipmentInstance): {
     }
   };
 }
+
+/**
+ * Pure helper to route a partial legacy EquipmentInstance patch into Canonical Domain fragments.
+ * Adheres strictly to the 46-field routing policy.
+ */
+export function applyEquipmentPatchToCanonical(
+  currentPlacement: EquipmentPlacement,
+  currentDefinition: EquipmentDefinition,
+  currentObservation: ObservationState,
+  currentVisual: LegacyPresentationState,
+  patch: Partial<EquipmentInstance>
+): {
+  placement: EquipmentPlacement;
+  definition: EquipmentDefinition;
+  observation: ObservationState;
+  visual: LegacyPresentationState;
+} {
+  // Deep clone fragments to ensure purity
+  const p: EquipmentPlacement = {
+    ...currentPlacement,
+    position: { ...currentPlacement.position },
+    network: { ...currentPlacement.network }
+  };
+  const d: EquipmentDefinition = {
+    ...currentDefinition,
+    capabilities: { ...currentDefinition.capabilities }
+  };
+  const o: ObservationState = { ...currentObservation };
+  const v: LegacyPresentationState = { ...currentVisual };
+
+  // Helper to check explicit presence (including false, 0, '')
+  const has = (key: keyof EquipmentInstance) => patch[key] !== undefined;
+
+  // A. PLACEMENT FIELDS
+  if (has('latitude')) p.position.lat = patch.latitude!;
+  if (has('longitude')) p.position.lon = patch.longitude!;
+  if (has('altitude')) p.position.altM = patch.altitude!;
+  if (has('antennaHeightAGL')) p.position.aglM = patch.antennaHeightAGL!;
+  if (has('commandedByInstanceId')) p.network.commandedBy = patch.commandedByInstanceId;
+  if (has('networkGroupId')) p.network.groupId = patch.networkGroupId;
+
+  // B. DEFINITION FIELDS
+  if (has('templateId')) d.templateId = patch.templateId!;
+  if (has('category')) d.category = patch.category!;
+  if (has('name')) d.name = patch.name!;
+  if (has('rangeKm')) d.rangeKm = patch.rangeKm!;
+  if (has('scanSpeed')) d.scanSpeed = patch.scanSpeed!;
+  if (has('minElevationDeg')) d.minElevationDeg = patch.minElevationDeg!;
+  if (has('maxElevationDeg')) d.maxElevationDeg = patch.maxElevationDeg!;
+  if (has('coverageHeightKm')) d.coverageHeightKm = patch.coverageHeightKm!;
+
+  // Capabilities
+  if (has('shortId')) d.capabilities.shortId = patch.shortId;
+  if (has('wavelengthM')) d.capabilities.wavelengthM = patch.wavelengthM;
+  if (has('minEngagementRangeKm')) d.capabilities.minEngagementRangeKm = patch.minEngagementRangeKm;
+  if (has('maxEngagementAltitudeM')) d.capabilities.maxEngagementAltitudeM = patch.maxEngagementAltitudeM;
+  if (has('minEngagementAltitudeM')) d.capabilities.minEngagementAltitudeM = patch.minEngagementAltitudeM;
+  if (has('maxTargetSpeedMps')) d.capabilities.maxTargetSpeedMps = patch.maxTargetSpeedMps;
+  if (has('maxTargetParamKm')) d.capabilities.maxTargetParamKm = patch.maxTargetParamKm;
+  if (has('optimalAltitudeM')) d.capabilities.optimalAltitudeM = patch.optimalAltitudeM;
+  if (has('reactionTimeSeconds')) d.capabilities.reactionTimeSeconds = patch.reactionTimeSeconds;
+  if (has('deployTimeMinutes')) d.capabilities.deployTimeMinutes = patch.deployTimeMinutes;
+  if (has('guidanceMethodVi')) d.capabilities.guidanceMethodVi = patch.guidanceMethodVi;
+  if (has('samEngagementMode')) d.capabilities.samEngagementMode = patch.samEngagementMode;
+  if (has('samProfiles')) d.capabilities.samProfiles = patch.samProfiles;
+  if (has('frequencyRangeGhz')) d.capabilities.frequencyRangeGhz = patch.frequencyRangeGhz;
+  if (has('spyderConfig')) d.capabilities.spyderConfig = patch.spyderConfig;
+  if (has('coverageProfile')) d.capabilities.coverageProfile = patch.coverageProfile;
+  if (has('altitudeDetectionTable')) d.capabilities.altitudeDetectionTable = patch.altitudeDetectionTable;
+
+  // C. OBSERVATION FIELDS
+  if (has('status')) o.status = patch.status!;
+
+  // D. PRESENTATION FIELDS
+  if (has('color')) v.color = patch.color!;
+  if (has('showDome')) v.showDome = patch.showDome!;
+  if (has('showSweep')) v.showSweep = patch.showSweep!;
+  if (has('spxConfig')) v.spxConfig = patch.spxConfig;
+  if (has('targetAltitudeM')) v.targetAltitudeM = patch.targetAltitudeM;
+  if (has('realPhotoUrl')) v.realPhotoUrl = patch.realPhotoUrl;
+  if (has('model3dUrl')) v.model3dUrl = patch.model3dUrl;
+  if (has('model3dScale')) v.model3dScale = patch.model3dScale;
+  if (has('model3dHeadingOffset')) v.model3dHeadingOffset = patch.model3dHeadingOffset;
+  if (has('model3dAltitudeOffset')) v.model3dAltitudeOffset = patch.model3dAltitudeOffset;
+  if (has('customModelFileName')) v.customModelFileName = patch.customModelFileName;
+  if (has('customPhotoFileName')) v.customPhotoFileName = patch.customPhotoFileName;
+
+  // E. EXCLUDED & UNKNOWN FIELDS
+  const knownFields = new Set<string>([
+    'latitude', 'longitude', 'altitude', 'antennaHeightAGL', 'commandedByInstanceId', 'networkGroupId',
+    'templateId', 'category', 'name', 'rangeKm', 'scanSpeed', 'minElevationDeg', 'maxElevationDeg', 'coverageHeightKm',
+    'shortId', 'wavelengthM', 'minEngagementRangeKm', 'maxEngagementAltitudeM', 'minEngagementAltitudeM',
+    'maxTargetSpeedMps', 'maxTargetParamKm', 'optimalAltitudeM', 'reactionTimeSeconds', 'deployTimeMinutes',
+    'guidanceMethodVi', 'samEngagementMode', 'samProfiles', 'frequencyRangeGhz', 'spyderConfig', 'coverageProfile', 'altitudeDetectionTable',
+    'status',
+    'color', 'showDome', 'showSweep', 'spxConfig', 'targetAltitudeM', 'realPhotoUrl', 'model3dUrl', 'model3dScale',
+    'model3dHeadingOffset', 'model3dAltitudeOffset', 'customModelFileName', 'customPhotoFileName',
+    'currentSweepHeading', 'instanceId'
+  ]);
+
+  for (const key of Object.keys(patch)) {
+    if (!knownFields.has(key)) {
+      console.warn(`[Diagnostic] applyEquipmentPatchToCanonical: ignoring unknown/unmapped field: ${key}`);
+    }
+  }
+
+  return { placement: p, definition: d, observation: o, visual: v };
+}

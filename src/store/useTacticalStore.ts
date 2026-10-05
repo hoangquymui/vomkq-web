@@ -30,7 +30,7 @@ import type { Scenario } from '../domain/types/scenario';
 import type { Plan } from '../domain/types/plan';
 import type { EquipmentDefinition, EquipmentPlacement, ObservationState } from '../domain/types/equipment';
 import type { SimulationState, SimulationRun } from '../domain/types/simulation';
-import { hydrateLegacyInstance, parseLegacyInstance, type LegacyPresentationState } from '../domain/adapters/legacyEquipmentAdapter';
+import { hydrateLegacyInstance, parseLegacyInstance, applyEquipmentPatchToCanonical, type LegacyPresentationState } from '../domain/adapters/legacyEquipmentAdapter';
 /**
  * Trạng thái cố vấn vị trí đặt khí tài (VECTOR AI local).
  * - idle     : chưa chạy
@@ -365,7 +365,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     for (const inst of state.instances) {
       const id = inst.instanceId;
       const parsed = parseLegacyInstance(inst);
-      
+
       nextPlacements[id] = parsed.placement;
       nextDefinitions[id] = parsed.definition;
       nextObservations[id] = parsed.observation;
@@ -520,9 +520,49 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       if (locationOrRadarChanged) {
         delete nextVolumes[instanceId];
       }
+
+      // CHECKPOINT 1B.3.3: Canonical-first migration logic
+      const placement = state.placements[instanceId];
+
+      // LEGACY_ONLY case
+      if (!placement) {
+        return {
+          instances: state.instances.map((item) =>
+            item.instanceId === instanceId ? { ...item, ...updates, instanceId } : item
+          ),
+          coverageVolumes: nextVolumes,
+        };
+      }
+
+      const definition = state.definitions[placement.definitionId];
+      const observation = state.observations[instanceId];
+      const visual = state.visuals[instanceId];
+
+      // CANONICAL_INCOMPLETE case
+      if (!definition || !observation || !visual) {
+        console.error(`[updateEquipment] Abort: CANONICAL_INCOMPLETE state for instanceId: ${instanceId}`);
+        return { coverageVolumes: nextVolumes };
+      }
+
+      // CANONICAL_COMPLETE case
+      const updatedCanonical = applyEquipmentPatchToCanonical(placement, definition, observation, visual, updates);
+      const existingSimulation = state.activeSimulationRunId ? state.simulations[state.activeSimulationRunId]?.[placement.id] : undefined;
+
+      const hydrated = hydrateLegacyInstance(
+        updatedCanonical.placement,
+        updatedCanonical.definition,
+        updatedCanonical.observation,
+        updatedCanonical.visual,
+        existingSimulation
+      );
+
       return {
+        placements: { ...state.placements, [placement.id]: updatedCanonical.placement },
+        definitions: { ...state.definitions, [definition.id]: updatedCanonical.definition },
+        observations: { ...state.observations, [placement.id]: updatedCanonical.observation },
+        visuals: { ...state.visuals, [placement.id]: updatedCanonical.visual },
         instances: state.instances.map((item) =>
-          item.instanceId === instanceId ? { ...item, ...updates } : item
+          item.instanceId === instanceId ? hydrated : item
         ),
         coverageVolumes: nextVolumes,
       };

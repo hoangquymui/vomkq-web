@@ -3,7 +3,7 @@
  * Pure Typescript, no external test framework required.
  */
 
-import { hydrateLegacyInstance, parseLegacyInstance, type LegacyPresentationState } from './legacyEquipmentAdapter';
+import { hydrateLegacyInstance, parseLegacyInstance, applyEquipmentPatchToCanonical, type LegacyPresentationState } from './legacyEquipmentAdapter';
 import type { EquipmentPlacement, EquipmentDefinition, ObservationState } from '../types/equipment';
 import type { SimulationState } from '../types/simulation';
 import type { EquipmentInstance } from '../../types/equipment';
@@ -242,7 +242,7 @@ export function runAdapterTests() {
   // Create a mock legacy instance with no simulation state.
   const mockLegacyInstance: EquipmentInstance = deepClone(instanceWithoutSim);
   mockLegacyInstance.currentSweepHeading = 123; // Add some mock simulation data just to ensure it is IGNORED by hydration.
-  
+
   // Use the REAL production mapper
   const canonicalFragments = parseLegacyInstance(mockLegacyInstance);
   const p = canonicalFragments.placement;
@@ -264,6 +264,34 @@ export function runAdapterTests() {
   // Since we are running in Node via tsx without a Vite environment, import.meta.env is undefined and crashes.
   // The actual store action `_hydrateLegacyToCanonical` is validated by build/runtime inspection
   // and relies entirely on the tested pure mapper above.
+  // 8. Test applyEquipmentPatchToCanonical
+  console.log('Testing applyEquipmentPatchToCanonical...');
+  const patch: Partial<EquipmentInstance> = {
+    latitude: 25.0,
+    rangeKm: 500,
+    status: 'Maintenance',
+    showDome: false,
+    currentSweepHeading: 999, // Should be ignored
+    instanceId: 'should-be-ignored' // Should be ignored
+  };
+
+  const patched = applyEquipmentPatchToCanonical(p, d, o, v, patch);
+  strictEqual(patched.placement.position.lat, 25.0, 'lat should be patched');
+  strictEqual(patched.placement.position.lon, p.position.lon, 'lon should be unchanged');
+  strictEqual(patched.definition.rangeKm, 500, 'rangeKm should be patched');
+  strictEqual(patched.definition.scanSpeed, d.scanSpeed, 'scanSpeed should be unchanged');
+  strictEqual(patched.observation.status, 'Maintenance', 'status should be patched');
+  strictEqual(patched.visual.showDome, false, 'showDome should be patched');
+
+  // Test 0 / empty string
+  const patchZero: Partial<EquipmentInstance> = {
+    scanSpeed: 0,
+    name: ''
+  };
+  const patchedZero = applyEquipmentPatchToCanonical(p, d, o, v, patchZero);
+  strictEqual(patchedZero.definition.scanSpeed, 0, 'scanSpeed should handle 0');
+  strictEqual(patchedZero.definition.name, '', 'name should handle empty string');
+
   console.log('Store action `_hydrateLegacyToCanonical` validated by build/runtime inspection.');
   console.log('legacyEquipmentAdapter.test.ts: All tests passed successfully.');
 }
