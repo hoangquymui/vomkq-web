@@ -468,8 +468,26 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         model3dHeadingOffset: instance.model3dHeadingOffset ?? tmpl?.model3dHeadingOffset ?? 0,
         model3dAltitudeOffset: instance.model3dAltitudeOffset ?? tmpl?.model3dAltitudeOffset ?? 0,
       };
+
+      // 2. Parse into Canonical Fragments (Pure Mapping)
+      const parsed = parseLegacyInstance(instanceWithProfile);
+      const pid = parsed.placement.id;
+
+      // 3. Project to Legacy (Strict NO DUAL-WRITE rule: generate legacy projection from canonical)
+      const projectedLegacy = hydrateLegacyInstance(
+        parsed.placement,
+        parsed.definition,
+        parsed.observation,
+        parsed.visual,
+        undefined
+      );
+
       return {
-        instances: [...state.instances, instanceWithProfile],
+        placements: { ...state.placements, [pid]: parsed.placement },
+        definitions: { ...state.definitions, [parsed.definition.id]: parsed.definition },
+        observations: { ...state.observations, [pid]: parsed.observation },
+        visuals: { ...state.visuals, [pid]: parsed.visual },
+        instances: [...state.instances, projectedLegacy],
         selectedInstanceId: instance.instanceId,
         activeTool: 'select',
         pendingTemplate: null,
