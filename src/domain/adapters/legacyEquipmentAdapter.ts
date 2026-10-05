@@ -110,3 +110,85 @@ export function hydrateLegacyInstance(
     spyderConfig: definition.capabilities.spyderConfig as SpyderSystemConfig | undefined,
   };
 }
+
+/**
+ * Parses a legacy EquipmentInstance into its Canonical Domain fragments.
+ * This is a pure function used for one-time hydration and migration.
+ * It DOES NOT fabricate SimulationState or historical Plan/Scenario data.
+ *
+ * @param inst - The legacy EquipmentInstance object
+ * @returns A tuple of Canonical fragments
+ */
+export function parseLegacyInstance(inst: EquipmentInstance): {
+  placement: EquipmentPlacement;
+  definition: EquipmentDefinition;
+  observation: ObservationState;
+  visual: LegacyPresentationState;
+} {
+  const id = inst.instanceId;
+
+  return {
+    placement: {
+      id,
+      definitionId: id, // 1-to-1 temporary mapping
+      position: {
+        lat: inst.latitude,
+        lon: inst.longitude,
+        altM: inst.altitude,
+        aglM: inst.antennaHeightAGL,
+      },
+      network: {
+        commandedBy: inst.commandedByInstanceId,
+        groupId: inst.networkGroupId,
+      },
+    },
+    observation: {
+      placementId: id,
+      status: inst.status,
+    },
+    definition: {
+      id,
+      templateId: inst.templateId,
+      category: inst.category,
+      name: inst.name,
+      rangeKm: inst.rangeKm,
+      scanSpeed: inst.scanSpeed,
+      minElevationDeg: inst.minElevationDeg,
+      maxElevationDeg: inst.maxElevationDeg,
+      coverageHeightKm: inst.coverageHeightKm,
+      capabilities: {
+        shortId: inst.shortId,
+        wavelengthM: inst.wavelengthM,
+        coverageProfile: inst.coverageProfile,
+        altitudeDetectionTable: inst.altitudeDetectionTable,
+        minEngagementRangeKm: inst.minEngagementRangeKm,
+        maxEngagementAltitudeM: inst.maxEngagementAltitudeM,
+        minEngagementAltitudeM: inst.minEngagementAltitudeM,
+        maxTargetSpeedMps: inst.maxTargetSpeedMps,
+        maxTargetParamKm: inst.maxTargetParamKm,
+        optimalAltitudeM: inst.optimalAltitudeM,
+        reactionTimeSeconds: inst.reactionTimeSeconds,
+        deployTimeMinutes: inst.deployTimeMinutes,
+        guidanceMethodVi: inst.guidanceMethodVi,
+        samEngagementMode: inst.samEngagementMode,
+        samProfiles: inst.samProfiles,
+        frequencyRangeGhz: inst.frequencyRangeGhz,
+        spyderConfig: inst.spyderConfig,
+      },
+    },
+    visual: {
+      color: inst.color,
+      showDome: inst.showDome,
+      showSweep: inst.showSweep,
+      spxConfig: inst.spxConfig,
+      targetAltitudeM: inst.targetAltitudeM,
+      realPhotoUrl: inst.realPhotoUrl,
+      model3dUrl: inst.model3dUrl,
+      model3dScale: inst.model3dScale,
+      model3dHeadingOffset: inst.model3dHeadingOffset,
+      model3dAltitudeOffset: inst.model3dAltitudeOffset,
+      customModelFileName: inst.customModelFileName,
+      customPhotoFileName: inst.customPhotoFileName,
+    }
+  };
+}

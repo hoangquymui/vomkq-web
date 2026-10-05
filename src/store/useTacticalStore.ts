@@ -26,6 +26,11 @@ import type { RadarCoverageVolume } from '../types/radarVolume';
 import { invalidateVolumeCache } from '../utils/radarVolumeEngine';
 import { destinationPoint } from '../utils/radarLosEngine';
 
+import type { Scenario } from '../domain/types/scenario';
+import type { Plan } from '../domain/types/plan';
+import type { EquipmentDefinition, EquipmentPlacement, ObservationState } from '../domain/types/equipment';
+import type { SimulationState, SimulationRun } from '../domain/types/simulation';
+import { hydrateLegacyInstance, parseLegacyInstance, type LegacyPresentationState } from '../domain/adapters/legacyEquipmentAdapter';
 /**
  * Trạng thái cố vấn vị trí đặt khí tài (VECTOR AI local).
  * - idle     : chưa chạy
@@ -73,7 +78,35 @@ export interface CrossSectionProbePoint {
 }
 
 interface TacticalState {
-  // Battlefield Entities
+  // === Canonical Domain State (Target Source of Truth) ===
+  scenarios: Record<string, Scenario>;
+  plans: Record<string, Plan>;
+  simulationRuns: Record<string, SimulationRun>;
+  definitions: Record<string, EquipmentDefinition>;
+  placements: Record<string, EquipmentPlacement>;
+  observations: Record<string, ObservationState>;
+  simulations: Record<string, Record<string, SimulationState>>;
+  // === Presentation/UI State ===
+  visuals: Record<string, LegacyPresentationState>;
+
+  activeScenarioId: string | null;
+  activePlanId: string | null;
+  activeSimulationRunId: string | null;
+  canonicalInitialized: boolean;
+
+  /**
+   * One-time hydration helper. Parses current legacy instances[] into Canonical Domain objects.
+   * Does NOT enable canonical projection automatically.
+   */
+  _hydrateLegacyToCanonical: () => void;
+
+  /**
+   * Internal projection helper. Re-generates `instances` from the Canonical State.
+   * Only runs if `canonicalInitialized` is true.
+   */
+  _syncLegacyInstances: () => void;
+
+  // Battlefield Entities (Legacy Projection)
   instances: EquipmentInstance[];
   selectedInstanceId: string | null;
 
@@ -294,6 +327,91 @@ function resolveAdvisorTemplate(state: {
 }
 
 export const useTacticalStore = create<TacticalState>((set, get) => ({
+  // Canonical State Initialization
+  scenarios: {},
+  plans: {},
+  simulationRuns: {},
+  definitions: {},
+  placements: {},
+  observations: {},
+  simulations: {},
+  visuals: {},
+
+  activeScenarioId: null,
+  activePlanId: null,
+  activeSimulationRunId: null,
+  canonicalInitialized: false,
+
+  _hydrateLegacyToCanonical: () => set((state) => {
+    if (state.canonicalInitialized) {
+      console.warn('[_hydrateLegacyToCanonical] Aborted: canonical state is already initialized.');
+      return {};
+    }
+
+    const seenIds = new Set<string>();
+    for (const inst of state.instances) {
+      if (seenIds.has(inst.instanceId)) {
+        console.error(`[_hydrateLegacyToCanonical] Aborted: Duplicate instanceId detected: ${inst.instanceId}. Hydration must not lose data.`);
+        return {};
+      }
+      seenIds.add(inst.instanceId);
+    }
+
+    const nextPlacements: Record<string, EquipmentPlacement> = {};
+    const nextDefinitions: Record<string, EquipmentDefinition> = {};
+    const nextObservations: Record<string, ObservationState> = {};
+    const nextVisuals: Record<string, LegacyPresentationState> = {};
+
+    for (const inst of state.instances) {
+      const id = inst.instanceId;
+      const parsed = parseLegacyInstance(inst);
+      
+      nextPlacements[id] = parsed.placement;
+      nextDefinitions[id] = parsed.definition;
+      nextObservations[id] = parsed.observation;
+      nextVisuals[id] = parsed.visual;
+    }
+
+    return {
+      placements: nextPlacements,
+      definitions: nextDefinitions,
+      observations: nextObservations,
+      visuals: nextVisuals,
+      // Intentionally NOT setting canonicalInitialized = true yet.
+    };
+  }),
+
+  _syncLegacyInstances: () => set((state) => {
+    if (!state.canonicalInitialized) return state;
+
+    const nextInstances = Object.values(state.placements).map((placement) => {
+      const definition = state.definitions[placement.definitionId];
+      const observation = state.observations[placement.id];
+      const visual = state.visuals[placement.id];
+      const simulation = state.activeSimulationRunId
+        ? state.simulations[state.activeSimulationRunId]?.[placement.id]
+        : undefined;
+
+      // Safe migration behavior: If canonical fragments are missing, we cannot project safely.
+      // We skip projection for this placement rather than inventing fake data that could crash engines.
+      if (!definition || !observation || !visual) {
+        console.error(`[Sync] Missing canonical fragments for placement ${placement.id}. Skipping projection.`);
+        return null;
+      }
+
+      return hydrateLegacyInstance(
+        placement,
+        definition,
+        observation,
+        visual,
+        simulation
+      );
+    }).filter((inst): inst is EquipmentInstance => inst !== null);
+
+    return { instances: nextInstances };
+  }),
+
+  // Legacy Projection
   instances: [],
   selectedInstanceId: null,
 
