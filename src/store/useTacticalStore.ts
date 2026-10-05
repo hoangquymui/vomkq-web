@@ -101,6 +101,12 @@ interface TacticalState {
   _hydrateLegacyToCanonical: () => void;
 
   /**
+   * Executes the final migration cutover per-instance, validating completeness,
+   * consistency, and finally setting `canonicalInitialized = true`.
+   */
+  _initializeCanonicalCutover: () => void;
+
+  /**
    * Internal projection helper. Re-generates `instances` from the Canonical State.
    * Only runs if `canonicalInitialized` is true.
    */
@@ -381,6 +387,109 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     };
   }),
 
+  _initializeCanonicalCutover: () => set((state) => {
+    // Current State Audit & Validation
+    const pMap = { ...state.placements };
+    const dMap = { ...state.definitions };
+    const oMap = { ...state.observations };
+    const vMap = { ...state.visuals };
+
+    // Duplicate ID detection in legacy instances
+    const instanceIds = new Set(state.instances.map(i => i.instanceId));
+    if (instanceIds.size !== state.instances.length) {
+      console.error(`[Cutover] Abort: Duplicate instanceId detected in legacy instances.`);
+      return state;
+    }
+
+    for (const inst of state.instances) {
+      const id = inst.instanceId;
+      const isComplete = pMap[id] && dMap[pMap[id].definitionId] && oMap[id] && vMap[id];
+
+      if (isComplete) {
+        // Canonical-complete -> preserve existing Canonical, do not overwrite from legacy
+        continue;
+      }
+
+      if (!pMap[id] && !oMap[id] && !vMap[id]) {
+        // Legacy-only -> hydrate from legacy
+        const parsed = parseLegacyInstance(inst);
+        pMap[id] = parsed.placement;
+        dMap[parsed.definition.id] = parsed.definition;
+        oMap[id] = parsed.observation;
+        vMap[id] = parsed.visual;
+      } else {
+        // Canonical-incomplete -> block cutover
+        console.error(`[Cutover] Abort: CANONICAL_INCOMPLETE state for instanceId: ${id}`);
+        return state;
+      }
+    }
+
+    const placementIds = new Set(Object.keys(pMap));
+
+    // Bidirectional consistency check
+    if (instanceIds.size !== placementIds.size) {
+      console.error(`[Cutover] Abort: Bidirectional consistency check failed. Sizes differ.`);
+      return state;
+    }
+
+    for (const id of instanceIds) {
+      if (!placementIds.has(id)) {
+        console.error(`[Cutover] Abort: Bidirectional consistency check failed. Missing placement for ${id}.`);
+        return state;
+      }
+    }
+
+    // Check missing canonical graph parts for all placements
+    for (const pid of placementIds) {
+      const p = pMap[pid];
+      if (!dMap[p.definitionId] || !oMap[pid] || !vMap[pid]) {
+         console.error(`[Cutover] Abort: Incomplete canonical graph for placement ${pid}`);
+         return state;
+      }
+    }
+
+    // Check orphan canonical records
+    for (const did of Object.keys(dMap)) {
+      if (!Object.values(pMap).some((p) => p.definitionId === did)) {
+         console.error(`[Cutover] Abort: Orphan Definition ${did}`);
+         return state;
+      }
+    }
+    for (const oid of Object.keys(oMap)) {
+      if (!pMap[oid]) {
+         console.error(`[Cutover] Abort: Orphan Observation ${oid}`);
+         return state;
+      }
+    }
+    for (const vid of Object.keys(vMap)) {
+      if (!pMap[vid]) {
+         console.error(`[Cutover] Abort: Orphan Visual ${vid}`);
+         return state;
+      }
+    }
+
+    // Generate new projection array
+    const nextInstances = Object.values(pMap).map((placement) => {
+      const definition = dMap[placement.definitionId];
+      const observation = oMap[placement.id];
+      const visual = vMap[placement.id];
+      const simulation = state.activeSimulationRunId
+        ? state.simulations[state.activeSimulationRunId]?.[placement.id]
+        : undefined;
+
+      return hydrateLegacyInstance(placement, definition, observation, visual, simulation);
+    });
+
+    return {
+      placements: pMap,
+      definitions: dMap,
+      observations: oMap,
+      visuals: vMap,
+      instances: nextInstances,
+      canonicalInitialized: true
+    };
+  }),
+
   _syncLegacyInstances: () => set((state) => {
     if (!state.canonicalInitialized) return state;
 
@@ -570,29 +679,99 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   },
 
   updateEquipmentSpxConfig: (instanceId, updates) =>
-    set((state) => ({
-      instances: state.instances.map((item) =>
-        item.instanceId === instanceId
-          ? {
-              ...item,
-              spxConfig: {
-                ...(item.spxConfig || {}),
-                ...updates,
-              },
-            }
-          : item
-      ),
-    })),
+    set((state) => {
+      const placement = state.placements[instanceId];
+      if (!placement) {
+        // Legacy-only path
+        const inst = state.instances.find((i) => i.instanceId === instanceId);
+        if (!inst) return state;
+
+        const parsed = parseLegacyInstance(inst);
+        parsed.visual.spxConfig = { ...(parsed.visual.spxConfig || {}), ...updates };
+
+        const simulation = state.activeSimulationRunId
+          ? state.simulations[state.activeSimulationRunId]?.[instanceId]
+          : undefined;
+        const hydrated = hydrateLegacyInstance(
+          parsed.placement,
+          parsed.definition,
+          parsed.observation,
+          parsed.visual,
+          simulation
+        );
+
+        return {
+          placements: { ...state.placements, [instanceId]: parsed.placement },
+          definitions: { ...state.definitions, [parsed.definition.id]: parsed.definition },
+          observations: { ...state.observations, [instanceId]: parsed.observation },
+          visuals: { ...state.visuals, [instanceId]: parsed.visual },
+          instances: state.instances.map((item) => (item.instanceId === instanceId ? hydrated : item)),
+        };
+      }
+
+      // Canonical-backed path
+      const definition = state.definitions[placement.definitionId];
+      const observation = state.observations[instanceId];
+      const visual = state.visuals[instanceId];
+
+      if (!definition || !observation || !visual) return state;
+
+      const newVisual = {
+        ...visual,
+        spxConfig: { ...(visual.spxConfig || {}), ...updates },
+      };
+
+      const simulation = state.activeSimulationRunId
+        ? state.simulations[state.activeSimulationRunId]?.[instanceId]
+        : undefined;
+      const hydrated = hydrateLegacyInstance(placement, definition, observation, newVisual, simulation);
+
+      return {
+        visuals: { ...state.visuals, [instanceId]: newVisual },
+        instances: state.instances.map((item) => (item.instanceId === instanceId ? hydrated : item)),
+      };
+    }),
 
   removeEquipment: (instanceId) => {
     invalidateVolumeCache(instanceId);
     set((state) => {
       const nextVolumes = { ...state.coverageVolumes };
       delete nextVolumes[instanceId];
+
+      const placement = state.placements[instanceId];
+
+      // Migration window Legacy-only fallback
+      if (!placement) {
+        return {
+          instances: state.instances.filter((item) => item.instanceId !== instanceId),
+          selectedInstanceId: state.selectedInstanceId === instanceId ? null : state.selectedInstanceId,
+          coverageVolumes: nextVolumes,
+        };
+      }
+
+      // Canonical-backed
+      const nextPlacements = { ...state.placements };
+      const nextObservations = { ...state.observations };
+      const nextVisuals = { ...state.visuals };
+      const nextDefinitions = { ...state.definitions };
+
+      delete nextPlacements[instanceId];
+      delete nextObservations[instanceId];
+      delete nextVisuals[instanceId];
+
+      const definitionId = placement.definitionId;
+      const hasOtherReferences = Object.values(nextPlacements).some((p) => p.definitionId === definitionId);
+      if (!hasOtherReferences) {
+        delete nextDefinitions[definitionId];
+      }
+
       return {
+        placements: nextPlacements,
+        definitions: nextDefinitions,
+        observations: nextObservations,
+        visuals: nextVisuals,
         instances: state.instances.filter((item) => item.instanceId !== instanceId),
-        selectedInstanceId:
-          state.selectedInstanceId === instanceId ? null : state.selectedInstanceId,
+        selectedInstanceId: state.selectedInstanceId === instanceId ? null : state.selectedInstanceId,
         coverageVolumes: nextVolumes,
       };
     });
@@ -693,25 +872,83 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     })),
   setSamEngagementMode: (instanceId, mode) =>
     set((state) => {
-      const inst = state.instances.find((i) => i.instanceId === instanceId);
-      if (!inst) return state;
-      const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === inst.templateId);
-      const profile = (inst.samProfiles || tmpl?.samProfiles)?.[mode];
-      const nextInstances = state.instances.map((i) => {
-        if (i.instanceId !== instanceId) return i;
+      const placement = state.placements[instanceId];
+
+      if (!placement) {
+        // Legacy-only path
+        const inst = state.instances.find((i) => i.instanceId === instanceId);
+        if (!inst) return state;
+
+        const parsed = parseLegacyInstance(inst);
+        const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === inst.templateId);
+        const samProfilesAny = (parsed.definition.capabilities as any).samProfiles || (tmpl as any)?.samProfiles;
+        const profile = samProfilesAny?.[mode];
+
+        (parsed.definition.capabilities as any).samEngagementMode = mode;
+        if (profile) {
+          parsed.definition.rangeKm = profile.dMaxKm;
+          (parsed.definition.capabilities as any).minEngagementRangeKm = profile.dMinKm;
+          (parsed.definition.capabilities as any).maxEngagementAltitudeM = profile.hMaxM;
+          (parsed.definition.capabilities as any).minEngagementAltitudeM = profile.hMinM;
+          (parsed.definition.capabilities as any).maxTargetSpeedMps = profile.vMaxMps;
+          (parsed.definition.capabilities as any).maxTargetParamKm = profile.pGhKm;
+        }
+
+        const simulation = state.activeSimulationRunId
+          ? state.simulations[state.activeSimulationRunId]?.[instanceId]
+          : undefined;
+        const hydrated = hydrateLegacyInstance(
+          parsed.placement,
+          parsed.definition,
+          parsed.observation,
+          parsed.visual,
+          simulation
+        );
+
         return {
-          ...i,
-          samEngagementMode: mode,
-          rangeKm: profile ? profile.dMaxKm : i.rangeKm,
-          minEngagementRangeKm: profile ? profile.dMinKm : i.minEngagementRangeKm,
-          maxEngagementAltitudeM: profile ? profile.hMaxM : i.maxEngagementAltitudeM,
-          minEngagementAltitudeM: profile ? profile.hMinM : i.minEngagementAltitudeM,
-          maxTargetSpeedMps: profile ? profile.vMaxMps : i.maxTargetSpeedMps,
-          maxTargetParamKm: profile ? profile.pGhKm : i.maxTargetParamKm,
+          placements: { ...state.placements, [instanceId]: parsed.placement },
+          definitions: { ...state.definitions, [parsed.definition.id]: parsed.definition },
+          observations: { ...state.observations, [instanceId]: parsed.observation },
+          visuals: { ...state.visuals, [instanceId]: parsed.visual },
+          instances: state.instances.map((item) => (item.instanceId === instanceId ? hydrated : item)),
+          samEngagementModes: { ...state.samEngagementModes, [instanceId]: mode },
         };
-      });
+      }
+
+      // Canonical-backed path
+      const definition = state.definitions[placement.definitionId];
+      const observation = state.observations[instanceId];
+      const visual = state.visuals[instanceId];
+
+      if (!definition || !observation || !visual) return state;
+
+      const newDefinition = {
+        ...definition,
+        capabilities: { ...definition.capabilities },
+      };
+
+      const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === definition.templateId);
+      const samProfilesAny = (newDefinition.capabilities as any).samProfiles || (tmpl as any)?.samProfiles;
+      const profile = samProfilesAny?.[mode];
+
+      (newDefinition.capabilities as any).samEngagementMode = mode;
+      if (profile) {
+        newDefinition.rangeKm = profile.dMaxKm;
+        (newDefinition.capabilities as any).minEngagementRangeKm = profile.dMinKm;
+        (newDefinition.capabilities as any).maxEngagementAltitudeM = profile.hMaxM;
+        (newDefinition.capabilities as any).minEngagementAltitudeM = profile.hMinM;
+        (newDefinition.capabilities as any).maxTargetSpeedMps = profile.vMaxMps;
+        (newDefinition.capabilities as any).maxTargetParamKm = profile.pGhKm;
+      }
+
+      const simulation = state.activeSimulationRunId
+        ? state.simulations[state.activeSimulationRunId]?.[instanceId]
+        : undefined;
+      const hydrated = hydrateLegacyInstance(placement, newDefinition, observation, visual, simulation);
+
       return {
-        instances: nextInstances,
+        definitions: { ...state.definitions, [newDefinition.id]: newDefinition },
+        instances: state.instances.map((item) => (item.instanceId === instanceId ? hydrated : item)),
         samEngagementModes: { ...state.samEngagementModes, [instanceId]: mode },
       };
     }),
@@ -1048,26 +1285,49 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   clearAll: () => {
     invalidateVolumeCache();
     set({
+      placements: {},
+      definitions: {},
+      observations: {},
+      visuals: {},
       instances: [],
       selectedInstanceId: null,
       measurePoints: [],
       coverageVolumes: {},
+      samEngagementModes: {},
     });
   },
 
   importFromLayout: (layout) => {
-    const importedInstances: EquipmentInstance[] = layout.equipments.map((saved, index) => {
-      const template =
-        EQUIPMENT_TEMPLATES.find((t) => t.id === saved.templateId) ||
-        EQUIPMENT_TEMPLATES[0];
+    const state = get();
+    // 1. Transactional validation: Check duplicates in incoming data
+    const incomingIds = new Set<string>();
+    for (const item of layout.equipments) {
+      const id = item.instanceId;
+      if (id && incomingIds.has(id)) {
+        console.error(`[importFromLayout] Abort: Duplicate instanceId in dataset: ${id}`);
+        return;
+      }
+      if (id) incomingIds.add(id);
+    }
+
+    // 2. In-memory normalization & parse
+    const nextPlacements: Record<string, ReturnType<typeof parseLegacyInstance>['placement']> = {};
+    const nextDefinitions: Record<string, ReturnType<typeof parseLegacyInstance>['definition']> = {};
+    const nextObservations: Record<string, ReturnType<typeof parseLegacyInstance>['observation']> = {};
+    const nextVisuals: Record<string, ReturnType<typeof parseLegacyInstance>['visual']> = {};
+    const newInstances: EquipmentInstance[] = [];
+
+    layout.equipments.forEach((saved, index) => {
+      const template = EQUIPMENT_TEMPLATES.find((t) => t.id === saved.templateId) || EQUIPMENT_TEMPLATES[0];
 
       const statusMap = ['Active', 'Standby', 'Maintenance', 'Offline'] as const;
       const status = statusMap[saved.status] || 'Active';
       const prefix = CATEGORY_META[template.category]?.prefix || 'EQ';
       const autoShortId = `${prefix}-${(index + 1).toString().padStart(2, '0')}`;
+      const instanceId = saved.instanceId || `eq_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-      return {
-        instanceId: saved.instanceId || `eq_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      const legacyItem: EquipmentInstance = {
+        instanceId,
         templateId: saved.templateId,
         shortId: saved.shortId || autoShortId,
         name: template.name,
@@ -1089,11 +1349,35 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         coverageProfile: template.coverageProfile,
         altitudeDetectionTable: template.altitudeDetectionTable,
       };
+
+      const parsed = parseLegacyInstance(legacyItem);
+      nextPlacements[instanceId] = parsed.placement;
+      nextDefinitions[parsed.definition.id] = parsed.definition;
+      nextObservations[instanceId] = parsed.observation;
+      nextVisuals[instanceId] = parsed.visual;
+
+      const simulation = state.activeSimulationRunId
+        ? state.simulations[state.activeSimulationRunId]?.[instanceId]
+        : undefined;
+      const hydrated = hydrateLegacyInstance(
+        parsed.placement,
+        parsed.definition,
+        parsed.observation,
+        parsed.visual,
+        simulation
+      );
+      newInstances.push(hydrated);
     });
 
+    // 3. One atomic Zustand state update
     set({
-      instances: importedInstances,
-      selectedInstanceId: importedInstances[0]?.instanceId || null,
+      placements: nextPlacements,
+      definitions: nextDefinitions,
+      observations: nextObservations,
+      visuals: nextVisuals,
+      instances: newInstances,
+      selectedInstanceId: newInstances[0]?.instanceId || null,
+      samEngagementModes: {},
     });
   },
 
@@ -1357,19 +1641,53 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       },
     ];
 
+    // loadSampleScenario intentionally replaces the equipment set. No need to check existing duplicates against current state.
+    // Check duplicates inside sample dataset
+    const sampleIds = new Set<string>();
+    for (const item of sample) {
+      if (sampleIds.has(item.instanceId)) {
+        console.error(`[loadSampleScenario] Abort: Duplicate instanceId in sample dataset: ${item.instanceId}`);
+        return;
+      }
+      sampleIds.add(item.instanceId);
+    }
+
+    // We parse and populate Canonical state, then set them atomic.
+    const state = get();
+    const nextPlacements: Record<string, ReturnType<typeof parseLegacyInstance>['placement']> = {};
+    const nextDefinitions: Record<string, ReturnType<typeof parseLegacyInstance>['definition']> = {};
+    const nextObservations: Record<string, ReturnType<typeof parseLegacyInstance>['observation']> = {};
+    const nextVisuals: Record<string, ReturnType<typeof parseLegacyInstance>['visual']> = {};
+
     const sampleWithModels = sample.map((item) => {
       const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === item.templateId);
-      return {
+      const legacyItem = {
         ...item,
         realPhotoUrl: item.realPhotoUrl || tmpl?.realPhotoUrl,
         model3dUrl: item.model3dUrl || tmpl?.model3dUrl,
         model3dScale: item.model3dScale ?? tmpl?.model3dScale ?? 1.0,
       };
+
+      const parsed = parseLegacyInstance(legacyItem);
+      nextPlacements[legacyItem.instanceId] = parsed.placement;
+      nextDefinitions[parsed.definition.id] = parsed.definition;
+      nextObservations[legacyItem.instanceId] = parsed.observation;
+      nextVisuals[legacyItem.instanceId] = parsed.visual;
+
+      const simulation = state.activeSimulationRunId
+        ? state.simulations[state.activeSimulationRunId]?.[legacyItem.instanceId]
+        : undefined;
+      return hydrateLegacyInstance(parsed.placement, parsed.definition, parsed.observation, parsed.visual, simulation);
     });
 
     set({
+      placements: nextPlacements,
+      definitions: nextDefinitions,
+      observations: nextObservations,
+      visuals: nextVisuals,
       instances: sampleWithModels,
       selectedInstanceId: 'eq_radar_tamdao',
+      samEngagementModes: {},
     });
   },
 }));
