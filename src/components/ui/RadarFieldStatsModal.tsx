@@ -5,7 +5,7 @@ import {
   Shield,
   Layers,
 } from 'lucide-react';
-import { useTacticalStore } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
 import {
   calculateRadarFieldOverlapAndProb,
   calculateConeOfSilenceRadiusKm,
@@ -14,8 +14,8 @@ import {
 } from '../../utils/radarMath';
 
 export const RadarFieldStatsModal: React.FC = () => {
+  const instances = useTacticalStore(selectActiveEquipment);
   const {
-    instances,
     showRadarFieldModal,
     setShowRadarFieldModal,
     targetHeightMeters,

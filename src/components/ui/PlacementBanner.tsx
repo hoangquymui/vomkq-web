@@ -1,15 +1,15 @@
 import React from 'react';
 import { PlusCircle, X } from 'lucide-react';
-import { useTacticalStore } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
 
 export const PlacementBanner: React.FC = () => {
+  const instances = useTacticalStore(selectActiveEquipment);
   const {
     activeTool,
     setActiveTool,
     pendingTemplate,
     setPendingTemplate,
     selectedInstanceId,
-    instances,
   } = useTacticalStore();
 
   const selectedInst = instances.find((i) => i.instanceId === selectedInstanceId);

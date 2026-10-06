@@ -8,10 +8,11 @@ import {
   Minimize2,
   HelpCircle,
 } from 'lucide-react';
-import { useTacticalStore } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
 import type { SpxTargetHeightTier } from '../../types/spxRadarCoverage';
 
 export const SpxRadarCoveragePanel: React.FC = () => {
+  const instances = useTacticalStore(selectActiveEquipment);
   const {
     showSpxPanel,
     setShowSpxPanel,
@@ -19,7 +20,6 @@ export const SpxRadarCoveragePanel: React.FC = () => {
     updateSpxConfig,
     spxResults,
     isCalculatingSpx,
-    instances,
     selectedInstanceId,
     updateEquipment,
     addEquipment,

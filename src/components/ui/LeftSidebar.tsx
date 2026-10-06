@@ -14,7 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { useTacticalStore } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
 import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
 import type { EquipmentTemplate } from '../../types/equipment';
 import { ASSET_TYPE_REGISTRY } from '../../utils/assetVisualization';
@@ -24,8 +24,8 @@ export const LeftSidebar: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsed, setCollapsed] = useState(false);
 
+  const instances = useTacticalStore(selectActiveEquipment);
   const {
-    instances,
     selectedInstanceId,
     pendingTemplate,
     selectEquipment,

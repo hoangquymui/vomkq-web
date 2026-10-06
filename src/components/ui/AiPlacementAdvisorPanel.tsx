@@ -20,7 +20,7 @@ import {
   AlertTriangle,
   Crosshair,
 } from 'lucide-react';
-import { useTacticalStore } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
 import { ensureVectorAiReady, listVectorAiModels, VECTOR_AI_BASE_URL } from '../../services/vectorAiClient';
 import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
 import type { AiAdvisorStatus } from '../../store/useTacticalStore';
@@ -53,6 +53,7 @@ function statusBadgeClass(status: AiAdvisorStatus): string {
 }
 
 export const AiPlacementAdvisorPanel: React.FC = () => {
+  const instances = useTacticalStore(selectActiveEquipment);
   const {
     aiAdvisorPanelOpen,
     setAiAdvisorPanelOpen,
@@ -67,7 +68,6 @@ export const AiPlacementAdvisorPanel: React.FC = () => {
     clearAiPlacementSuggestions,
     placeEquipmentAtSuggestion,
     selectedInstanceId,
-    instances,
   } = useTacticalStore();
 
   const [models, setModels] = useState<string[]>([]);

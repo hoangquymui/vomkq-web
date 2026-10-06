@@ -2120,3 +2120,148 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     });
   },
 }));
+
+// === Canonical Read Model (Selectors) ===
+
+export const selectActiveScenario = (state: TacticalState) =>
+  state.activeScenarioId ? state.scenarios[state.activeScenarioId] || null : null;
+
+export const selectActivePlan = (state: TacticalState) => {
+  if (!state.activeScenarioId || !state.activePlanId) return null;
+  const scenario = state.scenarios[state.activeScenarioId];
+  if (!scenario) return null;
+  const plan = state.plans[state.activePlanId];
+  if (!plan) return null;
+  if (plan.scenarioId !== state.activeScenarioId) return null;
+  return plan;
+};
+
+export const selectActivePlacements = (() => {
+  let lastPlacements: Record<string, EquipmentPlacement> | null = null;
+  let lastActivePlanId: string | null = null;
+  let lastActiveScenarioId: string | null = null;
+  let lastPlans: Record<string, Plan> | null = null;
+  let lastScenarios: Record<string, Scenario> | null = null;
+  let lastResult: EquipmentPlacement[] = [];
+
+  return (state: TacticalState): EquipmentPlacement[] => {
+    if (
+      lastPlacements === state.placements &&
+      lastActivePlanId === state.activePlanId &&
+      lastActiveScenarioId === state.activeScenarioId &&
+      lastPlans === state.plans &&
+      lastScenarios === state.scenarios
+    ) {
+      return lastResult;
+    }
+    lastPlacements = state.placements;
+    lastActivePlanId = state.activePlanId;
+    lastActiveScenarioId = state.activeScenarioId;
+    lastPlans = state.plans;
+    lastScenarios = state.scenarios;
+
+    const activePlan = selectActivePlan(state);
+    if (!activePlan) {
+      lastResult = [];
+    } else {
+      lastResult = Object.values(state.placements).filter(p => p.planId === state.activePlanId);
+    }
+    return lastResult;
+  };
+})();
+
+export const selectActiveEquipment = (() => {
+  let lastActivePlanId: string | null = null;
+  let lastActiveScenarioId: string | null = null;
+  let lastPlans: Record<string, Plan> | null = null;
+  let lastScenarios: Record<string, Scenario> | null = null;
+  let lastPlacements: Record<string, EquipmentPlacement> | null = null;
+  let lastDefinitions: Record<string, EquipmentDefinition> | null = null;
+  let lastObservations: Record<string, ObservationState> | null = null;
+  let lastVisuals: Record<string, LegacyPresentationState> | null = null;
+  let lastActiveSimulationRunId: string | null = null;
+  let lastSimulations: Record<string, Record<string, SimulationState>> | null = null;
+  let lastResult: EquipmentInstance[] = [];
+
+  return (state: TacticalState): EquipmentInstance[] => {
+    if (
+      lastActivePlanId === state.activePlanId &&
+      lastActiveScenarioId === state.activeScenarioId &&
+      lastPlans === state.plans &&
+      lastScenarios === state.scenarios &&
+      lastPlacements === state.placements &&
+      lastDefinitions === state.definitions &&
+      lastObservations === state.observations &&
+      lastVisuals === state.visuals &&
+      lastActiveSimulationRunId === state.activeSimulationRunId &&
+      lastSimulations === state.simulations
+    ) {
+      return lastResult;
+    }
+
+    lastActivePlanId = state.activePlanId;
+    lastActiveScenarioId = state.activeScenarioId;
+    lastPlans = state.plans;
+    lastScenarios = state.scenarios;
+    lastPlacements = state.placements;
+    lastDefinitions = state.definitions;
+    lastObservations = state.observations;
+    lastVisuals = state.visuals;
+    lastActiveSimulationRunId = state.activeSimulationRunId;
+    lastSimulations = state.simulations;
+
+    const placements = selectActivePlacements(state);
+    if (placements.length === 0) {
+      lastResult = [];
+      return lastResult;
+    }
+
+    lastResult = placements
+      .map(placement => {
+        const definition = state.definitions[placement.definitionId];
+        const observation = state.observations[placement.id];
+        const visual = state.visuals[placement.id];
+        const simulation = state.activeSimulationRunId
+          ? state.simulations[state.activeSimulationRunId]?.[placement.id]
+          : undefined;
+
+        if (!definition || !observation || !visual) return null;
+        if (definition.planId !== placement.planId || definition.planId !== state.activePlanId) return null;
+
+        return hydrateLegacyInstance(placement, definition, observation, visual, simulation);
+      })
+      .filter((inst): inst is EquipmentInstance => inst !== null);
+
+    return lastResult;
+  };
+})();
+
+export const selectEquipmentById = (state: TacticalState, id: string): EquipmentInstance | null => {
+  return selectActiveEquipment(state).find(e => e.instanceId === id) || null;
+};
+
+export const selectDefinitionForPlacement = (state: TacticalState, placementId: string) => {
+  const activePlan = selectActivePlan(state);
+  if (!activePlan) return null;
+  const p = state.placements[placementId];
+  if (!p || p.planId !== activePlan.id) return null;
+  const d = state.definitions[p.definitionId];
+  if (!d || d.planId !== activePlan.id) return null;
+  return d;
+};
+
+export const selectObservationForPlacement = (state: TacticalState, placementId: string) => {
+  const activePlan = selectActivePlan(state);
+  if (!activePlan) return null;
+  const p = state.placements[placementId];
+  if (!p || p.planId !== activePlan.id) return null;
+  return state.observations[placementId] || null;
+};
+
+export const selectVisualForPlacement = (state: TacticalState, placementId: string) => {
+  const activePlan = selectActivePlan(state);
+  if (!activePlan) return null;
+  const p = state.placements[placementId];
+  if (!p || p.planId !== activePlan.id) return null;
+  return state.visuals[placementId] || null;
+};

@@ -25,7 +25,7 @@ import {
   ArrowDown,
   AlertTriangle,
 } from 'lucide-react';
-import { useTacticalStore } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
 import type { OperationalStatus } from '../../types/equipment';
 import type { SpxTargetHeightTier } from '../../types/spxRadarCoverage';
 import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
@@ -84,8 +84,8 @@ const DomeToggle: React.FC<{
 );
 
 export const RightInspector: React.FC = () => {
+  const instances = useTacticalStore(selectActiveEquipment);
   const {
-    instances,
     selectedInstanceId,
     selectEquipment,
     updateEquipment,

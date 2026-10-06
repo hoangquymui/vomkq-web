@@ -1,6 +1,6 @@
 // @ts-ignore
 import { test, expect } from 'vitest';
-import { useTacticalStore, validatePlanGraph } from './useTacticalStore';
+import { useTacticalStore, validatePlanGraph, selectActiveEquipment, selectActivePlan, selectActivePlacements, selectEquipmentById, selectDefinitionForPlacement, selectObservationForPlacement, selectVisualForPlacement } from './useTacticalStore';
 
 test('1C Store Constraints - Extended', () => {
   console.log('Running useTacticalStore tests...');
@@ -590,4 +590,304 @@ test('R. valid Visual belonging to another Plan does not invalidate target Plan'
     activeScenarioId: 'scen', activePlanId: 'plan-a' // target is plan-a
   });
   expect(() => useTacticalStore.getState().saveActivePlan()).not.toThrow();
+});
+
+test('1D Canonical Read Model Parity Invariants', () => {
+  console.log('Running 1D Parity Invariants...');
+
+  useTacticalStore.setState({
+    scenarios: { scen1: { id: 'scen1', name: 'Scen 1', createdAt: 0 } as any },
+    plans: {
+      plan1: { id: 'plan1', scenarioId: 'scen1', name: 'Plan 1', parentPlanId: null, createdAt: 0 } as any,
+      plan2: { id: 'plan2', scenarioId: 'scen1', name: 'Plan 2', parentPlanId: null, createdAt: 0 } as any
+    },
+    placements: {
+      p1: { id: 'p1', planId: 'plan1', definitionId: 'd1', position: { lat: 10, lon: 20, altM: 30, aglM: 5 }, network: { commandedByInstanceId: null } } as any,
+      p2: { id: 'p2', planId: 'plan2', definitionId: 'd2', position: { lat: 0, lon: 0, altM: 0, aglM: 0 }, network: {} } as any,
+      p1_missing_obs: { id: 'p1_missing_obs', planId: 'plan1', definitionId: 'd1', position: { lat: 0, lon: 0, altM: 0, aglM: 0 }, network: {} } as any,
+      p1_missing_vis: { id: 'p1_missing_vis', planId: 'plan1', definitionId: 'd1', position: { lat: 0, lon: 0, altM: 0, aglM: 0 }, network: {} } as any
+    },
+    definitions: {
+      d1: { id: 'd1', planId: 'plan1', category: 'RadarCanhGioi', rangeKm: 100, capabilities: {} } as any,
+      d2: { id: 'd2', planId: 'plan2', category: 'RadarCanhGioi', rangeKm: 200, capabilities: {} } as any
+    },
+    observations: {
+      p1: { placementId: 'p1', status: 'Active' } as any,
+      p2: { placementId: 'p2', status: 'Active' } as any,
+      p1_missing_vis: { placementId: 'p1_missing_vis', status: 'Active' } as any,
+      p_hist: { placementId: 'p_hist', status: 'Inactive' } as any
+    },
+    visuals: {
+      p1: { color: '#ff0000', showDome: true } as any,
+      p2: { color: '#0000ff', showDome: false } as any,
+      p1_missing_obs: { color: '#00ff00', showDome: true } as any
+    },
+    instances: [],
+    activeScenarioId: 'scen1',
+    activePlanId: 'plan1',
+    canonicalInitialized: true
+  });
+
+  useTacticalStore.getState()._syncLegacyInstances();
+
+  const state = useTacticalStore.getState();
+  const activeEq = selectActiveEquipment(state);
+
+  // Independent semantic assertions
+  expect(activeEq.length).toBe(1);
+
+  // Active plan filtering / other plan excluded
+  expect(activeEq.find(e => e.instanceId === 'p2')).toBeUndefined();
+
+  // Missing observation / visual excluded
+  expect(activeEq.find(e => e.instanceId === 'p1_missing_obs')).toBeUndefined();
+  expect(activeEq.find(e => e.instanceId === 'p1_missing_vis')).toBeUndefined();
+
+  // Historical observation excluded
+  expect(activeEq.find(e => e.instanceId === 'p_hist')).toBeUndefined();
+
+  // Expected equipment fields are correct
+  const eq1 = activeEq.find(e => e.instanceId === 'p1');
+  expect(eq1).toBeDefined();
+  expect(eq1?.latitude).toBe(10);
+  expect(eq1?.longitude).toBe(20);
+  expect(eq1?.rangeKm).toBe(100);
+  expect(eq1?.color).toBe('#ff0000');
+  expect(eq1?.status).toBe('Active');
+
+  // Parity assertion
+  expect(activeEq).toEqual(state.instances);
+
+  // Direct selectors
+  expect(selectEquipmentById(state, 'p1')).toEqual(eq1);
+  expect(selectEquipmentById(state, 'p2')).toBeNull();
+
+  expect(selectDefinitionForPlacement(state, 'p1')?.id).toBe('d1');
+  expect(selectObservationForPlacement(state, 'p1')?.status).toBe('Active');
+  expect(selectVisualForPlacement(state, 'p1')?.color).toBe('#ff0000');
+
+  // switchActivePlan changes canonical read model correctly
+  useTacticalStore.getState().switchActivePlan('plan2');
+  const state2 = useTacticalStore.getState();
+  const activeEq2 = selectActiveEquipment(state2);
+
+  expect(activeEq2.length).toBe(1);
+  expect(activeEq2[0].instanceId).toBe('p2');
+  expect(selectEquipmentById(state2, 'p2')).toBeDefined();
+  expect(selectEquipmentById(state2, 'p1')).toBeNull();
+
+  // Still maintains parity after switch
+  expect(activeEq2).toEqual(state2.instances);
+});
+
+
+test('1D Canonical Selectors Referential Stability', () => {
+  useTacticalStore.setState({
+    scenarios: { scen1: { id: 'scen1', name: 'Scen 1', createdAt: 0 } as any },
+    plans: {
+      plan1: { id: 'plan1', scenarioId: 'scen1', name: 'Plan 1', parentPlanId: null, createdAt: 0 } as any
+    },
+    placements: {
+      p1: { id: 'p1', planId: 'plan1', definitionId: 'd1', position: { lat: 10, lon: 20, altM: 30, aglM: 5 }, network: { commandedByInstanceId: null } } as any
+    },
+    definitions: {
+      d1: { id: 'd1', planId: 'plan1', category: 'RadarCanhGioi', rangeKm: 100, capabilities: {} } as any
+    },
+    observations: {
+      p1: { placementId: 'p1', status: 'Active' } as any
+    },
+    visuals: {
+      p1: { color: '#ff0000', showDome: true } as any
+    },
+    instances: [],
+    activeScenarioId: 'scen1',
+    activePlanId: 'plan1',
+    canonicalInitialized: true
+  });
+
+  const state1 = useTacticalStore.getState();
+  const eq1 = selectActiveEquipment(state1);
+  const placements1 = selectActivePlacements(state1);
+
+  // Unrelated update
+  useTacticalStore.setState({ showSpxPanel: true });
+  const state2 = useTacticalStore.getState();
+  const eq2 = selectActiveEquipment(state2);
+  const placements2 = selectActivePlacements(state2);
+
+  // Identity matches
+  expect(eq2).toBe(eq1);
+  expect(placements2).toBe(placements1);
+
+  // Meaningful update
+  useTacticalStore.setState({
+    visuals: {
+      ...state2.visuals,
+      p1: { ...state2.visuals.p1, color: '#00ff00' }
+    }
+  });
+  const state3 = useTacticalStore.getState();
+  const eq3 = selectActiveEquipment(state3);
+
+  expect(eq3).not.toBe(eq1);
+  expect(eq3[0].color).toBe('#00ff00');
+});
+
+test('1D Cross-Plan Selector Isolation', () => {
+  useTacticalStore.setState({
+    scenarios: { scen1: { id: 'scen1', name: 'Scen 1', createdAt: 0 } as any },
+    plans: {
+      planA: { id: 'planA', scenarioId: 'scen1', name: 'Plan A', parentPlanId: null, createdAt: 0 } as any,
+      planB: { id: 'planB', scenarioId: 'scen1', name: 'Plan B', parentPlanId: null, createdAt: 0 } as any
+    },
+    placements: {
+      pA: { id: 'pA', planId: 'planA', definitionId: 'dA', position: { lat: 10, lon: 20, altM: 30, aglM: 5 }, network: { commandedByInstanceId: null } } as any,
+      pB: { id: 'pB', planId: 'planB', definitionId: 'dB', position: { lat: 0, lon: 0, altM: 0, aglM: 0 }, network: {} } as any,
+      pA_bad: { id: 'pA_bad', planId: 'planA', definitionId: 'dB', position: { lat: 0, lon: 0, altM: 0, aglM: 0 }, network: {} } as any
+    },
+    definitions: {
+      dA: { id: 'dA', planId: 'planA', category: 'RadarCanhGioi', rangeKm: 100, capabilities: {} } as any,
+      dB: { id: 'dB', planId: 'planB', category: 'RadarCanhGioi', rangeKm: 200, capabilities: {} } as any
+    },
+    observations: {
+      pA: { placementId: 'pA', status: 'Active' } as any,
+      pB: { placementId: 'pB', status: 'Active' } as any,
+      pA_bad: { placementId: 'pA_bad', status: 'Active' } as any
+    },
+    visuals: {
+      pA: { color: '#ff0000', showDome: true } as any,
+      pB: { color: '#0000ff', showDome: true } as any,
+      pA_bad: { color: '#00ff00', showDome: true } as any
+    },
+    instances: [],
+    activeScenarioId: 'scen1',
+    activePlanId: 'planA',
+    canonicalInitialized: true
+  });
+
+  let state = useTacticalStore.getState();
+
+  // pB belongs to planB, but activePlan is planA.
+  expect(selectEquipmentById(state, 'pB')).toBeNull();
+  expect(selectDefinitionForPlacement(state, 'pB')).toBeNull();
+  expect(selectObservationForPlacement(state, 'pB')).toBeNull();
+  expect(selectVisualForPlacement(state, 'pB')).toBeNull();
+
+  // pA_bad belongs to planA, but references definition from planB
+  expect(selectDefinitionForPlacement(state, 'pA_bad')).toBeNull();
+  expect(selectEquipmentById(state, 'pA_bad')).toBeNull();
+  expect(selectActiveEquipment(state).find(e => e.instanceId === 'pA_bad')).toBeUndefined();
+
+  // Switch to planB
+  useTacticalStore.setState({ activePlanId: 'planB' });
+  state = useTacticalStore.getState();
+
+  // Now pB works
+  expect(selectEquipmentById(state, 'pB')).toBeDefined();
+  expect(selectDefinitionForPlacement(state, 'pB')?.id).toBe('dB');
+  expect(selectObservationForPlacement(state, 'pB')?.status).toBe('Active');
+  expect(selectVisualForPlacement(state, 'pB')?.color).toBe('#0000ff');
+});
+
+
+test('1D Cross-Scenario Active Context Isolation', () => {
+  useTacticalStore.setState({
+    scenarios: {
+      scenarioA: { id: 'scenarioA', name: 'Scenario A', createdAt: 0 } as any,
+      scenarioB: { id: 'scenarioB', name: 'Scenario B', createdAt: 0 } as any
+    },
+    plans: {
+      planA: { id: 'planA', scenarioId: 'scenarioA', name: 'Plan A', parentPlanId: null, createdAt: 0 } as any,
+      planB: { id: 'planB', scenarioId: 'scenarioB', name: 'Plan B', parentPlanId: null, createdAt: 0 } as any
+    },
+    placements: {
+      pA: { id: 'pA', planId: 'planA', definitionId: 'dA', position: { lat: 10, lon: 20, altM: 30, aglM: 5 }, network: { commandedByInstanceId: null } } as any,
+      pB: { id: 'pB', planId: 'planB', definitionId: 'dB', position: { lat: 0, lon: 0, altM: 0, aglM: 0 }, network: {} } as any
+    },
+    definitions: {
+      dA: { id: 'dA', planId: 'planA', category: 'RadarCanhGioi', rangeKm: 100, capabilities: {} } as any,
+      dB: { id: 'dB', planId: 'planB', category: 'RadarCanhGioi', rangeKm: 200, capabilities: {} } as any
+    },
+    observations: {
+      pA: { placementId: 'pA', status: 'Active' } as any,
+      pB: { placementId: 'pB', status: 'Active' } as any
+    },
+    visuals: {
+      pA: { color: '#ff0000', showDome: true } as any,
+      pB: { color: '#0000ff', showDome: true } as any
+    },
+    instances: [],
+    activeScenarioId: 'scenarioA',
+    activePlanId: 'planB', // INVALID STATE: activePlan belongs to a different scenario
+    canonicalInitialized: true
+  });
+
+  let state = useTacticalStore.getState();
+
+  // Everything should safely return null/empty
+  expect(selectActivePlan(state)).toBeNull();
+  expect(selectActivePlacements(state)).toEqual([]);
+  expect(selectActiveEquipment(state)).toEqual([]);
+  expect(selectEquipmentById(state, 'pB')).toBeNull();
+  expect(selectDefinitionForPlacement(state, 'pB')).toBeNull();
+  expect(selectObservationForPlacement(state, 'pB')).toBeNull();
+  expect(selectVisualForPlacement(state, 'pB')).toBeNull();
+
+  // Set valid scenario context
+  useTacticalStore.setState({ activeScenarioId: 'scenarioB' });
+  state = useTacticalStore.getState();
+
+  // Now it works
+  expect(selectActivePlan(state)?.id).toBe('planB');
+  expect(selectActivePlacements(state).length).toBe(1);
+  expect(selectActiveEquipment(state).length).toBe(1);
+  expect(selectEquipmentById(state, 'pB')).toBeDefined();
+});
+
+
+test('1D Scenario Memoization Invalidation', () => {
+  useTacticalStore.setState({
+    scenarios: { scenarioA: { id: 'scenarioA', name: 'Scenario A', createdAt: 0 } as any },
+    plans: {
+      planA: { id: 'planA', scenarioId: 'scenarioA', name: 'Plan A', parentPlanId: null, createdAt: 0 } as any
+    },
+    placements: {
+      pA: { id: 'pA', planId: 'planA', definitionId: 'dA', position: { lat: 10, lon: 20, altM: 30, aglM: 5 }, network: { commandedByInstanceId: null } } as any
+    },
+    definitions: {
+      dA: { id: 'dA', planId: 'planA', category: 'RadarCanhGioi', rangeKm: 100, capabilities: {} } as any
+    },
+    observations: {
+      pA: { placementId: 'pA', status: 'Active' } as any
+    },
+    visuals: {
+      pA: { color: '#ff0000', showDome: true } as any
+    },
+    instances: [],
+    activeScenarioId: 'scenarioA',
+    activePlanId: 'planA',
+    canonicalInitialized: true
+  });
+
+  const state1 = useTacticalStore.getState();
+  const placements1 = selectActivePlacements(state1);
+  const equipment1 = selectActiveEquipment(state1);
+
+  expect(placements1.length).toBe(1);
+  expect(equipment1.length).toBe(1);
+
+  // Replace ONLY scenarios registry so scenarioA no longer exists
+  useTacticalStore.setState({
+    scenarios: {} // Empty scenarios
+  });
+
+  const state2 = useTacticalStore.getState();
+  const placements2 = selectActivePlacements(state2);
+  const equipment2 = selectActiveEquipment(state2);
+
+  expect(selectActivePlan(state2)).toBeNull();
+  expect(placements2).toEqual([]);
+  expect(equipment2).toEqual([]);
+  expect(placements2).not.toBe(placements1);
+  expect(equipment2).not.toBe(equipment1);
 });

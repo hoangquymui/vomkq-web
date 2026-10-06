@@ -13,7 +13,7 @@ import {
   ZoomOut,
   RotateCcw,
 } from 'lucide-react';
-import { useTacticalStore } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
 import { destinationPoint } from '../../utils/radarLosEngine';
 import {
   calculateSamPearMaxRange,
@@ -40,8 +40,8 @@ interface BlindSegment {
 }
 
 export const RadarCrossSectionPanel: React.FC = () => {
+  const instances = useTacticalStore(selectActiveEquipment);
   const {
-    instances,
     selectedInstanceId,
     coverageFields,
     showCrossSection,
