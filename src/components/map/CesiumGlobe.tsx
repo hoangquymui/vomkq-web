@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { Pin, PinOff, ArrowUp, ArrowDown } from 'lucide-react';
-import { useTacticalStore } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
 import {
   computeRadarCoverageField,
   convertFieldToCoverageResult,
@@ -237,8 +237,8 @@ export const CesiumGlobe: React.FC = () => {
     return unregister;
   }, []);
 
+  const instances = useTacticalStore(selectActiveEquipment);
   const {
-    instances,
     selectedInstanceId,
     activeTool,
     pendingTemplate,

@@ -1079,3 +1079,113 @@ describe('1E Canonical Mutation Boundary', () => {
   });
 
 });
+
+
+describe('1F Cesium Render Read Parity', () => {
+  const setupBase = () => {
+    useTacticalStore.setState({
+      scenarios: {
+        s1: { id: 's1', name: 'S1', status: 'draft', createdAt: 0 } as any
+      },
+      plans: {
+        p1: { id: 'p1', scenarioId: 's1', status: 'draft', name: 'P1', createdAt: 0 } as any,
+        p2: { id: 'p2', scenarioId: 's1', status: 'draft', name: 'P2', createdAt: 0 } as any
+      },
+      placements: {
+        c1: { id: 'c1', planId: 'p1', definitionId: 'd1', position: { lat: 10, lon: 20, altM: 0, aglM: 0 }, network: {} } as any,
+        c2: { id: 'c2', planId: 'p2', definitionId: 'd2', position: { lat: 30, lon: 40, altM: 0, aglM: 0 }, network: {} } as any
+      },
+      definitions: {
+        d1: { id: 'd1', planId: 'p1', category: 'RadarCanhGioi', rangeKm: 100, capabilities: {} } as any,
+        d2: { id: 'd2', planId: 'p2', category: 'RadarCanhGioi', rangeKm: 200, capabilities: {} } as any
+      },
+      observations: {
+        c1: { placementId: 'c1', status: 'Active' } as any,
+        c2: { placementId: 'c2', status: 'Active' } as any
+      },
+      visuals: {
+        c1: { color: 'red', showDome: true } as any,
+        c2: { color: 'blue', showDome: true } as any
+      },
+      simulations: {
+        sim1: {
+          c1: { status: 'Running', parameters: {} } as any,
+          c2: { status: 'Running', parameters: {} } as any
+        }
+      },
+      activeSimulationRunId: 'sim1',
+      instances: [],
+      activeScenarioId: 's1',
+      activePlanId: 'p1',
+      canonicalInitialized: true
+    });
+  };
+
+  test('A. active Plan A render input excludes Plan B', () => {
+    setupBase();
+    const renderInput = selectActiveEquipment(useTacticalStore.getState());
+    expect(renderInput.length).toBe(1);
+    expect(renderInput[0].instanceId).toBe('c1');
+  });
+
+  test('B. switchActivePlan changes render input correctly', () => {
+    setupBase();
+    useTacticalStore.setState({ activePlanId: 'p2' });
+    const renderInput = selectActiveEquipment(useTacticalStore.getState());
+    expect(renderInput.length).toBe(1);
+    expect(renderInput[0].instanceId).toBe('c2');
+  });
+
+  test('C. canonical equipment update changes render input', () => {
+    setupBase();
+    useTacticalStore.getState().updateEquipment('c1', { latitude: 99 });
+    const renderInput = selectActiveEquipment(useTacticalStore.getState());
+    expect(renderInput[0].latitude).toBe(99);
+  });
+
+  test('D. removed Placement disappears from active render input', () => {
+    setupBase();
+    useTacticalStore.getState().removeEquipment('c1');
+    const renderInput = selectActiveEquipment(useTacticalStore.getState());
+    expect(renderInput.length).toBe(0);
+  });
+
+  test('E. historical Observation does not resurrect removed equipment', () => {
+    setupBase();
+    useTacticalStore.getState().removeEquipment('c1');
+    const state = useTacticalStore.getState();
+    // Observation still exists
+    expect(state.observations['c1']).toBeDefined();
+    // But it's not in the render input
+    const renderInput = selectActiveEquipment(state);
+    expect(renderInput.find(e => e.instanceId === 'c1')).toBeUndefined();
+  });
+
+  test('F. legacy instances[] poisoning does not alter canonical render input', () => {
+    setupBase();
+    useTacticalStore.setState(() => ({
+      instances: [{ instanceId: 'c1', latitude: -99 }] as any
+    }));
+
+    // update canonically
+    useTacticalStore.getState().updateEquipment('c1', { latitude: 50 });
+    const renderInput = selectActiveEquipment(useTacticalStore.getState());
+
+    // Poison ignored, canonical wins
+    expect(renderInput[0].latitude).toBe(50);
+  });
+
+  test('G. selector/render input remains semantically compatible with existing Cesium expectations', () => {
+    setupBase();
+    const renderInput = selectActiveEquipment(useTacticalStore.getState());
+    const inst = renderInput[0];
+
+    // Test that hydrateLegacyInstance is providing Cesium what it expects
+    expect(inst.instanceId).toBe('c1');
+    expect(inst.latitude).toBe(10);
+    expect(inst.longitude).toBe(20);
+    expect(inst.color).toBe('red');
+    expect(inst.showDome).toBe(true);
+    expect(inst.status).toBe('Active'); // from Simulation/Observation
+  });
+});
