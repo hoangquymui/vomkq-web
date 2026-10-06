@@ -440,6 +440,13 @@ export const CesiumGlobe: React.FC = () => {
       Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
     );
 
+    // Giới hạn cự ly zoom của bộ điều khiển chuột:
+    // Cận cảnh tối thiểu 200m (tránh chui lòng đất), Viễn cảnh tối đa 3.000.000m (3.000km - tránh kéo quá xa mất bản đồ VN)
+    const controller = viewer.scene.screenSpaceCameraController;
+    controller.minimumZoomDistance = 200;
+    controller.maximumZoomDistance = 3000000;
+    controller.enableCollisionDetection = true;
+
     // Bật kiểm tra độ sâu với địa hình lồi lõm
     viewer.scene.globe.depthTestAgainstTerrain = true;
     viewer.scene.verticalExaggeration = terrainExaggeration;
@@ -474,6 +481,70 @@ export const CesiumGlobe: React.FC = () => {
       },
     });
 
+    // Giới hạn khung kéo ngang / dọc / độ cao của camera:
+    // Giữ camera luôn nằm trong khu vực tác chiến Việt Nam, không cho trôi ra ngoài vũ trụ hoặc ra đại dương đen
+    const MIN_CAM_LON = 98.0;
+    const MAX_CAM_LON = 121.0;
+    const MIN_CAM_LAT = 5.5;
+    const MAX_CAM_LAT = 26.0;
+    const MIN_CAM_HEIGHT = 200;
+    const MAX_CAM_HEIGHT = 3000000; // 3.000 km
+
+    const removeCameraBoundsListener = viewer.scene.preRender.addEventListener(() => {
+      if (!viewerRef.current || viewerRef.current.isDestroyed()) return;
+      const cam = viewerRef.current.camera;
+
+      // Bỏ qua kiểm tra nếu camera đang thực hiện hoạt ảnh bay (flyTo) theo lệnh
+      if ((cam as any)._currentFlight) return;
+
+      const carto = cam.positionCartographic;
+      if (!carto) return;
+
+      const lonDeg = Cesium.Math.toDegrees(carto.longitude);
+      const latDeg = Cesium.Math.toDegrees(carto.latitude);
+      const h = carto.height;
+
+      let clampedLon = lonDeg;
+      let clampedLat = latDeg;
+      let clampedH = h;
+      let needsClamp = false;
+
+      if (lonDeg < MIN_CAM_LON) {
+        clampedLon = MIN_CAM_LON;
+        needsClamp = true;
+      } else if (lonDeg > MAX_CAM_LON) {
+        clampedLon = MAX_CAM_LON;
+        needsClamp = true;
+      }
+
+      if (latDeg < MIN_CAM_LAT) {
+        clampedLat = MIN_CAM_LAT;
+        needsClamp = true;
+      } else if (latDeg > MAX_CAM_LAT) {
+        clampedLat = MAX_CAM_LAT;
+        needsClamp = true;
+      }
+
+      if (h > MAX_CAM_HEIGHT) {
+        clampedH = MAX_CAM_HEIGHT;
+        needsClamp = true;
+      } else if (h < MIN_CAM_HEIGHT) {
+        clampedH = MIN_CAM_HEIGHT;
+        needsClamp = true;
+      }
+
+      if (needsClamp) {
+        cam.setView({
+          destination: Cesium.Cartesian3.fromDegrees(clampedLon, clampedLat, clampedH),
+          orientation: {
+            heading: Number.isFinite(cam.heading) ? cam.heading : 0,
+            pitch: Number.isFinite(cam.pitch) ? cam.pitch : Cesium.Math.toRadians(-90),
+            roll: Number.isFinite(cam.roll) ? cam.roll : 0,
+          },
+        });
+      }
+    });
+
     // Đồng hồ thời gian thực cho dải quét của vòm radar (uniform u_time của Defense/RadarDome port).
     // Custom uniform của Cesium được đọc lại tại thời điểm bind nên chỉ cần gán mỗi frame.
     const removeDomeTimeListener = viewer.scene.preRender.addEventListener(() => {
@@ -484,6 +555,9 @@ export const CesiumGlobe: React.FC = () => {
     return () => {
       if (typeof removeDomeTimeListener === 'function') {
         removeDomeTimeListener();
+      }
+      if (typeof removeCameraBoundsListener === 'function') {
+        removeCameraBoundsListener();
       }
       // Giải phóng Primitive/Material của vòm TRƯỚC khi destroy viewer
       releaseDomeResources();
