@@ -99,7 +99,11 @@ Cesium.Ellipsoid.prototype.geodeticSurfaceNormal = function (
   }
 };
 
-// Helper tạo ImageryProvider linh hoạt cho Basemap
+// Giới hạn phạm vi tác chiến và hiển thị: Bao trọn vẹn toàn bộ lãnh thổ, vùng trời và biển đảo Việt Nam
+// (Bao gồm đất liền Bắc - Trung - Nam, Vịnh Bắc Bộ, đảo Hải Nam, Hoàng Sa, Trường Sa và thềm lục địa)
+export const VIETNAM_TACTICAL_RECTANGLE = Cesium.Rectangle.fromDegrees(100.0, 6.0, 119.5, 24.5);
+
+// Helper tạo ImageryProvider linh hoạt cho Basemap (chỉ tải và render trong phạm vi Việt Nam, ngoài là màu đen)
 function createImageryProvider(basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'dark' | 'osm') {
   switch (basemap) {
     case 'google-terrain':
@@ -109,6 +113,7 @@ function createImageryProvider(basemap: 'google-terrain' | 'google-hybrid' | 'sa
         subdomains: ['0', '1', '2', '3'],
         minimumLevel: 0,
         maximumLevel: 20,
+        rectangle: VIETNAM_TACTICAL_RECTANGLE,
         credit: new Cesium.Credit('© Google Maps (Terrain VN)'),
       });
     case 'google-hybrid':
@@ -118,6 +123,7 @@ function createImageryProvider(basemap: 'google-terrain' | 'google-hybrid' | 'sa
         subdomains: ['0', '1', '2', '3'],
         minimumLevel: 0,
         maximumLevel: 20,
+        rectangle: VIETNAM_TACTICAL_RECTANGLE,
         credit: new Cesium.Credit('© Google Maps (Hybrid VN)'),
       });
     case 'satellite':
@@ -125,6 +131,7 @@ function createImageryProvider(basemap: 'google-terrain' | 'google-hybrid' | 'sa
       return new Cesium.UrlTemplateImageryProvider({
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         maximumLevel: 19,
+        rectangle: VIETNAM_TACTICAL_RECTANGLE,
         credit: new Cesium.Credit('© Esri, Maxar, Earthstar Geographics'),
       });
     case 'offline': {
@@ -133,6 +140,7 @@ function createImageryProvider(basemap: 'google-terrain' | 'google-hybrid' | 'sa
         url: './offline-satellite/{z}/{x}/{y}.jpg',
         minimumLevel: 0,
         maximumLevel: 16,
+        rectangle: VIETNAM_TACTICAL_RECTANGLE,
       });
       offlineSatelliteProvider.errorEvent.addEventListener((error: any) => {
         error.retry = false;
@@ -146,6 +154,7 @@ function createImageryProvider(basemap: 'google-terrain' | 'google-hybrid' | 'sa
         subdomains: ['0', '1', '2', '3'],
         minimumLevel: 0,
         maximumLevel: 20,
+        rectangle: VIETNAM_TACTICAL_RECTANGLE,
         credit: new Cesium.Credit('© Google Maps (Terrain VN)'),
       });
     case 'dark':
@@ -153,17 +162,20 @@ function createImageryProvider(basemap: 'google-terrain' | 'google-hybrid' | 'sa
       return new Cesium.UrlTemplateImageryProvider({
         url: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
         maximumLevel: 18,
+        rectangle: VIETNAM_TACTICAL_RECTANGLE,
         credit: new Cesium.Credit('© CARTO'),
       });
     case 'osm':
       return new Cesium.OpenStreetMapImageryProvider({
         url: 'https://tile.openstreetmap.org/',
+        rectangle: VIETNAM_TACTICAL_RECTANGLE,
       });
     default:
       return new Cesium.UrlTemplateImageryProvider({
         url: 'https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}&hl=vi&gl=VN',
         subdomains: ['0', '1', '2', '3'],
         maximumLevel: 20,
+        rectangle: VIETNAM_TACTICAL_RECTANGLE,
       });
   }
 }
@@ -247,7 +259,6 @@ export const CesiumGlobe: React.FC = () => {
     viewMode,
     terrainExaggeration,
     basemap,
-    vietnamOnly,
     showAllDomes,
     showCommandLinks,
     showSensorNetwork,
@@ -378,9 +389,19 @@ export const CesiumGlobe: React.FC = () => {
       fullscreenButton: false,
       scene3DOnly: false,
       showRenderLoopErrors: false,
+      skyBox: false,
+      skyAtmosphere: false,
     });
 
     viewerRef.current = viewer;
+
+    // Tắt hoàn toàn viền khí quyển, bầu trời sao, mặt trời/mặt trăng và đặt nền đen toàn bộ khu vực ngoài Việt Nam
+    viewer.scene.globe.showGroundAtmosphere = false;
+    viewer.scene.globe.baseColor = Cesium.Color.BLACK;
+    viewer.scene.backgroundColor = Cesium.Color.BLACK;
+    viewer.scene.globe.cartographicLimitRectangle = VIETNAM_TACTICAL_RECTANGLE;
+    if (viewer.scene.sun) viewer.scene.sun.show = false;
+    if (viewer.scene.moon) viewer.scene.moon.show = false;
 
     // Bắt và cô lập lỗi render không mong muốn, tự động hồi phục tránh dừng vĩnh viễn vòng lặp Cesium
     viewer.scene.renderError.addEventListener((scene, error) => {
@@ -443,12 +464,12 @@ export const CesiumGlobe: React.FC = () => {
       }
     });
 
-    // Đặt góc nhìn ban đầu nhìn nghiêng ngắm núi Tam Đảo ở độ cao vừa phải (95.000m)
+    // Đặt góc nhìn ban đầu: Toàn cảnh Việt Nam ở chính giữa màn hình (Bắc lên trên, Nam xuống dưới)
     viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(105.645, 21.35, 95000),
+      destination: Cesium.Cartesian3.fromDegrees(108.2, 16.0, 2200000),
       orientation: {
         heading: Cesium.Math.toRadians(0),
-        pitch: Cesium.Math.toRadians(-35),
+        pitch: Cesium.Math.toRadians(-90),
         roll: 0,
       },
     });
@@ -556,36 +577,7 @@ export const CesiumGlobe: React.FC = () => {
     }
   }, [basemap]);
 
-  // 4. Cắt gọn và giới hạn phạm vi hiển thị chỉ vùng Việt Nam
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer) return;
-
-    // Toạ độ bao trọn vẹn lãnh thổ, vùng trời và biển đảo Việt Nam
-    // (Bao gồm đất liền, Vịnh Bắc Bộ, Vịnh Thái Lan, Hoàng Sa và Trường Sa)
-    const vnRect = Cesium.Rectangle.fromDegrees(101.5, 6.0, 118.5, 24.0);
-
-    if (vietnamOnly) {
-      // Cắt gọn quả cầu: Chỉ render duy nhất bề mặt địa hình & bản đồ trong toạ độ Việt Nam
-      viewer.scene.globe.cartographicLimitRectangle = vnRect;
-
-      // Bay camera về vị trí quan sát toàn cảnh Việt Nam
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(108.2, 15.5, 1500000),
-        orientation: {
-          heading: Cesium.Math.toRadians(0),
-          pitch: Cesium.Math.toRadians(-68),
-          roll: 0,
-        },
-        duration: 1.0,
-      });
-    } else {
-      // Mở lại toàn bộ quả địa cầu thế giới
-      viewer.scene.globe.cartographicLimitRectangle = Cesium.Rectangle.fromDegrees(-180, -90, 180, 90);
-    }
-  }, [vietnamOnly]);
-
-  // 5. Xử lý Fly-To khu vực: Zoom vừa phải (ít thôi), giữ bao quát
+  // 4. Xử lý Fly-To khu vực: Zoom vừa phải (ít thôi), giữ bao quát
   useEffect(() => {
     const viewer = viewerRef.current;
     if (
@@ -2633,27 +2625,6 @@ export const CesiumGlobe: React.FC = () => {
       }
     }
 
-    // E. Render đường bao ranh giới tác chiến Việt Nam khi bật chế độ Chỉ Vùng VN
-    if (vietnamOnly) {
-      viewer.entities.add({
-        name: 'Ranh Giới Vùng Tác Chiến Việt Nam',
-        polyline: {
-          positions: [
-            Cesium.Cartesian3.fromDegrees(101.5, 6.0, 50),
-            Cesium.Cartesian3.fromDegrees(118.5, 6.0, 50),
-            Cesium.Cartesian3.fromDegrees(118.5, 24.0, 50),
-            Cesium.Cartesian3.fromDegrees(101.5, 24.0, 50),
-            Cesium.Cartesian3.fromDegrees(101.5, 6.0, 50),
-          ],
-          width: 2,
-          material: new Cesium.PolylineDashMaterialProperty({
-            color: Cesium.Color.fromCssColorString('#f43f5e').withAlpha(0.7),
-            dashLength: 20,
-          }),
-        },
-      });
-    }
-
     // E. Khẳng định chủ quyền biển đảo thiêng liêng của Việt Nam: Hoàng Sa & Trường Sa
     // Hiển thị nhãn vàng cờ đỏ trang trọng, sắc nét ở mọi chế độ 2D/3D
     viewer.entities.add({
@@ -2712,7 +2683,6 @@ export const CesiumGlobe: React.FC = () => {
     showCommandLinks,
     showSensorNetwork,
     measurePoints,
-    vietnamOnly,
     coverageResults,
     coverageFields,
     showBlindZones,

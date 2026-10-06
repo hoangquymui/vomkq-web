@@ -603,6 +603,15 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
 
 export const PRESET_LOCATIONS: PresetLocation[] = [
   {
+    id: 'vietnam_overview',
+    name: '🇻🇳 Toàn cảnh Lãnh thổ Việt Nam',
+    latitude: 16.0,
+    longitude: 108.2,
+    height: 2200000,
+    heading: 0,
+    pitch: -90,
+  },
+  {
     id: 'tamdao',
     name: '⛰️ Đỉnh Tam Đảo (Radar Núi)',
     latitude: 21.458,
@@ -677,13 +686,5 @@ export const PRESET_LOCATIONS: PresetLocation[] = [
     longitude: 112.5,
     height: 500000,
     pitch: -55
-  },
-  {
-    id: 'vietnam_overview',
-    name: 'Toàn cảnh Lãnh thổ Việt Nam',
-    latitude: 16.0,
-    longitude: 107.5,
-    height: 1800000,
-    pitch: -75
   }
 ];

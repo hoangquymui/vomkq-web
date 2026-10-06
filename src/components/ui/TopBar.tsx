@@ -9,6 +9,7 @@ import {
   HardDriveDownload,
   Sparkles,
   FolderKanban,
+  Compass,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { PRESET_LOCATIONS } from '../../data/equipmentTemplates';
@@ -23,8 +24,6 @@ export const TopBar: React.FC = () => {
     setTerrainExaggeration,
     basemap,
     setBasemap,
-    vietnamOnly,
-    toggleVietnamOnly,
     showAllDomes,
     toggleDomes,
     triggerFlyTo,
@@ -68,7 +67,7 @@ export const TopBar: React.FC = () => {
               const loc = PRESET_LOCATIONS.find((p) => p.id === e.target.value);
               if (loc) triggerFlyTo(loc);
             }}
-            defaultValue="tamdao"
+            defaultValue="vietnam_overview"
             className="bg-slate-900 text-slate-200 text-xs pl-8 pr-2.5 py-1.5 rounded border border-slate-700 hover:border-cyan-500/60 focus:outline-none focus:border-cyan-500 transition-colors cursor-pointer"
           >
             {PRESET_LOCATIONS.map((loc) => (
@@ -114,17 +113,24 @@ export const TopBar: React.FC = () => {
           <span>AI Gợi ý</span>
         </button>
 
-        {/* Nút Chỉ Vùng Việt Nam / Toàn Cầu */}
+        {/* Nút Định hướng: Xoay bản đồ lại góc nhìn chuẩn ban đầu (Bắc lên trên, Nam xuống dưới, tâm Việt Nam) */}
         <button
-          onClick={toggleVietnamOnly}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded border transition-all ${vietnamOnly
-              ? 'bg-rose-950/85 text-rose-300 border-rose-500/60 shadow-[0_0_10px_rgba(244,63,94,0.3)]'
-              : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
-            }`}
-          title="Bật/Tắt: Cắt gọn chỉ hiển thị vùng lãnh thổ & hải đảo Việt Nam"
+          onClick={() => {
+            triggerFlyTo({
+              id: 'vietnam_overview',
+              name: '🇻🇳 Toàn cảnh Lãnh thổ Việt Nam',
+              latitude: 16.0,
+              longitude: 108.2,
+              height: 2200000,
+              heading: 0,
+              pitch: -90,
+            });
+          }}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded border bg-slate-900/90 text-cyan-300 border-slate-700 hover:border-cyan-500 hover:bg-slate-800 transition-all cursor-pointer shadow-sm active:scale-95"
+          title="Định hướng: Xoay bản đồ lại góc nhìn ban đầu (Bắc lên trên, Nam xuống dưới, tâm Việt Nam)"
         >
-          <span className="text-xs">🇻🇳</span>
-          <span>{vietnamOnly ? 'Chỉ Vùng VN' : 'Toàn Cầu'}</span>
+          <Compass className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Định hướng</span>
         </button>
 
         {/* Bộ chọn Lớp Bản Đồ Nền (Basemap) */}

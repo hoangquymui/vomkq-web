@@ -88,6 +88,7 @@ interface TacticalState {
   basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'dark' | 'osm';
   vietnamOnly: boolean;
   showMapDownloadModal: boolean;
+  showInspector: boolean;
 
   // Visualization Toggles
   showAllDomes: boolean;
@@ -215,6 +216,8 @@ interface TacticalState {
   setTerrainExaggeration: (exaggeration: number) => void;
   setBasemap: (basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'dark' | 'osm') => void;
   setShowMapDownloadModal: (show: boolean) => void;
+  setShowInspector: (show: boolean) => void;
+  toggleInspector: () => void;
   setVietnamOnly: (vietnamOnly: boolean) => void;
   toggleVietnamOnly: () => void;
 
@@ -306,6 +309,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   basemap: 'google-terrain',
   vietnamOnly: true,
   showMapDownloadModal: false,
+  showInspector: false,
 
   showAllDomes: true,
   showCommandLinks: true,
@@ -425,6 +429,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   selectEquipment: (instanceId) =>
     set((state) => ({
       selectedInstanceId: instanceId,
+      showInspector: instanceId ? true : state.showInspector,
       activeTool: 'select',
       pendingTemplate: null,
       crossSectionProbePoint:
@@ -451,6 +456,8 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   setTerrainExaggeration: (exaggeration) => set({ terrainExaggeration: exaggeration }),
   setBasemap: (basemap) => set({ basemap }),
   setShowMapDownloadModal: (showMapDownloadModal) => set({ showMapDownloadModal }),
+  setShowInspector: (showInspector) => set({ showInspector }),
+  toggleInspector: () => set((state) => ({ showInspector: !state.showInspector })),
   setVietnamOnly: (vietnamOnly) => set({ vietnamOnly }),
   toggleVietnamOnly: () => set((state) => ({ vietnamOnly: !state.vietnamOnly })),
 

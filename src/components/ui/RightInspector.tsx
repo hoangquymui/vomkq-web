@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronRight,
+  ChevronLeft,
   Shield,
   Target,
   Zap,
@@ -85,6 +86,8 @@ const DomeToggle: React.FC<{
 
 export const RightInspector: React.FC = () => {
   const {
+    showInspector,
+    setShowInspector,
     instances,
     selectedInstanceId,
     selectEquipment,
@@ -334,9 +337,29 @@ export const RightInspector: React.FC = () => {
     }
     : null;
 
+  if (!showInspector) {
+    return (
+      <button
+        onClick={() => setShowInspector(true)}
+        className="absolute top-16 right-0 z-20 flex items-center gap-1.5 px-3 py-2 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 border-l border-y border-slate-700/80 rounded-l-xl shadow-xl text-xs font-semibold backdrop-blur-md transition-all cursor-pointer group"
+        title="Mở Bảng thuộc tính khí tài"
+      >
+        <ChevronLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-0.5 transition-transform" />
+        <span className="font-mono text-[11px]">Thuộc tính</span>
+      </button>
+    );
+  }
+
   if (!selected || !caps) {
     return (
       <aside className="absolute top-14 right-0 bottom-0 w-80 sm:w-84 bg-slate-950/85 backdrop-blur-md border-l border-slate-800/80 p-4 z-20 flex flex-col justify-center items-center text-center select-none text-slate-400">
+        <button
+          onClick={() => setShowInspector(false)}
+          className="absolute top-3 right-3 p-1.5 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+          title="Tắt bảng thuộc tính"
+        >
+          <X className="w-4 h-4" />
+        </button>
         <div className="w-12 h-12 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-center text-slate-600 mb-3 shadow-inner">
           <Shield className="w-6 h-6" />
         </div>
@@ -409,13 +432,22 @@ export const RightInspector: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={() => selectEquipment(null)}
-          className="p-1 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors shrink-0 ml-1 cursor-pointer"
-          title="Đóng bảng thuộc tính"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0 ml-1">
+          <button
+            onClick={() => selectEquipment(null)}
+            className="p-1 text-slate-400 hover:text-slate-100 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Bỏ chọn khí tài"
+          >
+            <EyeOff className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setShowInspector(false)}
+            className="p-1 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Tắt bảng thuộc tính"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* ========================================================================= */}
