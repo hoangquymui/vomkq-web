@@ -11,6 +11,12 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
+
+# Offline map/terrain tiles (dữ liệu lớn, tải lại bằng scripts/download-*.js)
+public/offline-*/
 
 # Editor directories and files
 .vscode/*

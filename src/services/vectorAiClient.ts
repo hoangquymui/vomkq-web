@@ -48,7 +48,10 @@ export type VectorAiResult<T> =
  * Đơn vị: không có. Kiểu: string. Nơi dùng: mọi request bên dưới.
  */
 export const VECTOR_AI_BASE_URL: string =
-  (import.meta.env.VITE_VECTOR_AI_URL as string | undefined)?.replace(/\/+$/, '') ||
+  ((typeof import.meta !== 'undefined' && import.meta.env?.VITE_VECTOR_AI_URL) as string | undefined)?.replace(/\/+$/, '') ||
+  (typeof globalThis !== 'undefined' && (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.VITE_VECTOR_AI_URL
+    ? (globalThis as { process?: { env?: Record<string, string | undefined> } }).process!.env!.VITE_VECTOR_AI_URL!.replace(/\/+$/, '')
+    : '') ||
   '/vector-ai';
 
 /** Timeout kiểm tra health (ms) — backend local nên rất nhanh, 3s là đủ để kết luận offline. */

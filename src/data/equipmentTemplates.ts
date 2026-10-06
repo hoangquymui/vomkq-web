@@ -51,6 +51,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 25,
     coverageHeightKm: 30,
     symbolColor: '#06b6d4', // Cyan
+    domeColor: '#06b6d4',
     iconName: 'Radar',
     realPhotoUrl: '/images/equipments/radar_36d6.jpg',
     model3dUrl: '/models/equipments/radar_3d.glb',
@@ -150,8 +151,9 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     minElevationDeg: 0,
     maxElevationDeg: 30,
     antennaHeightAGL: 15,
-    coverageHeightKm: 20,
+    coverageHeightKm: 40,
     symbolColor: '#38bdf8', // Light Sky Blue
+    domeColor: '#38bdf8',
     iconName: 'Radio',
     realPhotoUrl: '/images/equipments/radar_nebo.jpg',
     model3dUrl: '/models/equipments/radar_3d.glb',
@@ -205,6 +207,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 12,
     coverageHeightKm: 6,
     symbolColor: '#22d3ee', // Cyan
+    domeColor: '#22d3ee',
     iconName: 'Radar',
     realPhotoUrl: '/images/equipments/radar_vrs2dm.jpg',
     model3dUrl: '/models/equipments/radar_3d.glb',
@@ -237,51 +240,6 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     },
   },
   {
-    id: 'radar_p18_terek',
-    name: 'Đài Radar P-18 Terek (tham chiếu video)',
-    category: 'RadarCanhGioi',
-    categoryNameVi: 'Radar Cảnh Giới',
-    description:
-      'Cấu hình mô phỏng đúng theo dự án tham chiếu Unity VomKQ_test (Assets/Data/Equipment/Radar_Test.asset): tầm 20 km, góc tà 0°–70°, trần phủ sóng 6 km, tốc độ quét 36°/s, tháp ăng-ten 10 m. Giản đồ phủ phẳng 20 km trên toàn dải góc tà.',
-    defaultRangeKm: 20,
-    defaultScanSpeed: 36, // 6 vòng/phút = 36 deg/s — Unity EquipmentData.scanSpeed
-    minElevationDeg: 0,
-    maxElevationDeg: 70,
-    antennaHeightAGL: 10,
-    coverageHeightKm: 6,
-    symbolColor: '#77ff7e', // Unity symbolColor = (0.466, 1, 0.494)
-    domeColor: '#77ff7e',
-    iconName: 'Radio',
-    realPhotoUrl: '/images/equipments/radar_p18.jpg',
-    model3dUrl: '/models/equipments/radar_3d.glb',
-    wavelengthM: 2.0, // Sóng mét (VHF ~2m)
-    coverageProfile: {
-      id: 'prof_p18_terek_video',
-      name: 'Giản đồ P-18 Terek (tham chiếu video)',
-      minElevationDeg: 0,
-      maxElevationDeg: 70,
-      points: [
-        { elevationDeg: 0, maxRangeKm: 20 },
-        { elevationDeg: 70, maxRangeKm: 20 },
-      ],
-    },
-    altitudeDetectionTable: {
-      headers: ['Độ cao mục tiêu (m)', 'Cự ly phát hiện (km) [S_mt > 1m²]'],
-      rows: [
-        { altitudeM: 200, val1: 30 },
-        { altitudeM: 300, val1: 40 },
-        { altitudeM: 500, val1: 50 },
-        { altitudeM: 1000, val1: 65 },
-        { altitudeM: 3000, val1: 110 },
-        { altitudeM: 5000, val1: 145 },
-        { altitudeM: 7000, val1: 165 },
-        { altitudeM: 10000, val1: 175 },
-        { altitudeM: 15000, val1: 200 },
-        { altitudeM: 20000, val1: 230 },
-      ],
-    },
-  },
-  {
     id: 'radar_kolchuga',
     name: 'Trạm Trinh Sát Thụ Động Kolchuga-M',
     category: 'CamBienThuDong',
@@ -295,6 +253,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     coverageHeightKm: 40,
     frequencyRangeGhz: '0.1 - 18.0 GHz (VHF/UHF/SHF)',
     symbolColor: '#a855f7', // Purple/Violet ESM
+    domeColor: '#a855f7',
     iconName: 'RadioTower',
     realPhotoUrl: '/images/equipments/esm_kolchuga.jpg',
     model3dUrl: '/models/equipments/esm_station.glb',
@@ -484,7 +443,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
       tail_chase: { modeVi: 'Bắn đuổi (Không nhiễu)', dMinKm: 3.0, dMaxKm: 28.0, hMinM: 50, hMaxM: 12000, vMaxMps: 450, pGhKm: 22.0 },
       jamming_passive: { modeVi: 'Nhiễu vô tuyến tiêu cực', dMinKm: 2.0, dMaxKm: 42.0, hMinM: 20, hMaxM: 14000, vMaxMps: 800, pGhKm: 28.0 },
       jamming_active: { modeVi: 'Nhiễu vô tuyến tích cực', dMinKm: 2.0, dMaxKm: 35.0, hMinM: 30, hMaxM: 12000, vMaxMps: 800, pGhKm: 25.0 },
-      tbk_optical: { modeVi: 'Chế độ quang điện tử IIR quang học (Python-5)', dMinKm: 1.0, dMaxKm: 45.0, hMinM: 20, hMaxM: 15000, vMaxMps: 800, pGhKm: 30.0 },
+      tbk_optical: { modeVi: 'Chế độ quang điện tử IIR quang học (Python-5)', dMinKm: 1.0, dMaxKm: 20.0, hMinM: 20, hMaxM: 9000, vMaxMps: 800, pGhKm: 12.0 },
     },
     coverageProfile: {
       id: 'prof_spyder',
@@ -513,6 +472,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 30,
     coverageHeightKm: 15,
     symbolColor: '#eab308', // Yellow/Gold
+    domeColor: '#eab308',
     iconName: 'ShieldAlert',
     realPhotoUrl: '/images/equipments/c2_command.jpg',
     model3dUrl: '/models/equipments/command_post.glb',
@@ -537,6 +497,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     defaultRangeKm: 5,
     minEngagementRangeKm: 0.2,
     maxEngagementAltitudeM: 2500,
+    minEngagementAltitudeM: 10,
+    optimalAltitudeM: 1500,
     reactionTimeSeconds: 3,
     guidanceMethodVi: 'Quang học & Radar RPK-2',
     defaultScanSpeed: 45,
@@ -545,6 +507,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 4,
     coverageHeightKm: 3,
     symbolColor: '#10b981', // Emerald
+    domeColor: '#10b981',
     iconName: 'Target',
     realPhotoUrl: '/images/equipments/aaa_gun.jpg',
     model3dUrl: '/models/equipments/aaa_gun.glb',
@@ -571,7 +534,9 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     defaultRangeKm: 6.0,
     minEngagementRangeKm: 0.2,
     maxEngagementAltitudeM: 5000,
+    minEngagementAltitudeM: 10,
     optimalAltitudeM: 3000,
+    reactionTimeSeconds: 5,
     guidanceMethodVi: 'Máy chỉ huy K59-03 & Radar K8-60',
     defaultScanSpeed: 45,
     minElevationDeg: -2,
@@ -579,6 +544,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 2,
     coverageHeightKm: 5,
     symbolColor: '#10b981', // Emerald
+    domeColor: '#10b981',
     iconName: 'Target',
     realPhotoUrl: '/images/equipments/aaa_gun.jpg',
     model3dUrl: '/models/equipments/aaa_gun.glb',
@@ -605,7 +571,9 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     defaultRangeKm: 3.5,
     minEngagementRangeKm: 0.2,
     maxEngagementAltitudeM: 3000,
+    minEngagementAltitudeM: 10,
     optimalAltitudeM: 1500,
+    reactionTimeSeconds: 5,
     guidanceMethodVi: 'Đài điều khiển trung tâm bán tự động',
     defaultScanSpeed: 45,
     minElevationDeg: -5,
@@ -613,6 +581,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     antennaHeightAGL: 2,
     coverageHeightKm: 3,
     symbolColor: '#10b981', // Emerald
+    domeColor: '#10b981',
     iconName: 'Target',
     realPhotoUrl: '/images/equipments/aaa_gun.jpg',
     model3dUrl: '/models/equipments/aaa_gun.glb',

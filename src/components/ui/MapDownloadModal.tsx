@@ -54,10 +54,10 @@ export const MapDownloadModal: React.FC = () => {
 
   if (!showMapDownloadModal) return null;
 
-  const cliAllCommand = `node download-tactical-all.js --region=${selectedRegion}`;
-  const cliSatCommand = `node download-tactical-map.js --region=${selectedRegion} --minZoom=${minZoom} --maxZoom=${maxZoom}`;
-  const cliTerrainCommand = `node download-tactical-terrain.js --region=${selectedRegion} --minZoom=8 --maxZoom=13`;
-  const cliGoogleTerrainCommand = `node download-tactical-google-terrain.js --region=${selectedRegion} --minZoom=8 --maxZoom=13`;
+  const cliAllCommand = `node scripts/download-tactical-all.js --region=${selectedRegion}`;
+  const cliSatCommand = `node scripts/download-tactical-map.js --region=${selectedRegion} --minZoom=${minZoom} --maxZoom=${maxZoom}`;
+  const cliTerrainCommand = `node scripts/download-tactical-terrain.js --region=${selectedRegion} --minZoom=8 --maxZoom=13`;
+  const cliGoogleTerrainCommand = `node scripts/download-tactical-google-terrain.js --region=${selectedRegion} --minZoom=8 --maxZoom=13`;
 
   const handleCopy = (text: string, type: string) => {
     navigator.clipboard.writeText(text);

@@ -72,9 +72,11 @@ interface DomeRenderResource {
   material: Cesium.Material;
 }
 
-// Access token cấu hình từ dự án VomKQ (CesiumIonServer)
-Cesium.Ion.defaultAccessToken =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzYmIyMWFkMS1lYjc5LTQ0NzMtYThlNS1iNTEzMTA1NTY4MjQiLCJpZCI6NDYwODUzLCJpc3MiOiJodHRwczovL2FwaS5jZXNpdW0uY29tIiwiYXVkIjoidW5kZWZpbmVkX2RlZmF1bHQiLCJpYXQiOjE3ODUxMjM1ODN9.gyB0vWTm1yJXS2pCkaVqyLdbg1RxFzjReo7jeDEMmQU';
+// Access token Cesium ion: đọc từ biến môi trường (.env.local → VITE_CESIUM_ION_TOKEN), không hardcode trong mã nguồn
+const cesiumIonToken = import.meta.env.VITE_CESIUM_ION_TOKEN as string | undefined;
+if (cesiumIonToken) {
+  Cesium.Ion.defaultAccessToken = cesiumIonToken;
+}
 
 // Bảo vệ Ellipsoid.prototype.geodeticSurfaceNormal trước toạ độ (0,0,0) hoặc NaN khi tilt/pan camera trên địa hình
 // Tránh lỗi "DeveloperError: normalized result is not a number" tại tilt3DOnTerrain làm dừng render loop của Cesium

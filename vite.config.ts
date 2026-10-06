@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import cesium from 'vite-plugin-cesium'
 import tailwindcss from '@tailwindcss/vite'
@@ -17,11 +17,12 @@ const __dirname = path.dirname(__filename)
  * Quantized-Mesh của CesiumTerrainProvider và UrlTemplateImageryProvider bị lỗi RangeError
  * hoặc không decode được ảnh.
  */
-function offlineTile404Plugin() {
+function offlineTile404Plugin(): Plugin {
+  const publicRoot = path.join(__dirname, 'public')
   return {
     name: 'offline-tile-404',
-    configureServer(server: any) {
-      server.middlewares.use((req: any, res: any, next: any) => {
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
         const rawUrl = req.url?.split('?')[0] || ''
         if (
           rawUrl.startsWith('/offline-') ||
@@ -32,8 +33,12 @@ function offlineTile404Plugin() {
         ) {
           try {
             const decodedPath = decodeURIComponent(rawUrl)
-            const publicFilePath = path.join(__dirname, 'public', decodedPath)
-            if (!fs.existsSync(publicFilePath) || fs.statSync(publicFilePath).isDirectory()) {
+            const publicFilePath = path.resolve(publicRoot, '.' + decodedPath)
+            if (
+              !publicFilePath.startsWith(publicRoot + path.sep) ||
+              !fs.existsSync(publicFilePath) ||
+              fs.statSync(publicFilePath).isDirectory()
+            ) {
               res.statusCode = 404
               res.setHeader('Content-Type', 'text/plain; charset=utf-8')
               res.end('404 Not Found')
@@ -52,16 +57,47 @@ function offlineTile404Plugin() {
   }
 }
 
+/**
+ * Thay cho cơ chế copy public/ mặc định của Vite: bỏ qua các thư mục tile offline (hàng trăm nghìn file)
+ * để build nhanh. Đặt COPY_OFFLINE_TILES=1 nếu muốn đóng gói kèm tile vào dist.
+ */
+function copyPublicWithoutTilesPlugin(): Plugin {
+  let outDir = 'dist'
+  return {
+    name: 'copy-public-without-tiles',
+    apply: 'build',
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir)
+    },
+    closeBundle() {
+      const publicRoot = path.join(__dirname, 'public')
+      const includeTiles = process.env.COPY_OFFLINE_TILES === '1'
+      fs.cpSync(publicRoot, outDir, {
+        recursive: true,
+        filter: (src) => {
+          if (includeTiles) return true
+          const top = path.relative(publicRoot, src).split(path.sep)[0]
+          return !(top.startsWith('offline-') && !top.endsWith('.json'))
+        },
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     offlineTile404Plugin(),
-    vectorAiLauncher(),
+    { ...vectorAiLauncher(), apply: 'serve' },
     react(),
     // @ts-ignore
     cesium(),
-    tailwindcss()
+    tailwindcss(),
+    copyPublicWithoutTilesPlugin(),
   ],
+  build: {
+    copyPublicDir: false,
+  },
   // The app has one HTML entry; avoid crawling the offline tile archive for entries.
   optimizeDeps: {
     entries: ['index.html'],
