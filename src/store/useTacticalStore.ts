@@ -979,27 +979,14 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       // CHECKPOINT 1B.3.3: Canonical-first migration logic
       const placement = state.placements[instanceId];
 
-      // LEGACY_ONLY case
-      if (!placement) {
-        return {
-          instances: state.instances.map((item) =>
-            item.instanceId === instanceId ? { ...item, ...updates, instanceId } : item
-          ),
-          coverageVolumes: nextVolumes,
-        };
-      }
-
       const definition = state.definitions[placement.definitionId];
       const observation = state.observations[instanceId];
       const visual = state.visuals[instanceId];
 
-      // CANONICAL_INCOMPLETE case
       if (!definition || !observation || !visual) {
-        console.error(`[updateEquipment] Abort: CANONICAL_INCOMPLETE state for instanceId: ${instanceId}`);
-        return { coverageVolumes: nextVolumes };
+        throw new Error(`Canonical fragment missing for placement ${instanceId}`);
       }
 
-      // CANONICAL_COMPLETE case
       const updatedCanonical = applyEquipmentPatchToCanonical(placement, definition, observation, visual, updates);
       const existingSimulation = state.activeSimulationRunId ? state.simulations[state.activeSimulationRunId]?.[placement.id] : undefined;
 
@@ -1038,7 +1025,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       const observation = state.observations[instanceId];
       const visual = state.visuals[instanceId];
 
-      if (!definition || !observation || !visual) return state;
+      if (!definition || !observation || !visual) throw new Error(`Canonical fragment missing for placement ${instanceId}`);
 
       const newVisual = {
         ...visual,
@@ -1209,7 +1196,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       const observation = state.observations[instanceId];
       const visual = state.visuals[instanceId];
 
-      if (!definition || !observation || !visual) return state;
+      if (!definition || !observation || !visual) throw new Error(`Canonical fragment missing for placement ${instanceId}`);
 
       const newDefinition = {
         ...definition,
@@ -1572,9 +1559,10 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   clearFlyTo: () => set({ flyToTarget: null }),
 
   clearAll: () => {
+    const state = get();
+    validateMutationGuard(state);
     invalidateVolumeCache();
     set((state) => {
-      validateMutationGuard(state);
 
       const nextPlacements = { ...state.placements };
       const nextDefinitions = { ...state.definitions };

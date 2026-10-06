@@ -1,5 +1,5 @@
 // @ts-ignore
-import { test, expect } from 'vitest';
+import { test, expect, describe } from 'vitest';
 import { useTacticalStore, validatePlanGraph, selectActiveEquipment, selectActivePlan, selectActivePlacements, selectEquipmentById, selectDefinitionForPlacement, selectObservationForPlacement, selectVisualForPlacement } from './useTacticalStore';
 
 test('1C Store Constraints - Extended', () => {
@@ -890,4 +890,192 @@ test('1D Scenario Memoization Invalidation', () => {
   expect(equipment2).toEqual([]);
   expect(placements2).not.toBe(placements1);
   expect(equipment2).not.toBe(equipment1);
+});
+
+
+describe('1E Canonical Mutation Boundary', () => {
+  const setupBase = () => {
+    useTacticalStore.setState({
+      scenarios: {
+        s1: { id: 's1', name: 'S1', status: 'draft', createdAt: 0 } as any
+      },
+      plans: {
+        p1: { id: 'p1', scenarioId: 's1', status: 'draft', name: 'P1', createdAt: 0 } as any
+      },
+      placements: {
+        c1: { id: 'c1', planId: 'p1', definitionId: 'd1', position: { lat: 10, lon: 20, altM: 0, aglM: 0 }, network: {} } as any
+      },
+      definitions: {
+        d1: { id: 'd1', planId: 'p1', category: 'RadarCanhGioi', rangeKm: 100, capabilities: {} } as any
+      },
+      observations: {
+        c1: { placementId: 'c1', status: 'Active' } as any
+      },
+      visuals: {
+        c1: { color: 'red', showDome: true } as any
+      },
+      instances: [
+        { instanceId: 'fake_instance_only' } as any, // Only exists in projection
+        { instanceId: 'c1', latitude: 10, longitude: 20, name: 'c1_orig' } as any // Valid projection
+      ],
+      simulations: { sim1: { c1: { status: 'Running', parameters: {} } } as any },
+      activeSimulationRunId: 'sim1',
+      activeScenarioId: 's1',
+      activePlanId: 'p1',
+      canonicalInitialized: true
+    });
+  };
+
+  test('B. fake item existing only in instances[] cannot be updated', () => {
+    setupBase();
+    expect(() => useTacticalStore.getState().updateEquipment('fake_instance_only', { name: 'test' })).toThrow(/Placement not found/);
+
+    // State remains untouched
+    const state = useTacticalStore.getState();
+    expect(state.instances.find(i => i.instanceId === 'fake_instance_only')).toBeDefined();
+  });
+
+  test('C. fake item existing only in instances[] cannot be removed', () => {
+    setupBase();
+    expect(() => useTacticalStore.getState().removeEquipment('fake_instance_only')).toThrow(/Target equipment fake_instance_only does not exist/);
+  });
+
+  test('D. cross-plan Placement mutation is rejected', () => {
+    setupBase();
+    useTacticalStore.setState((s) => ({
+      plans: { ...s.plans, p2: { id: 'p2', scenarioId: 's1', status: 'draft', name: 'P2', createdAt: 0 } as any },
+      definitions: { ...s.definitions, d2: { id: 'd2', planId: 'p2', category: 'RadarCanhGioi', rangeKm: 100, capabilities: {} } as any },
+      placements: { ...s.placements, c2: { id: 'c2', planId: 'p2', definitionId: 'd2', position: { lat: 0, lon: 0, altM: 0, aglM: 0 }, network: {} } as any }
+    }));
+
+    // c2 belongs to p2, but activePlanId is p1
+    expect(() => useTacticalStore.getState().updateEquipment('c2', { name: 'test' })).toThrow(/Placement belongs to another plan/);
+    expect(() => useTacticalStore.getState().removeEquipment('c2')).toThrow(/Target equipment c2 belongs to another plan/);
+  });
+
+
+  test('E. archived Scenario mutation is rejected', () => {
+    setupBase();
+    useTacticalStore.setState((s) => ({
+      scenarios: {
+        ...s.scenarios,
+        s1: { ...s.scenarios.s1, status: 'archived' }
+      }
+    }));
+
+    expect(() => useTacticalStore.getState().updateEquipment('c1', { name: 'test' })).toThrow(/Scenario is archived/);
+    expect(() => useTacticalStore.getState().clearAll()).toThrow(/Scenario is archived/);
+  });
+
+  test('F. proposed/approved Plan mutation is rejected', () => {
+    setupBase();
+    useTacticalStore.setState((s) => ({
+      plans: {
+        ...s.plans,
+        p1: { ...s.plans.p1, status: 'proposed' }
+      }
+    }));
+
+    expect(() => useTacticalStore.getState().updateEquipment('c1', { name: 'test' })).toThrow(/Active plan is not draft/);
+
+    useTacticalStore.setState((s) => ({
+      plans: {
+        ...s.plans,
+        p1: { ...s.plans.p1, status: 'approved' }
+      }
+    }));
+
+    expect(() => useTacticalStore.getState().removeEquipment('c1')).toThrow(/Active plan is not draft/);
+  });
+
+  test('A, G. update mutation resolves target only from canonical Placement and updates projection', () => {
+    setupBase();
+    useTacticalStore.getState().updateEquipment('c1', { name: 'c1_updated', latitude: 50 });
+
+    const state = useTacticalStore.getState();
+    const inst = state.instances.find(i => i.instanceId === 'c1');
+    expect(inst).toBeDefined();
+    expect(inst?.name).toBe('c1_updated');
+    expect(inst?.latitude).toBe(50);
+    expect(state.placements['c1'].position.lat).toBe(50);
+  });
+
+  test('I. remove preserves historical Observation/Simulation', () => {
+    setupBase();
+    useTacticalStore.getState().removeEquipment('c1');
+
+    const state = useTacticalStore.getState();
+    // Placement, Definition, Visual should be gone
+    expect(state.placements['c1']).toBeUndefined();
+    expect(state.definitions['d1']).toBeUndefined();
+    expect(state.visuals['c1']).toBeUndefined();
+
+    // Observation must SURVIVE
+    expect(state.observations['c1']).toBeDefined();
+    // Simulation must SURVIVE
+    expect(state.simulations['sim1']['c1']).toBeDefined();
+  });
+
+
+
+  test('H. canonical mutations do not rebuild canonical state from instances[] (No Reverse Sync)', () => {
+    setupBase();
+
+    // Intentionally create a stale legacy entry
+    useTacticalStore.setState((s) => ({
+      instances: s.instances.map(inst =>
+        inst.instanceId === 'c1' ? { ...inst, latitude: -99 } : inst
+      )
+    }));
+
+    // Update canonical state using the public action
+    useTacticalStore.getState().updateEquipment('c1', { latitude: 50 });
+
+    const state = useTacticalStore.getState();
+
+    // The canonical Placement MUST reflect the update
+    expect(state.placements['c1'].position.lat).toBe(50);
+    // The projection must be generated from canonical (50), NOT reverse-syncing the stale -99
+    expect(state.instances.find(i => i.instanceId === 'c1')?.latitude).toBe(50);
+  });
+
+  test('J. clearAll remains active-plan scoped', () => {
+    setupBase();
+    useTacticalStore.setState((s) => ({
+      plans: { ...s.plans, p2: { id: 'p2', scenarioId: 's1', status: 'draft', name: 'P2', createdAt: 0 } as any },
+      placements: {
+        ...s.placements,
+        c2: { id: 'c2', planId: 'p2', definitionId: 'd2', position: { lat: 0, lon: 0, altM: 0, aglM: 0 }, network: {} } as any
+      },
+      definitions: {
+        ...s.definitions,
+        d2: { id: 'd2', planId: 'p2', category: 'RadarCanhGioi', rangeKm: 100, capabilities: {} } as any
+      },
+      visuals: {
+        ...s.visuals,
+        c2: { color: 'blue', showDome: true } as any
+      },
+      observations: {
+        ...s.observations,
+        c2: { placementId: 'c2', status: 'Active' } as any
+      }
+    }));
+
+    useTacticalStore.getState().clearAll();
+
+    const state = useTacticalStore.getState();
+
+    // c1 (plan p1) is removed
+    expect(state.placements['c1']).toBeUndefined();
+    expect(state.definitions['d1']).toBeUndefined();
+
+    // c2 (plan p2) SURVIVES
+    expect(state.placements['c2']).toBeDefined();
+    expect(state.definitions['d2']).toBeDefined();
+    expect(state.visuals['c2']).toBeDefined();
+
+    // Observation for c1 MUST survive
+    expect(state.observations['c1']).toBeDefined();
+  });
+
 });
