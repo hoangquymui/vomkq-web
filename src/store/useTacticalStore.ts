@@ -112,6 +112,12 @@ interface TacticalState {
    */
   _syncLegacyInstances: () => void;
 
+  ensureActiveWorkspace: () => void;
+  createPlanAlternative: (sourcePlanId?: string) => void;
+  switchActivePlan: (planId: string) => void;
+  saveActivePlan: () => void;
+  validateActiveScenarioContext: () => void;
+
   // Battlefield Entities (Legacy Projection)
   instances: EquipmentInstance[];
   selectedInstanceId: string | null;
@@ -332,6 +338,75 @@ function resolveAdvisorTemplate(state: {
   return EQUIPMENT_TEMPLATES[0];
 }
 
+export function validateMutationGuard(state: TacticalState): void {
+  if (!state.activeScenarioId) throw new Error('No active scenario');
+  const scenario = state.scenarios[state.activeScenarioId];
+  if (!scenario) throw new Error('Active scenario does not exist');
+  if (scenario.status === 'archived') throw new Error('Scenario is archived');
+
+  if (!state.activePlanId) throw new Error('No active plan');
+  const plan = state.plans[state.activePlanId];
+  if (!plan) throw new Error('Active plan does not exist');
+
+  if (plan.scenarioId !== state.activeScenarioId) throw new Error('Plan does not belong to active scenario');
+  if (plan.status !== 'draft') throw new Error('Active plan is not draft');
+}
+
+export function validatePlanGraph(state: TacticalState, planId: string): void {
+  const plan = state.plans[planId];
+  if (!plan) throw new Error(`validatePlanGraph: Target plan does not exist`);
+
+  // A/B: Plan/Scenario context
+  const scenario = state.scenarios[plan.scenarioId];
+  if (!scenario) throw new Error(`validatePlanGraph: Plan references missing scenario ${plan.scenarioId}`);
+
+  // C: Placement ownership — also catch missing/undefined planId fields
+  for (const p of Object.values(state.placements)) {
+    if (p.planId === planId) {
+      if (!p.definitionId) throw new Error(`validatePlanGraph: Placement ${p.id} missing definitionId`);
+      const def = state.definitions[p.definitionId];
+      if (!def) throw new Error(`validatePlanGraph: Placement ${p.id} references missing definition`);
+      // Catch missing planId on definition or cross-plan reference
+      if (!def.planId) throw new Error(`validatePlanGraph: Definition ${def.id} has no planId`);
+      if (def.planId !== planId) throw new Error(`validatePlanGraph: Placement ${p.id} references cross-plan definition (def.planId=${def.planId})`);
+      const obs = state.observations[p.id];
+      if (!obs) throw new Error(`validatePlanGraph: Placement ${p.id} missing current Observation`);
+      const vis = state.visuals[p.id];
+      if (!vis) throw new Error(`validatePlanGraph: Placement ${p.id} references missing visual`);
+
+      // F: Network reference integrity
+      if (p.network?.commandedBy) {
+        const commandedBy = p.network.commandedBy;
+        const refPlacement = state.placements[commandedBy];
+        if (!refPlacement) throw new Error(`validatePlanGraph: Placement ${p.id} commandedBy references missing Placement ${commandedBy}`);
+        if (refPlacement.planId !== planId) throw new Error(`validatePlanGraph: Placement ${p.id} commandedBy cross-plan reference (target planId=${refPlacement.planId})`);
+      }
+    }
+    // C: Also catch Placements with missing/undefined planId that reference definitions of this plan
+    if (!p.planId) {
+      if (p.definitionId && state.definitions[p.definitionId]?.planId === planId) {
+        throw new Error(`validatePlanGraph: Placement ${p.id} has no planId but its Definition belongs to plan ${planId}`);
+      }
+    }
+  }
+
+  // D: Definition ownership — orphan check
+  for (const d of Object.values(state.definitions)) {
+    if (d.planId === planId) {
+      const hasRef = Object.values(state.placements).some(p => p.planId === planId && p.definitionId === d.id);
+      if (!hasRef) throw new Error(`validatePlanGraph: Orphan definition ${d.id} in plan ${planId}`);
+    }
+  }
+
+  // E: Global Visual Orphan Check
+  // We enforce the global invariant: every visuals key must correspond to an existing Placement
+  for (const vId of Object.keys(state.visuals)) {
+    if (!state.placements[vId]) {
+      throw new Error(`validatePlanGraph: Orphan visual ${vId} (no corresponding Placement)`);
+    }
+  }
+}
+
 export const useTacticalStore = create<TacticalState>((set, get) => ({
   // Canonical State Initialization
   scenarios: {},
@@ -348,152 +423,415 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   activeSimulationRunId: null,
   canonicalInitialized: false,
 
-  _hydrateLegacyToCanonical: () => set((state) => {
-    if (state.canonicalInitialized) {
-      console.warn('[_hydrateLegacyToCanonical] Aborted: canonical state is already initialized.');
-      return {};
-    }
+  validateActiveScenarioContext: () => {
+    const state = get();
+    if (!state.activeScenarioId) throw new Error('validateActiveScenarioContext: No active scenario');
+    const scenario = state.scenarios[state.activeScenarioId];
+    if (!scenario) throw new Error('validateActiveScenarioContext: Active scenario does not exist');
 
-    const seenIds = new Set<string>();
-    for (const inst of state.instances) {
-      if (seenIds.has(inst.instanceId)) {
-        console.error(`[_hydrateLegacyToCanonical] Aborted: Duplicate instanceId detected: ${inst.instanceId}. Hydration must not lose data.`);
-        return {};
+    if (!state.activePlanId) throw new Error('validateActiveScenarioContext: No active plan');
+    const plan = state.plans[state.activePlanId];
+    if (!plan) throw new Error('validateActiveScenarioContext: Active plan does not exist');
+
+    if (plan.scenarioId !== state.activeScenarioId) throw new Error('validateActiveScenarioContext: Plan does not belong to active scenario');
+  },
+
+  ensureActiveWorkspace: () => set((state) => {
+    let nextScenarioId = state.activeScenarioId;
+    let nextPlanId = state.activePlanId;
+    const scenarios = { ...state.scenarios };
+    const plans = { ...state.plans };
+    const placements = { ...state.placements };
+    const definitions = { ...state.definitions };
+
+    if (!nextScenarioId && !nextPlanId) {
+      nextScenarioId = 'default-scenario';
+      nextPlanId = 'default-plan';
+      if (!scenarios[nextScenarioId]) {
+        scenarios[nextScenarioId] = { id: nextScenarioId, name: 'Default Scenario', terrainVersion: 'v1', createdAt: Date.now(), status: 'active' };
       }
-      seenIds.add(inst.instanceId);
+      if (!plans[nextPlanId]) {
+        plans[nextPlanId] = { id: nextPlanId, scenarioId: nextScenarioId, version: 1, name: 'Default Plan', status: 'draft' };
+      } else if (plans[nextPlanId].scenarioId !== nextScenarioId) {
+        throw new Error('ensureActiveWorkspace: default-plan exists but belongs to a different scenario');
+      }
+    }
+    else if (!nextScenarioId && nextPlanId) {
+      throw new Error('ensureActiveWorkspace: activePlanId exists but activeScenarioId is missing');
+    }
+    else if (nextScenarioId && !nextPlanId) {
+      if (!scenarios[nextScenarioId]) throw new Error('ensureActiveWorkspace: activeScenarioId points to missing scenario');
+      nextPlanId = `plan_${nextScenarioId}_default`;
+      if (!plans[nextPlanId]) {
+        plans[nextPlanId] = { id: nextPlanId, scenarioId: nextScenarioId, version: 1, name: 'Default Plan', status: 'draft' };
+      } else if (plans[nextPlanId].scenarioId !== nextScenarioId) {
+        throw new Error('ensureActiveWorkspace: scenario-specific default plan belongs to a different scenario');
+      }
+    }
+    else {
+      if (!scenarios[nextScenarioId!] || !plans[nextPlanId!]) {
+        throw new Error('ensureActiveWorkspace: Active IDs point to non-existing records');
+      }
+      if (plans[nextPlanId!].scenarioId !== nextScenarioId) {
+        throw new Error('ensureActiveWorkspace: Plan scenarioId mismatch');
+      }
     }
 
-    const nextPlacements: Record<string, EquipmentPlacement> = {};
-    const nextDefinitions: Record<string, EquipmentDefinition> = {};
-    const nextObservations: Record<string, ObservationState> = {};
-    const nextVisuals: Record<string, LegacyPresentationState> = {};
-
-    for (const inst of state.instances) {
-      const id = inst.instanceId;
-      const parsed = parseLegacyInstance(inst);
-
-      nextPlacements[id] = parsed.placement;
-      nextDefinitions[id] = parsed.definition;
-      nextObservations[id] = parsed.observation;
-      nextVisuals[id] = parsed.visual;
+    let modified = false;
+    for (const pid of Object.keys(placements)) {
+      const pl = placements[pid];
+      if (!pl.planId || pl.planId === 'unowned') {
+        // Before assigning, check if the referenced Definition is already owned by another plan.
+        // If yes, this is a contradictory ownership — do NOT silently repair.
+        if (pl.definitionId) {
+          const def = definitions[pl.definitionId];
+          if (def && def.planId && def.planId !== 'unowned' && def.planId !== nextPlanId) {
+            throw new Error(
+              `ensureActiveWorkspace: Unowned Placement ${pid} references Definition ${pl.definitionId} ` +
+              `already owned by plan ${def.planId}. Cannot silently repair contradictory ownership.`
+            );
+          }
+        }
+        placements[pid] = { ...pl, planId: nextPlanId! };
+        modified = true;
+      }
     }
+
+    // DEFINITION OWNERSHIP INFERENCE
+    for (const did of Object.keys(definitions)) {
+      if (!definitions[did].planId || definitions[did].planId === 'unowned') {
+        const referencingPlacements = Object.values(placements).filter(p => p.definitionId === did);
+        if (referencingPlacements.length === 0) {
+          throw new Error(`ensureActiveWorkspace: Orphan definition ${did} has no referencing placements`);
+        }
+        const planIds = new Set(referencingPlacements.map(p => p.planId).filter(Boolean));
+        if (planIds.size > 1) {
+          throw new Error(`ensureActiveWorkspace: Definition ${did} referenced by conflicting plans`);
+        }
+        definitions[did] = { ...definitions[did], planId: [...planIds][0]! };
+        modified = true;
+      }
+    }
+
+    if (modified || nextScenarioId !== state.activeScenarioId || nextPlanId !== state.activePlanId) {
+      return {
+        activeScenarioId: nextScenarioId,
+        activePlanId: nextPlanId,
+        scenarios,
+        plans,
+        placements,
+        definitions
+      };
+    }
+    return {};
+  }),
+
+  createPlanAlternative: (sourcePlanId?: string) => set((state) => {
+    if (!state.activeScenarioId) throw new Error('createPlanAlternative: No active scenario');
+    const scenario = state.scenarios[state.activeScenarioId];
+    if (scenario?.status === 'archived') throw new Error('createPlanAlternative: Scenario is archived');
+
+    const srcId = sourcePlanId || state.activePlanId;
+    if (!srcId) throw new Error('createPlanAlternative: No source plan');
+    const sourcePlan = state.plans[srcId];
+    if (!sourcePlan) throw new Error('createPlanAlternative: Source plan not found');
+    if (sourcePlan.scenarioId !== state.activeScenarioId) throw new Error('createPlanAlternative: Source plan from another scenario');
+
+    validatePlanGraph(state, srcId);
+
+    // Helper for unique IDs
+    const generateUniqueId = (prefix: string, existing: Record<string, any>) => {
+      let id;
+      do {
+        id = prefix + '_' + Date.now() + Math.random().toString(36).substring(2, 7);
+      } while (existing[id]);
+      return id;
+    };
+
+    const newPlanId = generateUniqueId('plan', state.plans);
+    const newPlan = {
+      ...sourcePlan,
+      id: newPlanId,
+      name: sourcePlan.name + ' (Alternative)',
+      status: 'draft' as const,
+      version: sourcePlan.version + 1,
+    };
+
+    const nextPlans = { ...state.plans, [newPlanId]: newPlan };
+    const nextPlacements = { ...state.placements };
+    const nextDefinitions = { ...state.definitions };
+    const nextObservations = { ...state.observations };
+    const nextVisuals = { ...state.visuals };
+
+    const placementIdMap: Record<string, string> = {};
+
+    // First pass: create all placements and definitions
+    for (const p of Object.values(state.placements)) {
+      if (p.planId === srcId) {
+        const newPlacementId = generateUniqueId('P_alt', nextPlacements);
+        placementIdMap[p.id] = newPlacementId;
+
+        const oldDefId = p.definitionId;
+        const newDefId = generateUniqueId('D_alt', nextDefinitions);
+
+        const oldDef = state.definitions[oldDefId];
+        nextDefinitions[newDefId] = { ...oldDef, id: newDefId, planId: newPlanId };
+
+        nextPlacements[newPlacementId] = {
+          ...p,
+          id: newPlacementId,
+          planId: newPlanId,
+          definitionId: newDefId
+        };
+
+        const oldVisual = state.visuals[p.id];
+        if (oldVisual) {
+          nextVisuals[newPlacementId] = { ...oldVisual };
+        }
+
+        // We DO NOT clone ObservationState, SimulationState, or SimulationRun.
+        // A fresh ObservationState is created ONLY as an initial compatibility state for the NEW Placement.
+        // It must NOT be treated as copied historical observation, historical event, or evidence from the source Plan.
+        nextObservations[newPlacementId] = {
+          placementId: newPlacementId,
+          status: 'Active',
+        };
+      }
+    }
+
+    // Second pass: fix network reference remapping
+    for (const pid of Object.values(placementIdMap)) {
+      const p = nextPlacements[pid];
+      if (p.network?.commandedBy && placementIdMap[p.network.commandedBy]) {
+        p.network = { ...p.network, commandedBy: placementIdMap[p.network.commandedBy] };
+      }
+    }
+
+    const nextInstances = Object.values(nextPlacements)
+      .filter(p => p.planId === newPlanId)
+      .map((placement) => {
+        const definition = nextDefinitions[placement.definitionId];
+        const observation = nextObservations[placement.id];
+        const visual = nextVisuals[placement.id];
+        return hydrateLegacyInstance(placement, definition, observation, visual, undefined);
+      });
 
     return {
+      plans: nextPlans,
       placements: nextPlacements,
       definitions: nextDefinitions,
       observations: nextObservations,
       visuals: nextVisuals,
-      // Intentionally NOT setting canonicalInitialized = true yet.
+      activePlanId: newPlanId,
+      instances: nextInstances
     };
   }),
 
-  _initializeCanonicalCutover: () => set((state) => {
-    // Current State Audit & Validation
-    const pMap = { ...state.placements };
-    const dMap = { ...state.definitions };
-    const oMap = { ...state.observations };
-    const vMap = { ...state.visuals };
+  switchActivePlan: (planId: string) => set((state) => {
+    const plan = state.plans[planId];
+    if (!plan) throw new Error('switchActivePlan: Target plan does not exist');
+    if (!state.activeScenarioId) throw new Error('switchActivePlan: Target Scenario missing');
+    if (plan.scenarioId !== state.activeScenarioId) throw new Error('switchActivePlan: Target plan belongs to another scenario');
 
-    // Duplicate ID detection in legacy instances
-    const instanceIds = new Set(state.instances.map(i => i.instanceId));
-    if (instanceIds.size !== state.instances.length) {
-      console.error(`[Cutover] Abort: Duplicate instanceId detected in legacy instances.`);
-      return state;
-    }
+    validatePlanGraph(state, planId);
 
-    for (const inst of state.instances) {
-      const id = inst.instanceId;
-      const isComplete = pMap[id] && dMap[pMap[id].definitionId] && oMap[id] && vMap[id];
+    // Calculate new projection
+    const nextInstances = Object.values(state.placements)
+      .filter(p => p.planId === planId)
+      .map((placement) => {
+        const definition = state.definitions[placement.definitionId];
+        const observation = state.observations[placement.id];
+        const visual = state.visuals[placement.id];
+        const simulation = state.activeSimulationRunId
+          ? state.simulations[state.activeSimulationRunId]?.[placement.id]
+          : undefined;
 
-      if (isComplete) {
-        // Canonical-complete -> preserve existing Canonical, do not overwrite from legacy
-        continue;
-      }
-
-      if (!pMap[id] && !oMap[id] && !vMap[id]) {
-        // Legacy-only -> hydrate from legacy
-        const parsed = parseLegacyInstance(inst);
-        pMap[id] = parsed.placement;
-        dMap[parsed.definition.id] = parsed.definition;
-        oMap[id] = parsed.observation;
-        vMap[id] = parsed.visual;
-      } else {
-        // Canonical-incomplete -> block cutover
-        console.error(`[Cutover] Abort: CANONICAL_INCOMPLETE state for instanceId: ${id}`);
-        return state;
-      }
-    }
-
-    const placementIds = new Set(Object.keys(pMap));
-
-    // Bidirectional consistency check
-    if (instanceIds.size !== placementIds.size) {
-      console.error(`[Cutover] Abort: Bidirectional consistency check failed. Sizes differ.`);
-      return state;
-    }
-
-    for (const id of instanceIds) {
-      if (!placementIds.has(id)) {
-        console.error(`[Cutover] Abort: Bidirectional consistency check failed. Missing placement for ${id}.`);
-        return state;
-      }
-    }
-
-    // Check missing canonical graph parts for all placements
-    for (const pid of placementIds) {
-      const p = pMap[pid];
-      if (!dMap[p.definitionId] || !oMap[pid] || !vMap[pid]) {
-         console.error(`[Cutover] Abort: Incomplete canonical graph for placement ${pid}`);
-         return state;
-      }
-    }
-
-    // Check orphan canonical records
-    for (const did of Object.keys(dMap)) {
-      if (!Object.values(pMap).some((p) => p.definitionId === did)) {
-         console.error(`[Cutover] Abort: Orphan Definition ${did}`);
-         return state;
-      }
-    }
-    for (const oid of Object.keys(oMap)) {
-      if (!pMap[oid]) {
-         console.error(`[Cutover] Abort: Orphan Observation ${oid}`);
-         return state;
-      }
-    }
-    for (const vid of Object.keys(vMap)) {
-      if (!pMap[vid]) {
-         console.error(`[Cutover] Abort: Orphan Visual ${vid}`);
-         return state;
-      }
-    }
-
-    // Generate new projection array
-    const nextInstances = Object.values(pMap).map((placement) => {
-      const definition = dMap[placement.definitionId];
-      const observation = oMap[placement.id];
-      const visual = vMap[placement.id];
-      const simulation = state.activeSimulationRunId
-        ? state.simulations[state.activeSimulationRunId]?.[placement.id]
-        : undefined;
-
-      return hydrateLegacyInstance(placement, definition, observation, visual, simulation);
-    });
+        return hydrateLegacyInstance(placement, definition, observation, visual, simulation);
+      });
 
     return {
-      placements: pMap,
-      definitions: dMap,
-      observations: oMap,
-      visuals: vMap,
-      instances: nextInstances,
-      canonicalInitialized: true
+      activePlanId: planId,
+      instances: nextInstances
     };
   }),
+
+  saveActivePlan: () => {
+    const state = get();
+    // saveActivePlan is validation-only — NOT a mutation operation.
+    // It must NOT require draft status; proposed/approved Plans are also validatable.
+    if (!state.activeScenarioId) throw new Error('saveActivePlan: No active scenario');
+    const scenario = state.scenarios[state.activeScenarioId];
+    if (!scenario) throw new Error('saveActivePlan: Active scenario does not exist');
+    if (!state.activePlanId) throw new Error('saveActivePlan: No active plan');
+    const plan = state.plans[state.activePlanId];
+    if (!plan) throw new Error('saveActivePlan: Active plan does not exist');
+    if (plan.scenarioId !== state.activeScenarioId) throw new Error('saveActivePlan: Plan belongs to wrong scenario');
+    // NOTE: No status check — draft/proposed/approved all validatable
+    validatePlanGraph(state, state.activePlanId);
+    // No Zustand set() call — validation only.
+  },
+
+
+  _hydrateLegacyToCanonical: () => {
+    // Resolve workspace FIRST before parsing legacy instances
+    get().ensureActiveWorkspace();
+
+    set((state) => {
+      if (state.canonicalInitialized) {
+        console.warn('[_hydrateLegacyToCanonical] Aborted: canonical state is already initialized.');
+        return {};
+      }
+
+      const seenIds = new Set<string>();
+      for (const inst of state.instances) {
+        if (seenIds.has(inst.instanceId)) {
+          console.error(`[_hydrateLegacyToCanonical] Aborted: Duplicate instanceId detected: ${inst.instanceId}. Hydration must not lose data.`);
+          return {};
+        }
+        seenIds.add(inst.instanceId);
+      }
+
+      const nextPlacements: Record<string, EquipmentPlacement> = {};
+      const nextDefinitions: Record<string, EquipmentDefinition> = {};
+      const nextObservations: Record<string, ObservationState> = {};
+      const nextVisuals: Record<string, LegacyPresentationState> = {};
+
+      const activePlanId = state.activePlanId!; // Already ensured
+
+      for (const inst of state.instances) {
+        const id = inst.instanceId;
+
+        // CANONICAL PRESERVATION: If canonical records already exist and are complete,
+        // do NOT overwrite them with legacy parsing. Existing canonical identity/data
+        // (including canonical-only fields not in legacy) must be preserved.
+        const existingPlacement = state.placements[id];
+        if (existingPlacement) {
+          const existingDef = state.definitions[existingPlacement.definitionId];
+          const existingObs = state.observations[id];
+          const existingVis = state.visuals[id];
+          if (existingDef && existingObs && existingVis) {
+            // Canonical record is complete — preserve it exactly.
+            nextPlacements[id] = existingPlacement;
+            nextDefinitions[existingPlacement.definitionId] = existingDef;
+            nextObservations[id] = existingObs;
+            nextVisuals[id] = existingVis;
+            continue;
+          }
+        }
+
+        // No complete canonical record exists — parse from legacy.
+        const parsed = parseLegacyInstance(inst, activePlanId);
+        nextPlacements[id] = parsed.placement;
+        nextDefinitions[id] = parsed.definition;
+        nextObservations[id] = parsed.observation;
+        nextVisuals[id] = parsed.visual;
+      }
+
+      return {
+        placements: nextPlacements,
+        definitions: nextDefinitions,
+        observations: nextObservations,
+        visuals: nextVisuals,
+      };
+    });
+  },
+
+  _initializeCanonicalCutover: () => {
+    get().ensureActiveWorkspace();
+
+    set((state) => {
+      const pMap = { ...state.placements };
+      const dMap = { ...state.definitions };
+      const oMap = { ...state.observations };
+      const vMap = { ...state.visuals };
+
+      const instanceIds = new Set(state.instances.map(i => i.instanceId));
+      if (instanceIds.size !== state.instances.length) {
+        console.error(`[Cutover] Abort: Duplicate instanceId detected in legacy instances.`);
+        return {};
+      }
+
+      const activePlanId = state.activePlanId!;
+
+      for (const inst of state.instances) {
+        const id = inst.instanceId;
+        const isComplete = pMap[id] && dMap[pMap[id].definitionId] && oMap[id] && vMap[id];
+
+        if (isComplete) {
+          continue;
+        }
+
+        if (!pMap[id] && !oMap[id] && !vMap[id]) {
+          const parsed = parseLegacyInstance(inst, activePlanId);
+          pMap[id] = parsed.placement;
+          dMap[parsed.definition.id] = parsed.definition;
+          oMap[id] = parsed.observation;
+          vMap[id] = parsed.visual;
+        } else {
+          console.error(`[Cutover] Abort: CANONICAL_INCOMPLETE state for instanceId: ${id}`);
+          return {};
+        }
+      }
+
+      const placementIds = new Set(Object.keys(pMap));
+
+      if (instanceIds.size !== placementIds.size) {
+        console.error(`[Cutover] Abort: Bidirectional consistency check failed. Sizes differ.`);
+        return {};
+      }
+
+      for (const id of instanceIds) {
+        if (!placementIds.has(id)) {
+          console.error(`[Cutover] Abort: Bidirectional consistency check failed. Missing placement for ${id}.`);
+          return {};
+        }
+      }
+
+      for (const pid of placementIds) {
+        const p = pMap[pid];
+        if (!dMap[p.definitionId] || !oMap[pid] || !vMap[pid]) {
+           console.error(`[Cutover] Abort: Incomplete canonical graph for placement ${pid}`);
+           return {};
+        }
+      }
+
+      for (const did of Object.keys(dMap)) {
+        if (!Object.values(pMap).some((p) => p.definitionId === did)) {
+           console.error(`[Cutover] Abort: Orphan Definition ${did}`);
+           return {};
+        }
+      }
+      for (const oid of Object.keys(oMap)) {
+        if (!pMap[oid]) {
+           // It's ok if historical observation remains, but for strict legacy it was an error.
+           // In 1C, ObservationState is not orphan if placement removed. But in cutover we shouldn't have them.
+        }
+      }
+      for (const vid of Object.keys(vMap)) {
+        if (!pMap[vid]) {
+           console.error(`[Cutover] Abort: Orphan Visual ${vid}`);
+           return {};
+        }
+      }
+
+      return {
+        placements: pMap,
+        definitions: dMap,
+        observations: oMap,
+        visuals: vMap,
+        canonicalInitialized: true
+      };
+    });
+
+    get()._syncLegacyInstances();
+  },
 
   _syncLegacyInstances: () => set((state) => {
     if (!state.canonicalInitialized) return state;
 
-    const nextInstances = Object.values(state.placements).map((placement) => {
+    const nextInstances = Object.values(state.placements)
+      .filter(p => p.planId === state.activePlanId)
+      .map((placement) => {
       const definition = state.definitions[placement.definitionId];
       const observation = state.observations[placement.id];
       const visual = state.visuals[placement.id];
@@ -552,6 +890,9 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 
   addEquipment: (instance) =>
     set((state) => {
+      validateMutationGuard(state);
+      const planId = state.activePlanId!;
+
       const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === instance.templateId);
       const category = instance.category || tmpl?.category || 'RadarCanhGioi';
       const prefix = CATEGORY_META[category]?.prefix || 'EQ';
@@ -579,7 +920,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       };
 
       // 2. Parse into Canonical Fragments (Pure Mapping)
-      const parsed = parseLegacyInstance(instanceWithProfile);
+      const parsed = parseLegacyInstance(instanceWithProfile, planId);
       const pid = parsed.placement.id;
 
       // 3. Project to Legacy (Strict NO DUAL-WRITE rule: generate legacy projection from canonical)
@@ -604,6 +945,11 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     }),
 
   updateEquipment: (instanceId, updates) => {
+    const state = useTacticalStore.getState();
+    validateMutationGuard(state);
+    const pTarget = state.placements[instanceId];
+    if (!pTarget) throw new Error(`Placement not found`);
+    if (pTarget.planId !== state.activePlanId) throw new Error(`Placement belongs to another plan`);
     if (
       updates.latitude !== undefined ||
       updates.longitude !== undefined ||
@@ -680,34 +1026,12 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 
   updateEquipmentSpxConfig: (instanceId, updates) =>
     set((state) => {
+      validateMutationGuard(state);
+      const pTarget = state.placements[instanceId];
+      if (!pTarget) throw new Error(`Placement not found`);
+      if (pTarget.planId !== state.activePlanId) throw new Error(`Placement belongs to another plan`);
+
       const placement = state.placements[instanceId];
-      if (!placement) {
-        // Legacy-only path
-        const inst = state.instances.find((i) => i.instanceId === instanceId);
-        if (!inst) return state;
-
-        const parsed = parseLegacyInstance(inst);
-        parsed.visual.spxConfig = { ...(parsed.visual.spxConfig || {}), ...updates };
-
-        const simulation = state.activeSimulationRunId
-          ? state.simulations[state.activeSimulationRunId]?.[instanceId]
-          : undefined;
-        const hydrated = hydrateLegacyInstance(
-          parsed.placement,
-          parsed.definition,
-          parsed.observation,
-          parsed.visual,
-          simulation
-        );
-
-        return {
-          placements: { ...state.placements, [instanceId]: parsed.placement },
-          definitions: { ...state.definitions, [parsed.definition.id]: parsed.definition },
-          observations: { ...state.observations, [instanceId]: parsed.observation },
-          visuals: { ...state.visuals, [instanceId]: parsed.visual },
-          instances: state.instances.map((item) => (item.instanceId === instanceId ? hydrated : item)),
-        };
-      }
 
       // Canonical-backed path
       const definition = state.definitions[placement.definitionId];
@@ -733,31 +1057,33 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     }),
 
   removeEquipment: (instanceId) => {
+    const state = get();
+    validateMutationGuard(state);
+
+    const pTarget = state.placements[instanceId];
+    if (!pTarget) {
+      throw new Error(`Target equipment ${instanceId} does not exist`);
+    }
+    if (pTarget.planId !== state.activePlanId) {
+      throw new Error(`Target equipment ${instanceId} belongs to another plan`);
+    }
+
     invalidateVolumeCache(instanceId);
+
     set((state) => {
       const nextVolumes = { ...state.coverageVolumes };
       delete nextVolumes[instanceId];
 
       const placement = state.placements[instanceId];
 
-      // Migration window Legacy-only fallback
-      if (!placement) {
-        return {
-          instances: state.instances.filter((item) => item.instanceId !== instanceId),
-          selectedInstanceId: state.selectedInstanceId === instanceId ? null : state.selectedInstanceId,
-          coverageVolumes: nextVolumes,
-        };
-      }
-
       // Canonical-backed
       const nextPlacements = { ...state.placements };
-      const nextObservations = { ...state.observations };
       const nextVisuals = { ...state.visuals };
       const nextDefinitions = { ...state.definitions };
 
       delete nextPlacements[instanceId];
-      delete nextObservations[instanceId];
       delete nextVisuals[instanceId];
+      // Do NOT delete observations or simulations (preserve historical data)
 
       const definitionId = placement.definitionId;
       const hasOtherReferences = Object.values(nextPlacements).some((p) => p.definitionId === definitionId);
@@ -768,7 +1094,6 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       return {
         placements: nextPlacements,
         definitions: nextDefinitions,
-        observations: nextObservations,
         visuals: nextVisuals,
         instances: state.instances.filter((item) => item.instanceId !== instanceId),
         selectedInstanceId: state.selectedInstanceId === instanceId ? null : state.selectedInstanceId,
@@ -872,48 +1197,12 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     })),
   setSamEngagementMode: (instanceId, mode) =>
     set((state) => {
+      validateMutationGuard(state);
+      const pTarget = state.placements[instanceId];
+      if (!pTarget) throw new Error(`Placement not found`);
+      if (pTarget.planId !== state.activePlanId) throw new Error(`Placement belongs to another plan`);
+
       const placement = state.placements[instanceId];
-
-      if (!placement) {
-        // Legacy-only path
-        const inst = state.instances.find((i) => i.instanceId === instanceId);
-        if (!inst) return state;
-
-        const parsed = parseLegacyInstance(inst);
-        const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === inst.templateId);
-        const samProfilesAny = (parsed.definition.capabilities as any).samProfiles || (tmpl as any)?.samProfiles;
-        const profile = samProfilesAny?.[mode];
-
-        (parsed.definition.capabilities as any).samEngagementMode = mode;
-        if (profile) {
-          parsed.definition.rangeKm = profile.dMaxKm;
-          (parsed.definition.capabilities as any).minEngagementRangeKm = profile.dMinKm;
-          (parsed.definition.capabilities as any).maxEngagementAltitudeM = profile.hMaxM;
-          (parsed.definition.capabilities as any).minEngagementAltitudeM = profile.hMinM;
-          (parsed.definition.capabilities as any).maxTargetSpeedMps = profile.vMaxMps;
-          (parsed.definition.capabilities as any).maxTargetParamKm = profile.pGhKm;
-        }
-
-        const simulation = state.activeSimulationRunId
-          ? state.simulations[state.activeSimulationRunId]?.[instanceId]
-          : undefined;
-        const hydrated = hydrateLegacyInstance(
-          parsed.placement,
-          parsed.definition,
-          parsed.observation,
-          parsed.visual,
-          simulation
-        );
-
-        return {
-          placements: { ...state.placements, [instanceId]: parsed.placement },
-          definitions: { ...state.definitions, [parsed.definition.id]: parsed.definition },
-          observations: { ...state.observations, [instanceId]: parsed.observation },
-          visuals: { ...state.visuals, [instanceId]: parsed.visual },
-          instances: state.instances.map((item) => (item.instanceId === instanceId ? hydrated : item)),
-          samEngagementModes: { ...state.samEngagementModes, [instanceId]: mode },
-        };
-      }
 
       // Canonical-backed path
       const definition = state.definitions[placement.definitionId];
@@ -1284,100 +1573,191 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 
   clearAll: () => {
     invalidateVolumeCache();
-    set({
-      placements: {},
-      definitions: {},
-      observations: {},
-      visuals: {},
-      instances: [],
-      selectedInstanceId: null,
-      measurePoints: [],
-      coverageVolumes: {},
-      samEngagementModes: {},
+    set((state) => {
+      validateMutationGuard(state);
+
+      const nextPlacements = { ...state.placements };
+      const nextDefinitions = { ...state.definitions };
+      const nextVisuals = { ...state.visuals };
+
+      for (const p of Object.values(state.placements)) {
+        if (p.planId === state.activePlanId) {
+          delete nextPlacements[p.id];
+          delete nextVisuals[p.id];
+          // Safe Definition deletion: only delete if no other Placement in ANY Plan still references it
+          const hasOtherRefs = Object.values(state.placements).some(
+            other => other.id !== p.id && other.definitionId === p.definitionId
+          );
+          if (!hasOtherRefs) {
+            delete nextDefinitions[p.definitionId];
+          }
+          // DO NOT delete observations (historical data must survive)
+        }
+      }
+
+      // Rebuild instances atomically
+      const nextInstances = Object.values(nextPlacements)
+        .filter(p => p.planId === state.activePlanId)
+        .map((placement) => {
+          const definition = nextDefinitions[placement.definitionId];
+          const observation = state.observations[placement.id];
+          const visual = nextVisuals[placement.id];
+          const simulation = state.activeSimulationRunId
+            ? state.simulations[state.activeSimulationRunId]?.[placement.id]
+            : undefined;
+          if (!definition || !observation || !visual) return null;
+          return hydrateLegacyInstance(placement, definition, observation, visual, simulation);
+        })
+        .filter((inst): inst is EquipmentInstance => inst !== null);
+
+      return {
+        placements: nextPlacements,
+        definitions: nextDefinitions,
+        visuals: nextVisuals,
+        instances: nextInstances,
+        selectedInstanceId: null,
+        pendingTemplate: null,
+        activeTool: 'select',
+        measurePoints: [],
+        coverageVolumes: {},
+        samEngagementModes: {},
+      };
     });
   },
 
   importFromLayout: (layout) => {
-    const state = get();
-    // 1. Transactional validation: Check duplicates in incoming data
-    const incomingIds = new Set<string>();
-    for (const item of layout.equipments) {
-      const id = item.instanceId;
-      if (id && incomingIds.has(id)) {
-        console.error(`[importFromLayout] Abort: Duplicate instanceId in dataset: ${id}`);
-        return;
+    set((state) => {
+      validateMutationGuard(state);
+      const planId = state.activePlanId!;
+
+      const nextPlacements: Record<string, EquipmentPlacement> = { ...state.placements };
+      const nextDefinitions: Record<string, EquipmentDefinition> = { ...state.definitions };
+      const nextVisuals: Record<string, LegacyPresentationState> = { ...state.visuals };
+      const nextObservations: Record<string, ObservationState> = { ...state.observations };
+
+      // VALIDATION PHASE
+      const sourceIds = new Set<string>();
+      for (const item of layout.equipments) {
+        if (!item.instanceId) throw new Error('importFromLayout: empty source instance ID');
+        if (sourceIds.has(item.instanceId)) throw new Error(`importFromLayout: duplicate source instance ID ${item.instanceId}`);
+        sourceIds.add(item.instanceId);
       }
-      if (id) incomingIds.add(id);
-    }
+      for (const item of layout.equipments) {
+        if (item.commandedByInstanceId && !sourceIds.has(item.commandedByInstanceId)) {
+          throw new Error(`importFromLayout: dangling commandedByInstanceId ${item.commandedByInstanceId}`);
+        }
+      }
 
-    // 2. In-memory normalization & parse
-    const nextPlacements: Record<string, ReturnType<typeof parseLegacyInstance>['placement']> = {};
-    const nextDefinitions: Record<string, ReturnType<typeof parseLegacyInstance>['definition']> = {};
-    const nextObservations: Record<string, ReturnType<typeof parseLegacyInstance>['observation']> = {};
-    const nextVisuals: Record<string, ReturnType<typeof parseLegacyInstance>['visual']> = {};
-    const newInstances: EquipmentInstance[] = [];
+      // Cleanup current plan items
+      for (const p of Object.values(state.placements)) {
+        if (p.planId === planId) {
+          delete nextPlacements[p.id];
+          delete nextVisuals[p.id];
+          // Safe Definition deletion: only delete if no other Placement in ANY Plan still references it
+          const hasOtherRefs = Object.values(state.placements).some(
+            other => other.id !== p.id && other.definitionId === p.definitionId
+          );
+          if (!hasOtherRefs) {
+            delete nextDefinitions[p.definitionId];
+          }
+          // Rule 1: DO NOT delete observations (historical data must survive)
+        }
+      }
 
-    layout.equipments.forEach((saved, index) => {
-      const template = EQUIPMENT_TEMPLATES.find((t) => t.id === saved.templateId) || EQUIPMENT_TEMPLATES[0];
-
-      const statusMap = ['Active', 'Standby', 'Maintenance', 'Offline'] as const;
-      const status = statusMap[saved.status] || 'Active';
-      const prefix = CATEGORY_META[template.category]?.prefix || 'EQ';
-      const autoShortId = `${prefix}-${(index + 1).toString().padStart(2, '0')}`;
-      const instanceId = saved.instanceId || `eq_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-      const legacyItem: EquipmentInstance = {
-        instanceId,
-        templateId: saved.templateId,
-        shortId: saved.shortId || autoShortId,
-        name: template.name,
-        category: template.category,
-        latitude: saved.latitude,
-        longitude: saved.longitude,
-        altitude: saved.groundElevationMeters || 0,
-        antennaHeightAGL: saved.antennaHeightAGL || template.antennaHeightAGL,
-        rangeKm: saved.currentRange || template.defaultRangeKm,
-        scanSpeed: saved.currentScanSpeed ?? template.defaultScanSpeed,
-        minElevationDeg: saved.currentMinElevation ?? template.minElevationDeg,
-        maxElevationDeg: saved.currentMaxElevation ?? template.maxElevationDeg,
-        coverageHeightKm: saved.currentCoverageHeight || template.coverageHeightKm,
-        status,
-        commandedByInstanceId: saved.commandedByInstanceId,
-        color: template.symbolColor,
-        showDome: true,
-        showSweep: true,
-        coverageProfile: template.coverageProfile,
-        altitudeDetectionTable: template.altitudeDetectionTable,
+      const generateUniqueId = (prefix: string, existing: Record<string, any>) => {
+        let id;
+        do {
+          id = prefix + '_' + Date.now() + Math.random().toString(36).substring(2, 7);
+        } while (existing[id]);
+        return id;
       };
 
-      const parsed = parseLegacyInstance(legacyItem);
-      nextPlacements[instanceId] = parsed.placement;
-      nextDefinitions[parsed.definition.id] = parsed.definition;
-      nextObservations[instanceId] = parsed.observation;
-      nextVisuals[instanceId] = parsed.visual;
+      const idMap: Record<string, string> = {};
 
-      const simulation = state.activeSimulationRunId
-        ? state.simulations[state.activeSimulationRunId]?.[instanceId]
-        : undefined;
-      const hydrated = hydrateLegacyInstance(
-        parsed.placement,
-        parsed.definition,
-        parsed.observation,
-        parsed.visual,
-        simulation
-      );
-      newInstances.push(hydrated);
-    });
+      layout.equipments.forEach((saved, index) => {
+        const template = EQUIPMENT_TEMPLATES.find((t) => t.id === saved.templateId) || EQUIPMENT_TEMPLATES[0];
 
-    // 3. One atomic Zustand state update
-    set({
-      placements: nextPlacements,
-      definitions: nextDefinitions,
-      observations: nextObservations,
-      visuals: nextVisuals,
-      instances: newInstances,
-      selectedInstanceId: newInstances[0]?.instanceId || null,
-      samEngagementModes: {},
+        const statusMap = ['Active', 'Standby', 'Maintenance', 'Offline'] as const;
+        const status = statusMap[saved.status] || 'Active';
+        const prefix = CATEGORY_META[template.category]?.prefix || 'EQ';
+        const autoShortId = `${prefix}-${(index + 1).toString().padStart(2, '0')}`;
+
+        const newPlacementId = generateUniqueId('P_import', nextPlacements);
+        const newDefId = generateUniqueId('D_import', nextDefinitions);
+
+        idMap[saved.instanceId] = newPlacementId;
+
+        const legacyItem: EquipmentInstance = {
+          instanceId: newPlacementId,
+          templateId: saved.templateId,
+          shortId: saved.shortId || autoShortId,
+          name: template.name,
+          category: template.category,
+          latitude: saved.latitude,
+          longitude: saved.longitude,
+          altitude: saved.groundElevationMeters || 0,
+          antennaHeightAGL: saved.antennaHeightAGL || template.antennaHeightAGL,
+          rangeKm: saved.currentRange || template.defaultRangeKm,
+          scanSpeed: saved.currentScanSpeed ?? template.defaultScanSpeed,
+          minElevationDeg: saved.currentMinElevation ?? template.minElevationDeg,
+          maxElevationDeg: saved.currentMaxElevation ?? template.maxElevationDeg,
+          coverageHeightKm: saved.currentCoverageHeight || template.coverageHeightKm,
+          status,
+          commandedByInstanceId: saved.commandedByInstanceId,
+          color: template.symbolColor,
+          showDome: true,
+          showSweep: true,
+          coverageProfile: template.coverageProfile,
+          altitudeDetectionTable: template.altitudeDetectionTable,
+        };
+
+        const parsed = parseLegacyInstance(legacyItem, planId);
+        parsed.definition.id = newDefId;
+        parsed.placement.definitionId = newDefId;
+
+        nextPlacements[newPlacementId] = parsed.placement;
+        nextDefinitions[newDefId] = parsed.definition;
+        nextObservations[newPlacementId] = parsed.observation;
+        nextVisuals[newPlacementId] = parsed.visual;
+      });
+
+      layout.equipments.forEach((saved) => {
+        if (saved.commandedByInstanceId) {
+          const newId = idMap[saved.instanceId];
+          const newCommandedBy = idMap[saved.commandedByInstanceId];
+          if (newId && newCommandedBy && nextPlacements[newId]) {
+            nextPlacements[newId].network = {
+              ...nextPlacements[newId].network,
+              commandedBy: newCommandedBy
+            };
+          }
+        }
+      });
+
+      // Rule 2 & 3: rebuild instances atomically
+      const nextInstances = Object.values(nextPlacements)
+        .filter(p => p.planId === planId)
+        .map((placement) => {
+          const definition = nextDefinitions[placement.definitionId];
+          const observation = nextObservations[placement.id];
+          const visual = nextVisuals[placement.id];
+          const simulation = state.activeSimulationRunId
+            ? state.simulations[state.activeSimulationRunId]?.[placement.id]
+            : undefined;
+          if (!definition || !observation || !visual) return null;
+          return hydrateLegacyInstance(placement, definition, observation, visual, simulation);
+        })
+        .filter((inst): inst is EquipmentInstance => inst !== null);
+
+      return {
+        placements: nextPlacements,
+        definitions: nextDefinitions,
+        observations: nextObservations,
+        visuals: nextVisuals,
+        instances: nextInstances,
+        selectedInstanceId: nextInstances[0]?.instanceId || null,
+        samEngagementModes: {},
+      };
     });
   },
 
@@ -1641,53 +2021,102 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       },
     ];
 
-    // loadSampleScenario intentionally replaces the equipment set. No need to check existing duplicates against current state.
-    // Check duplicates inside sample dataset
-    const sampleIds = new Set<string>();
-    for (const item of sample) {
-      if (sampleIds.has(item.instanceId)) {
-        console.error(`[loadSampleScenario] Abort: Duplicate instanceId in sample dataset: ${item.instanceId}`);
-        return;
+    set((state) => {
+      validateMutationGuard(state);
+      const planId = state.activePlanId!;
+
+      const nextPlacements = { ...state.placements };
+      const nextDefinitions = { ...state.definitions };
+      const nextObservations = { ...state.observations };
+      const nextVisuals = { ...state.visuals };
+
+      // Cleanup current plan items
+      for (const p of Object.values(state.placements)) {
+        if (p.planId === planId) {
+          delete nextPlacements[p.id];
+          delete nextVisuals[p.id];
+          // Safe Definition deletion: only delete if no other Placement in ANY Plan still references it
+          const hasOtherRefs = Object.values(state.placements).some(
+            other => other.id !== p.id && other.definitionId === p.definitionId
+          );
+          if (!hasOtherRefs) {
+            delete nextDefinitions[p.definitionId];
+          }
+          // Preserve nextObservations (historical data must survive)
+        }
       }
-      sampleIds.add(item.instanceId);
-    }
 
-    // We parse and populate Canonical state, then set them atomic.
-    const state = get();
-    const nextPlacements: Record<string, ReturnType<typeof parseLegacyInstance>['placement']> = {};
-    const nextDefinitions: Record<string, ReturnType<typeof parseLegacyInstance>['definition']> = {};
-    const nextObservations: Record<string, ReturnType<typeof parseLegacyInstance>['observation']> = {};
-    const nextVisuals: Record<string, ReturnType<typeof parseLegacyInstance>['visual']> = {};
-
-    const sampleWithModels = sample.map((item) => {
-      const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === item.templateId);
-      const legacyItem = {
-        ...item,
-        realPhotoUrl: item.realPhotoUrl || tmpl?.realPhotoUrl,
-        model3dUrl: item.model3dUrl || tmpl?.model3dUrl,
-        model3dScale: item.model3dScale ?? tmpl?.model3dScale ?? 1.0,
+      const generateUniqueId = (prefix: string, existing: Record<string, any>) => {
+        let id;
+        do {
+          id = prefix + '_' + Date.now() + Math.random().toString(36).substring(2, 7);
+        } while (existing[id]);
+        return id;
       };
 
-      const parsed = parseLegacyInstance(legacyItem);
-      nextPlacements[legacyItem.instanceId] = parsed.placement;
-      nextDefinitions[parsed.definition.id] = parsed.definition;
-      nextObservations[legacyItem.instanceId] = parsed.observation;
-      nextVisuals[legacyItem.instanceId] = parsed.visual;
+      const idMap: Record<string, string> = {};
 
-      const simulation = state.activeSimulationRunId
-        ? state.simulations[state.activeSimulationRunId]?.[legacyItem.instanceId]
-        : undefined;
-      return hydrateLegacyInstance(parsed.placement, parsed.definition, parsed.observation, parsed.visual, simulation);
-    });
+      sample.forEach((item) => {
+        const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === item.templateId);
 
-    set({
-      placements: nextPlacements,
-      definitions: nextDefinitions,
-      observations: nextObservations,
-      visuals: nextVisuals,
-      instances: sampleWithModels,
-      selectedInstanceId: 'eq_radar_tamdao',
-      samEngagementModes: {},
+        const newPlacementId = generateUniqueId('P_sample', nextPlacements);
+        const newDefId = generateUniqueId('D_sample', nextDefinitions);
+
+        idMap[item.instanceId] = newPlacementId;
+
+        const legacyItem = {
+          ...item,
+          instanceId: newPlacementId,
+          realPhotoUrl: item.realPhotoUrl || tmpl?.realPhotoUrl,
+          model3dUrl: item.model3dUrl || tmpl?.model3dUrl,
+          model3dScale: item.model3dScale ?? tmpl?.model3dScale ?? 1.0,
+        };
+
+        const parsed = parseLegacyInstance(legacyItem, planId);
+        parsed.definition.id = newDefId;
+        parsed.placement.definitionId = newDefId;
+
+        nextPlacements[legacyItem.instanceId] = parsed.placement;
+        nextDefinitions[parsed.definition.id] = parsed.definition;
+        nextObservations[legacyItem.instanceId] = parsed.observation;
+        nextVisuals[legacyItem.instanceId] = parsed.visual;
+      });
+
+      sample.forEach((item) => {
+        if (item.commandedByInstanceId) {
+          const newId = idMap[item.instanceId];
+          const newCommandedBy = idMap[item.commandedByInstanceId];
+          if (newId && newCommandedBy && nextPlacements[newId]) {
+            nextPlacements[newId].network = {
+              ...nextPlacements[newId].network,
+              commandedBy: newCommandedBy
+            };
+          }
+        }
+      });
+
+      const nextInstances = Object.values(nextPlacements)
+        .filter(p => p.planId === planId)
+        .map((placement) => {
+          const definition = nextDefinitions[placement.definitionId];
+          const observation = nextObservations[placement.id];
+          const visual = nextVisuals[placement.id];
+          const simulation = state.activeSimulationRunId
+            ? state.simulations[state.activeSimulationRunId]?.[placement.id]
+            : undefined;
+          return hydrateLegacyInstance(placement, definition, observation, visual, simulation);
+        })
+        .filter((i): i is EquipmentInstance => i !== null);
+
+      return {
+        placements: nextPlacements,
+        definitions: nextDefinitions,
+        observations: nextObservations,
+        visuals: nextVisuals,
+        instances: nextInstances,
+        selectedInstanceId: idMap['eq_radar_tamdao'] || nextInstances[0]?.instanceId || null,
+        samEngagementModes: {},
+      };
     });
   },
 }));

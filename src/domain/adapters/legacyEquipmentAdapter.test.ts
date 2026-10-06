@@ -65,13 +65,18 @@ function deepClone<T>(obj: T): T {
   return cloned as T;
 }
 
+// @ts-ignore
+import { describe, test } from 'vitest';
+
 // --- TESTS ---
-export function runAdapterTests() {
-  console.log('Running legacyEquipmentAdapter tests...');
+describe('legacyEquipmentAdapter', () => {
+  test('all original adapter tests pass', () => {
+    console.log('Running legacyEquipmentAdapter tests...');
 
   // 1. Setup Input Fixtures
   const placement: EquipmentPlacement = {
     id: 'test-inst-1',
+    planId: 'mock-plan',
     definitionId: 'def-1',
     position: {
       lat: 21.0,
@@ -87,6 +92,7 @@ export function runAdapterTests() {
 
   const definition: EquipmentDefinition = {
     id: 'def-1',
+    planId: 'mock-plan',
     templateId: 'tpl-1',
     category: 'RadarCanhGioi',
     name: 'Test Radar',
@@ -244,7 +250,7 @@ export function runAdapterTests() {
   mockLegacyInstance.currentSweepHeading = 123; // Add some mock simulation data just to ensure it is IGNORED by hydration.
 
   // Use the REAL production mapper
-  const canonicalFragments = parseLegacyInstance(mockLegacyInstance);
+  const canonicalFragments = parseLegacyInstance(mockLegacyInstance, 'mock-plan');
   const p = canonicalFragments.placement;
   const d = canonicalFragments.definition;
   const o = canonicalFragments.observation;
@@ -294,6 +300,5 @@ export function runAdapterTests() {
 
   console.log('Store action `_hydrateLegacyToCanonical` validated by build/runtime inspection.');
   console.log('legacyEquipmentAdapter.test.ts: All tests passed successfully.');
-}
-// Export for manual running
-export {};
+  });
+});

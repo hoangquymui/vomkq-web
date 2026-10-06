@@ -119,7 +119,7 @@ export function hydrateLegacyInstance(
  * @param inst - The legacy EquipmentInstance object
  * @returns A tuple of Canonical fragments
  */
-export function parseLegacyInstance(inst: EquipmentInstance): {
+export function parseLegacyInstance(inst: EquipmentInstance, planId: string): {
   placement: EquipmentPlacement;
   definition: EquipmentDefinition;
   observation: ObservationState;
@@ -130,6 +130,7 @@ export function parseLegacyInstance(inst: EquipmentInstance): {
   return {
     placement: {
       id,
+      planId,
       definitionId: id, // 1-to-1 temporary mapping
       position: {
         lat: inst.latitude,
@@ -148,6 +149,7 @@ export function parseLegacyInstance(inst: EquipmentInstance): {
     },
     definition: {
       id,
+      planId,
       templateId: inst.templateId,
       category: inst.category,
       name: inst.name,

@@ -9,6 +9,7 @@ import type { EquipmentCategory, OperationalStatus } from '../../types/equipment
  */
 export interface EquipmentDefinition {
   id: string;
+  planId: string;
   templateId: string;
   category: EquipmentCategory;
   name: string;
@@ -30,6 +31,7 @@ export interface EquipmentDefinition {
  */
 export interface EquipmentPlacement {
   id: string; // Placement ID, matches legacy instanceId
+  planId: string;
   definitionId: string;
 
   /**
