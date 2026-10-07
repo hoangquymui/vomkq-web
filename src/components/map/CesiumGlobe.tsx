@@ -57,10 +57,6 @@ import { EQUIPMENT_TEMPLATES, SPYDER_SYSTEM_DEFAULT_CONFIG } from '../../data/eq
 import { ENABLE_3D_MODELS } from '../../types/equipment';
 import { createEquipmentFromTemplate } from '../../utils/equipmentFactory';
 import { setAdvisorViewport } from '../../utils/aiPlacementAdvisor';
-import {
-  getTacticalBadgeDataUrl,
-  registerBadgeImageListener,
-} from '../../utils/tacticalBadgeGenerator';
 import { getCustomModelUrl } from '../../utils/model3dConverter';
 
 /** Tra cứu template theo id để lấy `domeColor` (màu vỏ vòm riêng của từng loại đài) */
@@ -232,15 +228,6 @@ export const CesiumGlobe: React.FC = () => {
 
   const [cameraHeight, setCameraHeight] = useState<number>(95000);
   const [customModelUrls, setCustomModelUrls] = useState<Record<string, string>>({});
-  const [badgeRefreshTick, setBadgeRefreshTick] = useState<number>(0);
-
-  // Lắng nghe khi ảnh thực tế của khí tài tải xong để vẽ lại cờ tác chiến
-  useEffect(() => {
-    const unregister = registerBadgeImageListener(() => {
-      setBadgeRefreshTick((prev) => prev + 1);
-    });
-    return unregister;
-  }, []);
 
   const {
     instances,
@@ -743,7 +730,7 @@ export const CesiumGlobe: React.FC = () => {
       ),
       orientation: {
         heading: Cesium.Math.toRadians(flyToTarget.heading || 0),
-        pitch: Cesium.Math.toRadians(flyToTarget.pitch || -35),
+        pitch: Cesium.Math.toRadians(flyToTarget.pitch !== undefined ? flyToTarget.pitch : -90),
         roll: 0,
       },
       duration: 1.2,
@@ -856,8 +843,8 @@ export const CesiumGlobe: React.FC = () => {
                 targetH
               ),
               orientation: {
-                heading: viewer.camera.heading,
-                pitch: Cesium.Math.toRadians(-35),
+                heading: 0,
+                pitch: Cesium.Math.toRadians(-90),
                 roll: 0,
               },
               duration: 1.0,
@@ -1255,44 +1242,14 @@ export const CesiumGlobe: React.FC = () => {
         const radarCartesian = Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, is2D ? 0 : safeAlt);
 
         if (showMarkersLayer) {
-          const badgeUrl = getTacticalBadgeDataUrl({
-            instanceId: inst.instanceId,
-            name: inst.name,
-            shortId: inst.shortId,
-            category: inst.category,
-            rangeKm: safeRangeKm,
-            antennaHeightAGL: safeAntennaAGL,
-            status: inst.status,
-            isSelected,
-            realPhotoUrl: inst.realPhotoUrl || TEMPLATE_BY_ID.get(inst.templateId)?.realPhotoUrl || '',
-            themeColor: inst.color || '#06b6d4',
-          });
-
-          // Cờ cắm tác chiến HUD kích thước lớn với ảnh thực tế sắc nét và tên đầy đủ
-          viewer.entities.add({
-            name: `Marker ${inst.shortId || ''} (${inst.category})`,
-            position: radarCartesian,
-            properties: { instanceId: inst.instanceId },
-            billboard: {
-              image: badgeUrl,
-              width: 240,
-              height: 46,
-              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-              horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-              pixelOffset: new Cesium.Cartesian2(-12, 4),
-              eyeOffset: new Cesium.Cartesian3(0, 0, -450),
-              heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          });
-          // Tâm chữ thập
+          // Tâm điểm đặt khí tài tác chiến (điểm tròn toạ độ quân sự có thể click chọn)
           viewer.entities.add({
             name: `Tâm Khí Tài ${inst.shortId || ''}`,
             position: radarCartesian,
             properties: { instanceId: inst.instanceId },
             point: {
-              pixelSize: isSelected ? 10 : 8,
-              color: isSelected ? Cesium.Color.fromCssColorString('#fde047') : Cesium.Color.WHITE,
+              pixelSize: isSelected ? 12 : 9,
+              color: isSelected ? Cesium.Color.fromCssColorString('#fde047') : baseColor,
               outlineColor: Cesium.Color.BLACK,
               outlineWidth: 2,
               heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
@@ -2837,7 +2794,6 @@ export const CesiumGlobe: React.FC = () => {
     showMarkersLayer,
     showModelsLayer,
     customModelUrls,
-    badgeRefreshTick,
     categoryFilter,
     domeAlpha,
     domeAzimuthSegments,

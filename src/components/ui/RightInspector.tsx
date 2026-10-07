@@ -539,7 +539,8 @@ export const RightInspector: React.FC = () => {
                   latitude: selected.latitude,
                   longitude: selected.longitude,
                   height: 95000,
-                  pitch: -35,
+                  heading: 0,
+                  pitch: -90,
                 })
               }
               className="py-1.5 px-2 rounded-lg border border-slate-800 hover:border-cyan-500/40 bg-slate-950 hover:bg-slate-900 text-cyan-300 font-semibold text-[10.5px] flex items-center justify-center gap-1 transition-all cursor-pointer"

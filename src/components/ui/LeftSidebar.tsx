@@ -262,7 +262,8 @@ export const LeftSidebar: React.FC = () => {
                             latitude: inst.latitude,
                             longitude: inst.longitude,
                             height: 95000,
-                            pitch: -35,
+                            heading: 0,
+                            pitch: -90,
                           });
                         }}
                         className={`p-2.5 rounded-lg border cursor-pointer transition-all ${
@@ -308,7 +309,8 @@ export const LeftSidebar: React.FC = () => {
                                   latitude: inst.latitude,
                                   longitude: inst.longitude,
                                   height: 95000,
-                                  pitch: -35,
+                                  heading: 0,
+                                  pitch: -90,
                                 });
                               }}
                               className="p-1 text-slate-400 hover:text-cyan-400 hover:bg-cyan-950/40 rounded transition-colors"
