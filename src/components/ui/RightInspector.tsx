@@ -525,10 +525,10 @@ export const RightInspector: React.FC = () => {
                 ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.5)] animate-pulse'
                 : 'bg-slate-950 hover:bg-slate-900 text-cyan-300 border-slate-800 hover:border-cyan-500/40'
                 }`}
-              title="Di chuyển đài sang vị trí tọa độ mới trên bản đồ"
+              title="Cầm điểm trên bản đồ để kéo hoặc nhấp chọn vị trí mới"
             >
               <Move className="w-3 h-3" />
-              <span>{activeTool === 'move' ? 'Đặt vị trí...' : 'Di chuyển'}</span>
+              <span>{activeTool === 'move' ? 'Đang kéo/đặt...' : 'Di chuyển'}</span>
             </button>
 
             <button

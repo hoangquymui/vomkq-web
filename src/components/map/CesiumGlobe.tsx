@@ -229,6 +229,28 @@ export const CesiumGlobe: React.FC = () => {
   const [cameraHeight, setCameraHeight] = useState<number>(95000);
   const [customModelUrls, setCustomModelUrls] = useState<Record<string, string>>({});
 
+  // Trạng thái kéo thả điểm khí tài khi activeTool === 'move'
+  const isDraggingRef = useRef<boolean>(false);
+  const dragStartScreenPosRef = useRef<Cesium.Cartesian2 | null>(null);
+  const dragStartCartesianRef = useRef<Cesium.Cartesian3 | null>(null);
+  const dragTargetCoordsRef = useRef<{ lat: number; lon: number; alt: number } | null>(null);
+  const hasMovedRef = useRef<boolean>(false);
+  const justFinishedDragRef = useRef<boolean>(false);
+  const dragEntitiesRef = useRef<Cesium.Entity[]>([]);
+  const dragUpdaterRef = useRef<((newCart: Cesium.Cartesian3, text: string) => void) | null>(null);
+
+  const removeAllDragEntities = useCallback((viewer: Cesium.Viewer) => {
+    for (const ent of dragEntitiesRef.current) {
+      try {
+        viewer.entities.remove(ent);
+      } catch {
+        // ignore
+      }
+    }
+    dragEntitiesRef.current = [];
+    dragUpdaterRef.current = null;
+  }, []);
+
   const {
     instances,
     selectedInstanceId,
@@ -740,14 +762,273 @@ export const CesiumGlobe: React.FC = () => {
     });
   }, [flyToTarget, clearFlyTo]);
 
-  // 5. Quản lý sự kiện Click chuột (Chọn khí tài / Đặt khí tài / Đo đạc trên bề mặt địa hình)
+  // 5. Quản lý tương tác chuột trên bản đồ:
+  // - Cầm điểm để kéo thả (Drag & Drop) khi activeTool === 'move'
+  // - Nhấp vị trí mới (Click to reposition) khi activeTool === 'move'
+  // - Chọn khí tài / Đặt khí tài / Đo đạc địa hình
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
 
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
+    // Xử lý an toàn khi thả chuột ngoài canvas hoặc trên các thanh UI
+    const handleGlobalPointerUp = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        viewer.scene.screenSpaceCameraController.enableInputs = true;
+        viewer.scene.canvas.style.cursor = 'default';
+        removeAllDragEntities(viewer);
+
+        if (hasMovedRef.current && dragTargetCoordsRef.current && selectedInstanceId) {
+          const { lat, lon, alt } = dragTargetCoordsRef.current;
+          updateEquipment(selectedInstanceId, {
+            latitude: lat,
+            longitude: lon,
+            altitude: alt,
+          });
+          justFinishedDragRef.current = true;
+          setTimeout(() => {
+            justFinishedDragRef.current = false;
+          }, 100);
+        }
+      }
+    };
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+
+    // --- 5A. NHẤN CHUỘT TRÁI (LEFT_DOWN): Bắt đầu cầm kéo nếu trúng khí tài đang chọn ---
     handler.setInputAction((movement: { position: Cesium.Cartesian2 }) => {
+      if (activeTool === 'move' && selectedInstanceId) {
+        const inst = instances.find((i) => i.instanceId === selectedInstanceId);
+        if (!inst) return;
+
+        let isPointHit = false;
+
+        // 1. Kiểm tra đối tượng Cesium dưới con trỏ
+        const picked = viewer.scene.pick(movement.position);
+        if (Cesium.defined(picked) && picked.id && picked.id.properties) {
+          const pId = picked.id.properties.instanceId?.getValue();
+          if (pId === selectedInstanceId) {
+            isPointHit = true;
+          }
+        }
+
+        // 2. Dự phòng: Tính khoảng cách màn hình (Tolerance 35px) để dễ chạm trúng
+        if (!isPointHit) {
+          const instCartesian = Cesium.Cartesian3.fromDegrees(
+            inst.longitude,
+            inst.latitude,
+            viewMode === '2D' ? 0 : (inst.altitude || 0)
+          );
+          try {
+            const screenPos = Cesium.SceneTransforms.worldToWindowCoordinates(
+              viewer.scene,
+              instCartesian
+            );
+            if (screenPos) {
+              const dist = Cesium.Cartesian2.distance(movement.position, screenPos);
+              if (dist <= 35) {
+                isPointHit = true;
+              }
+            }
+          } catch {
+            // Không tính được window coordinates -> bỏ qua
+          }
+        }
+
+        if (isPointHit) {
+          isDraggingRef.current = true;
+          dragStartScreenPosRef.current = movement.position;
+          hasMovedRef.current = false;
+          dragTargetCoordsRef.current = {
+            lat: inst.latitude,
+            lon: inst.longitude,
+            alt: inst.altitude || 0,
+          };
+
+          // Khóa camera để tránh xoay/cuộn bản đồ khi kéo khí tài
+          viewer.scene.screenSpaceCameraController.enableInputs = false;
+          viewer.scene.canvas.style.cursor = 'grabbing';
+
+          // Vị trí gốc
+          const startAlt = viewMode === '2D' ? 0 : (inst.altitude || 0);
+          const startCartesian = Cesium.Cartesian3.fromDegrees(inst.longitude, inst.latitude, startAlt);
+          dragStartCartesianRef.current = startCartesian;
+
+          let currentDragCartesian = startCartesian;
+          let currentDragText = `📍 ${inst.shortId ? `[${inst.shortId}] ` : ''}${inst.name}\n${inst.latitude.toFixed(5)}°N, ${inst.longitude.toFixed(5)}°E (${Math.round(startAlt)}m)\n↔ Dời: 0.00 km`;
+
+          // Xoá preview cũ nếu có
+          removeAllDragEntities(viewer);
+
+          // Tạo các entity hiển thị trực quan trong lúc kéo
+          const pointEntity = viewer.entities.add({
+            name: `DragPreviewPoint_${inst.instanceId}`,
+            position: new Cesium.CallbackProperty(() => currentDragCartesian, false) as unknown as Cesium.PositionProperty,
+            point: {
+              pixelSize: 18,
+              color: Cesium.Color.fromCssColorString('#fbbf24'),
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 3,
+              heightReference: viewMode === '2D' ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          });
+
+          const lineEntity = viewer.entities.add({
+            name: `DragPreviewLine_${inst.instanceId}`,
+            polyline: {
+              positions: new Cesium.CallbackProperty(() => [startCartesian, currentDragCartesian], false) as unknown as Cesium.Property,
+              width: 2,
+              material: new Cesium.PolylineDashMaterialProperty({
+                color: Cesium.Color.fromCssColorString('#fbbf24'),
+                dashLength: 10,
+              }),
+            },
+          });
+
+          const labelEntity = viewer.entities.add({
+            name: `DragPreviewLabel_${inst.instanceId}`,
+            position: new Cesium.CallbackProperty(() => currentDragCartesian, false) as unknown as Cesium.PositionProperty,
+            label: {
+              text: new Cesium.CallbackProperty(() => currentDragText, false) as unknown as Cesium.Property,
+              font: 'bold 12px "JetBrains Mono", monospace',
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              fillColor: Cesium.Color.fromCssColorString('#fef08a'),
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 4,
+              showBackground: true,
+              backgroundColor: Cesium.Color.fromCssColorString('#020617').withAlpha(0.92),
+              backgroundPadding: new Cesium.Cartesian2(10, 6),
+              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+              pixelOffset: new Cesium.Cartesian2(0, -28),
+              heightReference: viewMode === '2D' ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          });
+
+          dragEntitiesRef.current = [pointEntity, lineEntity, labelEntity];
+
+          dragUpdaterRef.current = (newCart: Cesium.Cartesian3, text: string) => {
+            currentDragCartesian = newCart;
+            currentDragText = text;
+          };
+        }
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+    // --- 5B. DI CHUYỂN CHUỘT (MOUSE_MOVE): Kéo điểm theo con trỏ & Đổi icon chuột ---
+    handler.setInputAction((movement: { startPosition: Cesium.Cartesian2; endPosition: Cesium.Cartesian2 }) => {
+      if (isDraggingRef.current && selectedInstanceId) {
+        if (dragStartScreenPosRef.current) {
+          const moveDist = Cesium.Cartesian2.distance(dragStartScreenPosRef.current, movement.endPosition);
+          if (moveDist > 4) {
+            hasMovedRef.current = true;
+          }
+        }
+
+        const groundCartesian = pickGroundCartesian(viewer, movement.endPosition);
+        if (groundCartesian) {
+          const cartographic = Cesium.Cartographic.fromCartesian(groundCartesian);
+          if (cartographic && !isNaN(cartographic.latitude) && !isNaN(cartographic.longitude)) {
+            const rawLat = Cesium.Math.toDegrees(cartographic.latitude);
+            const rawLon = Cesium.Math.toDegrees(cartographic.longitude);
+            if (isFinite(rawLat) && isFinite(rawLon)) {
+              const groundHeight = cartographic.height !== undefined && !isNaN(cartographic.height) && isFinite(cartographic.height)
+                ? Math.max(0, Math.round(cartographic.height))
+                : 0;
+
+              dragTargetCoordsRef.current = {
+                lat: Number(rawLat.toFixed(5)),
+                lon: Number(rawLon.toFixed(5)),
+                alt: groundHeight,
+              };
+
+              const newCartesian = Cesium.Cartesian3.fromDegrees(
+                rawLon,
+                rawLat,
+                viewMode === '2D' ? 0 : groundHeight
+              );
+
+              const inst = instances.find((i) => i.instanceId === selectedInstanceId);
+              if (inst && dragUpdaterRef.current) {
+                const distKm = computeDistanceKm(inst.latitude, inst.longitude, rawLat, rawLon);
+                const hudText = `📍 ${inst.shortId ? `[${inst.shortId}] ` : ''}${inst.name}\n${rawLat.toFixed(5)}°N, ${rawLon.toFixed(5)}°E (${Math.round(groundHeight)}m)\n↔ Dời: ${distKm.toFixed(2)} km`;
+                dragUpdaterRef.current(newCartesian, hudText);
+              }
+            }
+          }
+        }
+        return;
+      }
+
+      // Đổi hình con trỏ chuột tương ứng khi rê qua điểm đặt khí tài trong chế độ 'move'
+      if (activeTool === 'move' && selectedInstanceId) {
+        const inst = instances.find((i) => i.instanceId === selectedInstanceId);
+        if (inst) {
+          const instCartesian = Cesium.Cartesian3.fromDegrees(
+            inst.longitude,
+            inst.latitude,
+            viewMode === '2D' ? 0 : (inst.altitude || 0)
+          );
+          try {
+            const screenPos = Cesium.SceneTransforms.worldToWindowCoordinates(
+              viewer.scene,
+              instCartesian
+            );
+            if (screenPos) {
+              const dist = Cesium.Cartesian2.distance(movement.endPosition, screenPos);
+              if (dist <= 35) {
+                viewer.scene.canvas.style.cursor = 'grab';
+                return;
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+        viewer.scene.canvas.style.cursor = 'crosshair';
+      } else if (activeTool === 'place' || activeTool === 'measure') {
+        viewer.scene.canvas.style.cursor = 'crosshair';
+      } else {
+        viewer.scene.canvas.style.cursor = 'default';
+      }
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+    // --- 5C. THẢ CHUỘT TRÁI (LEFT_UP): Thả khí tài vào vị trí mới ---
+    handler.setInputAction(() => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        viewer.scene.screenSpaceCameraController.enableInputs = true;
+        viewer.scene.canvas.style.cursor = 'default';
+
+        removeAllDragEntities(viewer);
+
+        if (hasMovedRef.current && dragTargetCoordsRef.current && selectedInstanceId) {
+          const { lat, lon, alt } = dragTargetCoordsRef.current;
+          updateEquipment(selectedInstanceId, {
+            latitude: lat,
+            longitude: lon,
+            altitude: alt,
+          });
+
+          justFinishedDragRef.current = true;
+          setTimeout(() => {
+            justFinishedDragRef.current = false;
+          }, 100);
+        }
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_UP);
+
+    // --- 5D. NHẤP CHUỘT (LEFT_CLICK): Chọn / Đặt / Đo đạc / Nhấp di chuyển ---
+    handler.setInputAction((movement: { position: Cesium.Cartesian2 }) => {
+      // Nếu vừa hoàn tất thao tác kéo thả thì không xử lý click
+      if (justFinishedDragRef.current) {
+        justFinishedDragRef.current = false;
+        return;
+      }
+
       const cartesian = pickGroundCartesian(viewer, movement.position);
 
       // A. Chế độ đo khoảng cách
@@ -793,7 +1074,7 @@ export const CesiumGlobe: React.FC = () => {
         return;
       }
 
-      // B2. Chế độ di chuyển khí tài đã chọn sang vị trí mới (Move / Reposition Tool)
+      // B2. Chế độ di chuyển khí tài đã chọn bằng cách nhấp chuột vào vị trí mới (Click to reposition)
       if (activeTool === 'move' && selectedInstanceId) {
         if (!cartesian) return;
         const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
@@ -812,7 +1093,6 @@ export const CesiumGlobe: React.FC = () => {
           longitude: Number(rawLon.toFixed(5)),
           altitude: groundHeight,
         });
-        setActiveTool('select');
         return;
       }
 
@@ -823,7 +1103,7 @@ export const CesiumGlobe: React.FC = () => {
         if (instId) {
           selectEquipment(instId);
 
-          // Nhấp vào điểm đặt: Không phóng to quá gần (ít thôi!), giữ tầm nhìn bao quát ~95km
+          // Nhấp vào điểm đặt: Không phóng to quá gần, giữ tầm nhìn bao quát ~95km
           const inst = instances.find((i) => i.instanceId === instId);
           if (
             inst &&
@@ -859,6 +1139,13 @@ export const CesiumGlobe: React.FC = () => {
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
     return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        viewer.scene.screenSpaceCameraController.enableInputs = true;
+        viewer.scene.canvas.style.cursor = 'default';
+        removeAllDragEntities(viewer);
+      }
       handler.destroy();
     };
   }, [
@@ -871,6 +1158,8 @@ export const CesiumGlobe: React.FC = () => {
     selectedInstanceId,
     addMeasurePoint,
     selectEquipment,
+    viewMode,
+    removeAllDragEntities,
   ]);
 
   // 5b. Tính toán Quang tuyến LOS & Coverage Field cho tất cả các đài radar (Chỉ chạy ở chế độ 3D)
@@ -1248,14 +1537,31 @@ export const CesiumGlobe: React.FC = () => {
             position: radarCartesian,
             properties: { instanceId: inst.instanceId },
             point: {
-              pixelSize: isSelected ? 12 : 9,
+              pixelSize: isSelected ? (activeTool === 'move' ? 15 : 12) : 9,
               color: isSelected ? Cesium.Color.fromCssColorString('#fde047') : baseColor,
               outlineColor: Cesium.Color.BLACK,
-              outlineWidth: 2,
+              outlineWidth: isSelected && activeTool === 'move' ? 3 : 2,
               heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
             },
           });
+
+          // Hiển thị vòng cầm kéo (Drag Handle) khi đang ở chế độ Di chuyển (Move Tool)
+          if (isSelected && activeTool === 'move') {
+            viewer.entities.add({
+              name: `Vòng Cầm Kéo ${inst.shortId || ''}`,
+              position: radarCartesian,
+              properties: { instanceId: inst.instanceId },
+              point: {
+                pixelSize: 30,
+                color: Cesium.Color.fromCssColorString('#f59e0b').withAlpha(0.25),
+                outlineColor: Cesium.Color.fromCssColorString('#fbbf24'),
+                outlineWidth: 2,
+                heightReference: is2D ? Cesium.HeightReference.NONE : Cesium.HeightReference.RELATIVE_TO_GROUND,
+                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+              },
+            });
+          }
         }
 
         if (showLabelsLayer) {
@@ -2784,6 +3090,7 @@ export const CesiumGlobe: React.FC = () => {
     selectedAzimuthDeg,
     crossSectionProbePoint,
     viewMode,
+    activeTool,
     showSpxPanel,
     spxConfig,
     spxResults,
