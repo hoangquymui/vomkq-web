@@ -491,6 +491,10 @@ export const CesiumGlobe: React.FC = () => {
 
     const removeCameraBoundsListener = viewer.scene.preRender.addEventListener(() => {
       if (!viewerRef.current || viewerRef.current.isDestroyed()) return;
+
+      // Bỏ qua nếu scene đang chuyển đổi giữa 2D và 3D
+      if (viewerRef.current.scene.mode === Cesium.SceneMode.MORPHING) return;
+
       const cam = viewerRef.current.camera;
 
       // Bỏ qua kiểm tra nếu camera đang thực hiện hoạt ảnh bay (flyTo) theo lệnh
@@ -595,12 +599,81 @@ export const CesiumGlobe: React.FC = () => {
 
     if (viewMode === '2D') {
       if (viewer.scene.mode !== Cesium.SceneMode.SCENE2D) {
-        viewer.scene.morphTo2D(1.0);
+        const carto = viewer.camera.positionCartographic;
+        const currentH = carto && Number.isFinite(carto.height) ? carto.height : 2200000;
+        const isOverview = !carto || currentH > 1000000;
+
+        const targetLon = isOverview
+          ? 108.2
+          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.longitude), 98.0, 121.0);
+        const targetLat = isOverview
+          ? 16.0
+          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.latitude), 5.5, 26.0);
+        const targetH = isOverview
+          ? 2200000
+          : Cesium.Math.clamp(currentH, 5000, 2200000);
+
+        viewer.scene.morphTo2D(0);
+        viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, targetH),
+          orientation: {
+            heading: 0,
+            pitch: Cesium.Math.toRadians(-90),
+            roll: 0,
+          },
+        });
+        requestAnimationFrame(() => {
+          if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+            viewerRef.current.camera.setView({
+              destination: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, targetH),
+              orientation: {
+                heading: 0,
+                pitch: Cesium.Math.toRadians(-90),
+                roll: 0,
+              },
+            });
+          }
+        });
       }
       viewer.scene.globe.depthTestAgainstTerrain = false;
     } else {
       if (viewer.scene.mode !== Cesium.SceneMode.SCENE3D) {
-        viewer.scene.morphTo3D(1.0);
+        const carto = viewer.camera.positionCartographic;
+        const currentH = carto && Number.isFinite(carto.height) ? carto.height : 2200000;
+        const isOverview = !carto || currentH > 1000000;
+
+        const targetLon = isOverview
+          ? 108.2
+          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.longitude), 98.0, 121.0);
+        const targetLat = isOverview
+          ? 16.0
+          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.latitude), 5.5, 26.0);
+        const targetH = isOverview
+          ? 2200000
+          : Cesium.Math.clamp(currentH, 5000, 2200000);
+        const targetPitch = isOverview ? -90 : -45;
+
+        viewer.scene.morphTo3D(0);
+        viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, targetH),
+          orientation: {
+            heading: 0,
+            pitch: Cesium.Math.toRadians(targetPitch),
+            roll: 0,
+          },
+        });
+        requestAnimationFrame(() => {
+          if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+            viewerRef.current.camera.setView({
+              destination: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, targetH),
+              orientation: {
+                heading: 0,
+                pitch: Cesium.Math.toRadians(targetPitch),
+                roll: 0,
+              },
+            });
+          }
+        });
       }
       viewer.scene.globe.depthTestAgainstTerrain = true;
     }
