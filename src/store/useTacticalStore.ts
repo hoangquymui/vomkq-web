@@ -31,6 +31,7 @@ import type { Plan } from '../domain/types/plan';
 import type { EquipmentDefinition, EquipmentPlacement, ObservationState } from '../domain/types/equipment';
 import type { SimulationState, SimulationRun } from '../domain/types/simulation';
 import { hydrateLegacyInstance, parseLegacyInstance, applyEquipmentPatchToCanonical, type LegacyPresentationState } from '../domain/adapters/legacyEquipmentAdapter';
+import { validateCanonicalStatePackageV1 } from '../domain/serialization/canonicalStatePackage';
 /**
  * Trạng thái cố vấn vị trí đặt khí tài (VECTOR AI local).
  * - idle     : chưa chạy
@@ -311,6 +312,8 @@ interface TacticalState {
   importFromLayout: (layout: LayoutSaveData) => void;
   exportToLayout: (layoutName: string) => LayoutSaveData;
   loadSampleScenario: () => void;
+  exportCanonicalPackage: (layoutName?: string) => import('../domain/serialization/canonicalStatePackage').CanonicalStatePackageV1;
+  importCanonicalPackage: (pkg: import('../domain/serialization/canonicalStatePackage').CanonicalStatePackageV1) => void;
 }
 
 /**
@@ -2104,6 +2107,77 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         instances: nextInstances,
         selectedInstanceId: idMap['eq_radar_tamdao'] || nextInstances[0]?.instanceId || null,
         samEngagementModes: {},
+      };
+    });
+  },
+
+  exportCanonicalPackage: (layoutName) => {
+    const state = get();
+    return structuredClone({
+      schemaVersion: 1,
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        layoutName: layoutName || 'Exported Package',
+      },
+      context: {
+        activeScenarioId: state.activeScenarioId,
+        activePlanId: state.activePlanId,
+        activeSimulationRunId: state.activeSimulationRunId,
+      },
+      scenarios: state.scenarios,
+      plans: state.plans,
+      placements: state.placements,
+      definitions: state.definitions,
+      observations: state.observations,
+      simulationRuns: state.simulationRuns,
+      simulations: state.simulations,
+      visuals: state.visuals,
+    });
+  },
+
+  importCanonicalPackage: (pkg) => {
+    validateCanonicalStatePackageV1(pkg);
+    const clone = structuredClone(pkg);
+
+    set(() => {
+      // Rebuild the instances projection synchronously inside the transition
+      const activePlanId = clone.context.activePlanId;
+      const nextInstances = Object.values(clone.placements)
+        .filter(p => p.planId === activePlanId)
+        .map((placement) => {
+          const definition = clone.definitions[placement.definitionId];
+          const observation = clone.observations[placement.id];
+          const visual = clone.visuals[placement.id];
+          const simulation = clone.context.activeSimulationRunId
+            ? clone.simulations[clone.context.activeSimulationRunId]?.[placement.id]
+            : undefined;
+
+          if (!definition || !observation || !visual) return null;
+
+          return hydrateLegacyInstance(
+            placement,
+            definition,
+            observation,
+            visual,
+            simulation
+          );
+        })
+        .filter((inst): inst is EquipmentInstance => inst !== null);
+
+      return {
+        canonicalInitialized: true,
+        activeScenarioId: clone.context.activeScenarioId,
+        activePlanId: clone.context.activePlanId,
+        activeSimulationRunId: clone.context.activeSimulationRunId,
+        scenarios: clone.scenarios,
+        plans: clone.plans,
+        placements: clone.placements,
+        definitions: clone.definitions,
+        observations: clone.observations,
+        simulationRuns: clone.simulationRuns,
+        simulations: clone.simulations,
+        visuals: clone.visuals,
+        instances: nextInstances,
       };
     });
   },
