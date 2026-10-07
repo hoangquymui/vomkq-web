@@ -440,10 +440,10 @@ export const CesiumGlobe: React.FC = () => {
     );
 
     // Giới hạn cự ly zoom của bộ điều khiển chuột:
-    // Cận cảnh tối thiểu 200m (tránh chui lòng đất), Viễn cảnh tối đa 3.000.000m (3.000km - tránh kéo quá xa mất bản đồ VN)
+    // Cận cảnh tối thiểu 200m (tránh chui lòng đất), Viễn cảnh tối đa 2.200.000m (2.200km - vừa trọn vẹn toàn cảnh Việt Nam)
     const controller = viewer.scene.screenSpaceCameraController;
     controller.minimumZoomDistance = 200;
-    controller.maximumZoomDistance = 3000000;
+    controller.maximumZoomDistance = 2200000;
     controller.enableCollisionDetection = true;
 
     // Bật kiểm tra độ sâu với địa hình lồi lõm
@@ -481,13 +481,13 @@ export const CesiumGlobe: React.FC = () => {
     });
 
     // Giới hạn khung kéo ngang / dọc / độ cao của camera:
-    // Giữ camera luôn nằm trong khu vực tác chiến Việt Nam, không cho trôi ra ngoài vũ trụ hoặc ra đại dương đen
-    const MIN_CAM_LON = 98.0;
-    const MAX_CAM_LON = 121.0;
-    const MIN_CAM_LAT = 5.5;
-    const MAX_CAM_LAT = 26.0;
+    // Thu hẹp khung giới hạn sát theo lãnh thổ và biển đảo Việt Nam, chống trôi dạt vào khoảng đen
+    const MIN_CAM_LON = 103.5;
+    const MAX_CAM_LON = 113.0;
+    const MIN_CAM_LAT = 8.5;
+    const MAX_CAM_LAT = 22.5;
     const MIN_CAM_HEIGHT = 200;
-    const MAX_CAM_HEIGHT = 3000000; // 3.000 km
+    const MAX_CAM_HEIGHT = 2200000; // 2.200 km (chuẩn toàn cảnh Việt Nam)
 
     const removeCameraBoundsListener = viewer.scene.preRender.addEventListener(() => {
       if (!viewerRef.current || viewerRef.current.isDestroyed()) return;
@@ -605,10 +605,10 @@ export const CesiumGlobe: React.FC = () => {
 
         const targetLon = isOverview
           ? 108.2
-          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.longitude), 98.0, 121.0);
+          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.longitude), 103.5, 113.0);
         const targetLat = isOverview
           ? 16.0
-          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.latitude), 5.5, 26.0);
+          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.latitude), 8.5, 22.5);
         const targetH = isOverview
           ? 2200000
           : Cesium.Math.clamp(currentH, 5000, 2200000);
@@ -644,10 +644,10 @@ export const CesiumGlobe: React.FC = () => {
 
         const targetLon = isOverview
           ? 108.2
-          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.longitude), 98.0, 121.0);
+          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.longitude), 103.5, 113.0);
         const targetLat = isOverview
           ? 16.0
-          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.latitude), 5.5, 26.0);
+          : Cesium.Math.clamp(Cesium.Math.toDegrees(carto.latitude), 8.5, 22.5);
         const targetH = isOverview
           ? 2200000
           : Cesium.Math.clamp(currentH, 5000, 2200000);
@@ -2873,7 +2873,7 @@ export const CesiumGlobe: React.FC = () => {
     const viewer = viewerRef.current;
     if (!viewer) return;
 
-    const clampedAlt = Math.max(500, Math.min(newAltitude, 3000000));
+    const clampedAlt = Math.max(500, Math.min(newAltitude, 2200000));
     setCameraHeight(clampedAlt);
 
     // Lấy toạ độ tâm điểm đang ghim (khí tài hoặc vị trí nhìn)
@@ -2934,9 +2934,9 @@ export const CesiumGlobe: React.FC = () => {
           <input
             type="range"
             min="5000"
-            max="3000000"
+            max="2200000"
             step="10000"
-            value={cameraHeight}
+            value={Math.min(cameraHeight, 2200000)}
             onChange={(e) => setTargetAltitude(parseFloat(e.target.value))}
             className="w-24 h-1.5 accent-cyan-400 bg-slate-800 rounded-lg cursor-pointer -rotate-90 my-8"
             title="Kéo thanh trượt lên/xuống theo chiều cao"
