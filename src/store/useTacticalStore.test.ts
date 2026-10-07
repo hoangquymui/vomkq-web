@@ -1189,3 +1189,164 @@ describe('1F Cesium Render Read Parity', () => {
     expect(inst.status).toBe('Active'); // from Simulation/Observation
   });
 });
+
+
+describe('1G Simulation and Observation Canonical Boundary', () => {
+  const setupBase = () => {
+    useTacticalStore.setState({
+      scenarios: {
+        s1: { id: 's1', name: 'S1', status: 'draft', createdAt: 0 } as any
+      },
+      plans: {
+        p1: { id: 'p1', scenarioId: 's1', status: 'draft', name: 'P1', createdAt: 0 } as any,
+        p2: { id: 'p2', scenarioId: 's1', status: 'draft', name: 'P2', createdAt: 0 } as any
+      },
+      placements: {
+        c1: { id: 'c1', planId: 'p1', definitionId: 'd1', position: { lat: 10, lon: 20, altM: 0, aglM: 0 }, network: {} } as any,
+        c2: { id: 'c2', planId: 'p2', definitionId: 'd2', position: { lat: 30, lon: 40, altM: 0, aglM: 0 }, network: {} } as any
+      },
+      definitions: {
+        d1: { id: 'd1', planId: 'p1', category: 'RadarCanhGioi', rangeKm: 100, capabilities: {} } as any,
+        d2: { id: 'd2', planId: 'p2', category: 'RadarCanhGioi', rangeKm: 200, capabilities: {} } as any
+      },
+      observations: {
+        c1: { placementId: 'c1', status: 'Active' } as any,
+        c2: { placementId: 'c2', status: 'Active' } as any
+      },
+      visuals: {
+        c1: { color: 'red', showDome: true } as any,
+        c2: { color: 'blue', showDome: true } as any
+      },
+      simulations: {
+        sim1: {
+          c1: { runId: 'sim1', placementId: 'c1', timeOffset: 0, currentSweepHeading: 123 } as any,
+          c2: { runId: 'sim1', placementId: 'c2', timeOffset: 0, currentSweepHeading: 456 } as any
+        }
+      },
+      activeSimulationRunId: 'sim1',
+      instances: [],
+      activeScenarioId: 's1',
+      activePlanId: 'p1',
+      canonicalInitialized: true
+    });
+  };
+
+  test('A. simulation registry is keyed by canonical Placement ID', () => {
+    setupBase();
+    // Empty out instances[] completely to prove no instances[] lookup participates
+    useTacticalStore.setState({ instances: [] });
+
+    // Canonical read model must address simulations[runId][placementId] via Placement.id
+    const renderInput = selectActiveEquipment(useTacticalStore.getState());
+    const c1Render = renderInput.find(e => e.instanceId === 'c1');
+
+    expect(c1Render).toBeDefined();
+    expect(c1Render?.currentSweepHeading).toBe(123); // Proves hydration read that exact record directly
+  });
+
+  // Direct simulation mutation checks are NOT APPLICABLE for this checkpoint because no public API exposes direct SimulationState mutation.
+  test('B. instances-only fake equipment cannot receive Observation mutation via updateEquipment', () => {
+    setupBase();
+    useTacticalStore.setState(() => ({
+      instances: [{ instanceId: 'fake1', status: 'Active' }] as any
+    }));
+    expect(() => useTacticalStore.getState().updateEquipment('fake1', { status: 'Offline' })).toThrow(/Placement not found/);
+  });
+
+  test('C. removeEquipment preserves historical SimulationState', () => {
+    setupBase();
+    useTacticalStore.getState().removeEquipment('c1');
+    const state = useTacticalStore.getState();
+    // Placement removed
+    expect(state.placements['c1']).toBeUndefined();
+    // Visual removed
+    expect(state.visuals['c1']).toBeUndefined();
+    // Definition removed when unreferenced
+    expect(state.definitions['d1']).toBeUndefined();
+    // Observation preserved
+    expect(state.observations['c1']).toBeDefined();
+    // simulations[runId][placementId] preserved
+    expect(state.simulations['sim1']['c1']).toBeDefined();
+  });
+
+  test('D. Observation survives removal but does not make removed equipment active', () => {
+    setupBase();
+    useTacticalStore.getState().removeEquipment('c1');
+    const state = useTacticalStore.getState();
+
+    // Observation survives
+    expect(state.observations['c1']).toBeDefined();
+    // Placement is absent
+    expect(state.placements['c1']).toBeUndefined();
+
+    // selectActiveEquipment excludes it
+    const renderInput = selectActiveEquipment(state);
+    expect(renderInput.find(e => e.instanceId === 'c1')).toBeUndefined();
+  });
+
+  test('E. clearAll preserves SimulationState for removed active-plan Placements', () => {
+    setupBase();
+    useTacticalStore.getState().clearAll();
+    const state = useTacticalStore.getState();
+    expect(state.placements['c1']).toBeUndefined();
+    expect(state.simulations['sim1']['c1']).toBeDefined();
+    expect(state.observations['c1']).toBeDefined();
+  });
+
+  test('F. historical SimulationState does not resurrect removed equipment', () => {
+    setupBase();
+    useTacticalStore.getState().removeEquipment('c1');
+    const state = useTacticalStore.getState();
+    expect(state.simulations['sim1']['c1']).toBeDefined(); // Still exists
+    const renderInput = selectActiveEquipment(state);
+    expect(renderInput.find(e => e.instanceId === 'c1')).toBeUndefined(); // Does not render
+  });
+
+  test('G. switchActivePlan does not delete or move SimulationState', () => {
+    setupBase();
+    useTacticalStore.getState().switchActivePlan('p2');
+    const state = useTacticalStore.getState();
+    expect(state.simulations['sim1']['c1']).toBeDefined(); // c1 is plan1, survives
+    expect(state.simulations['sim1']['c2']).toBeDefined(); // c2 is plan2, survives
+    expect(state.observations['c1']).toBeDefined();
+    expect(state.observations['c2']).toBeDefined();
+  });
+
+  test('H. no-reverse-sync for 1G boundary', () => {
+    setupBase();
+    // Poison instances[] with conflicting state
+    useTacticalStore.setState(() => ({
+      instances: [{ instanceId: 'c1', status: 'Offline' }] as any
+    }));
+
+    // Exercise an existing canonical Observation/equipment mutation path
+    useTacticalStore.getState().updateEquipment('c1', { status: 'Standby' });
+    const state = useTacticalStore.getState();
+
+    // Canonical state wins
+    expect(state.observations['c1'].status).toBe('Standby');
+
+    // active equipment projection comes from canonical state
+    const renderInput = selectActiveEquipment(state);
+    expect(renderInput.find(e => e.instanceId === 'c1')?.status).toBe('Standby');
+  });
+
+  test('I. import/load replacement creates new Placement IDs and does not bind historical SimulationState to new equipment', () => {
+    setupBase();
+    const importedEquipment = [{
+      instanceId: 'imp1', templateId: 'radar_36d6', latitude: 10, longitude: 20
+    }] as any;
+
+    useTacticalStore.getState().importFromLayout({ equipments: importedEquipment } as any);
+    const state = useTacticalStore.getState();
+
+    expect(state.placements['c1']).toBeUndefined();
+    expect(state.simulations['sim1']['c1']).toBeDefined();
+
+    const newPlacementId = Object.keys(state.placements).find(id => state.placements[id].planId === 'p1');
+    expect(newPlacementId).toBeDefined();
+    expect(newPlacementId).not.toBe('c1');
+    expect(state.simulations['sim1'][newPlacementId!]).toBeUndefined();
+  });
+
+});
