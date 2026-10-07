@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
-import { Pin, PinOff, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import {
   computeRadarCoverageField,
@@ -238,7 +238,6 @@ export const CesiumGlobe: React.FC = () => {
   // Tài nguyên vòm radar (Primitive + Material) — quản lý vòng đời thủ công
   const domeResourcesRef = useRef<DomeRenderResource[]>([]);
 
-  const [isPinned, setIsPinned] = useState<boolean>(true);
   const [cameraHeight, setCameraHeight] = useState<number>(95000);
   const [customModelUrls, setCustomModelUrls] = useState<Record<string, string>>({});
   const [badgeRefreshTick, setBadgeRefreshTick] = useState<number>(0);
@@ -771,7 +770,6 @@ export const CesiumGlobe: React.FC = () => {
         const instId = pickedObject.id.properties.instanceId?.getValue();
         if (instId) {
           selectEquipment(instId);
-          setIsPinned(true);
 
           // Nhấp vào điểm đặt: Không phóng to quá gần (ít thôi!), giữ tầm nhìn bao quát ~95km
           const inst = instances.find((i) => i.instanceId === instId);
@@ -804,9 +802,8 @@ export const CesiumGlobe: React.FC = () => {
         }
       }
 
-      // Bấm ra ngoài khoảng trống: bỏ chọn và bỏ ghim
+      // Bấm ra ngoài khoảng trống: bỏ chọn
       selectEquipment(null);
-      setIsPinned(false);
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
     return () => {
@@ -2798,78 +2795,12 @@ export const CesiumGlobe: React.FC = () => {
     releaseDomeResources,
   ]);
 
-  // 7. Thao tác Ghim vị trí điểm đặt & Kéo lên xuống theo chiều cao
-  const handleTogglePin = useCallback(() => {
-    const viewer = viewerRef.current;
-    if (!viewer) return;
-
-    if (isPinned) {
-      // Đang ghim -> Bỏ ghim
-      setIsPinned(false);
-    } else {
-      // Chưa ghim -> Ghim vào điểm đặt được chọn hoặc tâm màn hình
-      setIsPinned(true);
-      if (selectedInstanceId) {
-        const inst = instances.find((i) => i.instanceId === selectedInstanceId);
-        if (
-          inst &&
-          typeof inst.longitude === 'number' && !isNaN(inst.longitude) && isFinite(inst.longitude) &&
-          typeof inst.latitude === 'number' && !isNaN(inst.latitude) && isFinite(inst.latitude)
-        ) {
-          viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(
-              inst.longitude,
-              inst.latitude,
-              Math.max(85000, cameraHeight)
-            ),
-            orientation: {
-              heading: viewer.camera.heading,
-              pitch: Cesium.Math.toRadians(-35),
-              roll: 0,
-            },
-            duration: 0.8,
-          });
-          return;
-        }
-      }
-
-      // Ghim tại tâm bản đồ
-      const centerScreenPos = new Cesium.Cartesian2(
-        viewer.canvas.clientWidth / 2,
-        viewer.canvas.clientHeight / 2
-      );
-      const cartesian = pickGroundCartesian(viewer, centerScreenPos);
-      if (cartesian) {
-        const carto = Cesium.Cartographic.fromCartesian(cartesian);
-        if (
-          carto &&
-          typeof carto.longitude === 'number' && !isNaN(carto.longitude) &&
-          typeof carto.latitude === 'number' && !isNaN(carto.latitude)
-        ) {
-          viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(
-              Cesium.Math.toDegrees(carto.longitude),
-              Cesium.Math.toDegrees(carto.latitude),
-              Math.max(85000, cameraHeight)
-            ),
-            orientation: {
-              heading: viewer.camera.heading,
-              pitch: Cesium.Math.toRadians(-35),
-              roll: 0,
-            },
-            duration: 0.8,
-          });
-        }
-      }
-    }
-  }, [isPinned, selectedInstanceId, instances, cameraHeight]);
-
-  // Điều chỉnh chiều cao camera thẳng đứng theo trục Z (nâng lên / hạ xuống)
+  // 7. Điều chỉnh chiều cao camera thẳng đứng theo trục Z (nâng lên / hạ xuống)
   const setTargetAltitude = useCallback((newAltitude: number) => {
     const viewer = viewerRef.current;
     if (!viewer) return;
 
-    const clampedAlt = Math.max(5000, Math.min(newAltitude, 400000));
+    const clampedAlt = Math.max(500, Math.min(newAltitude, 3000000));
     setCameraHeight(clampedAlt);
 
     // Lấy toạ độ tâm điểm đang ghim (khí tài hoặc vị trí nhìn)
@@ -2906,21 +2837,8 @@ export const CesiumGlobe: React.FC = () => {
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* CỤM ĐIỀU KHIỂN GHIM VỊ TRÍ & NÂNG / HẠ BẢN ĐỒ THEO CHIỀU CAO */}
+      {/* CỤM ĐIỀU KHIỂN NÂNG / HẠ BẢN ĐỒ THEO CHIỀU CAO */}
       <div className="absolute right-4 bottom-8 z-20 flex flex-col items-center bg-slate-950/90 backdrop-blur-md p-2 rounded-2xl border border-cyan-500/50 shadow-[0_0_24px_rgba(0,0,0,0.7)] select-none gap-2">
-        {/* Nút Ghim / Bỏ ghim vị trí */}
-        <button
-          onClick={handleTogglePin}
-          className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 transition-all ${isPinned
-            ? 'bg-cyan-600 hover:bg-cyan-500 text-slate-950 border-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.6)]'
-            : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
-            }`}
-          title={isPinned ? 'Đang ghim vị trí tâm - Nhấn để bỏ ghim' : 'Ghim điểm đặt để nâng/hạ chiều cao bản đồ'}
-        >
-          {isPinned ? <Pin className="w-3.5 h-3.5 fill-current" /> : <PinOff className="w-3.5 h-3.5" />}
-          <span>{isPinned ? 'Đang Ghim' : 'Ghim Điểm'}</span>
-        </button>
-
         {/* Nhãn hiển thị độ cao thực tế */}
         <div className="text-center bg-slate-900/80 px-2 py-1 rounded-lg border border-slate-800 w-full">
           <span className="block text-[9px] text-slate-400 font-mono uppercase tracking-wider">Độ Cao</span>
@@ -2932,7 +2850,7 @@ export const CesiumGlobe: React.FC = () => {
         {/* Nút Nâng lên cao */}
         <button
           onClick={() => stepAltitude(20000)}
-          className="p-2 rounded-xl bg-slate-900 hover:bg-cyan-950 text-slate-300 hover:text-cyan-300 border border-slate-800 hover:border-cyan-500/50 transition-colors"
+          className="p-2 rounded-xl bg-slate-900 hover:bg-cyan-950 text-slate-300 hover:text-cyan-300 border border-slate-800 hover:border-cyan-500/50 transition-colors cursor-pointer"
           title="Kéo bản đồ lên cao (+20 km)"
         >
           <ArrowUp className="w-4 h-4" />
@@ -2942,9 +2860,9 @@ export const CesiumGlobe: React.FC = () => {
         <div className="py-2 flex items-center justify-center">
           <input
             type="range"
-            min="8000"
-            max="300000"
-            step="4000"
+            min="5000"
+            max="3000000"
+            step="10000"
             value={cameraHeight}
             onChange={(e) => setTargetAltitude(parseFloat(e.target.value))}
             className="w-24 h-1.5 accent-cyan-400 bg-slate-800 rounded-lg cursor-pointer -rotate-90 my-8"
@@ -2955,7 +2873,7 @@ export const CesiumGlobe: React.FC = () => {
         {/* Nút Hạ xuống thấp */}
         <button
           onClick={() => stepAltitude(-20000)}
-          className="p-2 rounded-xl bg-slate-900 hover:bg-cyan-950 text-slate-300 hover:text-cyan-300 border border-slate-800 hover:border-cyan-500/50 transition-colors"
+          className="p-2 rounded-xl bg-slate-900 hover:bg-cyan-950 text-slate-300 hover:text-cyan-300 border border-slate-800 hover:border-cyan-500/50 transition-colors cursor-pointer"
           title="Hạ bản đồ xuống thấp (-20 km)"
         >
           <ArrowDown className="w-4 h-4" />
