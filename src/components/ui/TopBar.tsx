@@ -154,9 +154,6 @@ export const TopBar: React.FC = () => {
             <option value="offline" className="bg-slate-900 text-slate-200">
               💾 Vệ Tinh Ngoại Tuyến (Offline)
             </option>
-            <option value="dark" className="bg-slate-900 text-slate-200">
-              🌑 Tác Chiến Tối (Dark Tactical)
-            </option>
             <option value="osm" className="bg-slate-900 text-slate-200">
               🧭 Bản Đồ Đường Xá (OSM)
             </option>

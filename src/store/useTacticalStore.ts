@@ -85,7 +85,7 @@ interface TacticalState {
   // 3D Terrain & Basemap Options
   terrainEnabled: boolean;
   terrainExaggeration: number; // 1.0 -> 3.0
-  basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'dark' | 'osm';
+  basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'osm';
   vietnamOnly: boolean;
   showMapDownloadModal: boolean;
   showInspector: boolean;
@@ -214,7 +214,7 @@ interface TacticalState {
 
   setTerrainEnabled: (enabled: boolean) => void;
   setTerrainExaggeration: (exaggeration: number) => void;
-  setBasemap: (basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'dark' | 'osm') => void;
+  setBasemap: (basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'osm') => void;
   setShowMapDownloadModal: (show: boolean) => void;
   setShowInspector: (show: boolean) => void;
   toggleInspector: () => void;

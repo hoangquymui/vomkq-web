@@ -104,7 +104,7 @@ Cesium.Ellipsoid.prototype.geodeticSurfaceNormal = function (
 export const VIETNAM_TACTICAL_RECTANGLE = Cesium.Rectangle.fromDegrees(100.0, 6.0, 119.5, 24.5);
 
 // Helper tạo ImageryProvider linh hoạt cho Basemap (chỉ tải và render trong phạm vi Việt Nam, ngoài là màu đen)
-function createImageryProvider(basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'dark' | 'osm') {
+function createImageryProvider(basemap: 'google-terrain' | 'google-hybrid' | 'satellite' | 'offline' | 'topo' | 'osm') {
   switch (basemap) {
     case 'google-terrain':
       // Bản đồ Địa Hình Google Terrain (kèm ranh giới, địa danh & tuyến đường VN, không có POI cửa hàng)
@@ -156,14 +156,6 @@ function createImageryProvider(basemap: 'google-terrain' | 'google-hybrid' | 'sa
         maximumLevel: 20,
         rectangle: VIETNAM_TACTICAL_RECTANGLE,
         credit: new Cesium.Credit('© Google Maps (Terrain VN)'),
-      });
-    case 'dark':
-      // Bản đồ tác chiến tối giản Dark Matter
-      return new Cesium.UrlTemplateImageryProvider({
-        url: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        maximumLevel: 18,
-        rectangle: VIETNAM_TACTICAL_RECTANGLE,
-        credit: new Cesium.Credit('© CARTO'),
       });
     case 'osm':
       return new Cesium.OpenStreetMapImageryProvider({
