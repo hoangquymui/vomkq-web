@@ -1,3 +1,7 @@
+---
+description: "Lập kế hoạch feature theo North Star, domain contracts, provenance và regression."
+---
+
 # Feature Plan
 
 1. Viết user outcome.
@@ -13,3 +17,16 @@
 11. Chỉ sau đó mới implementation.
 
 Nếu feature là simulation/what-if: ghi rõ baseline, variables changed và variables held constant.
+
+## Definition of Done / Repository Hygiene Gate
+
+- Scope and allowed files are identified.
+- Relevant tests and build checks are defined.
+- Untracked new files are included in review evidence.
+- Final staged changes must be explicitly reviewed.
+- git diff --cached --check must pass before commit.
+- Temporary logs/scripts should be outside the repo.
+- Cleanup is limited to verified agent-owned files.
+- Unknown artifacts remain untouched.
+- No implicit git add ., git clean -fd, commit or push.
+- Commit requires explicit human authorization.

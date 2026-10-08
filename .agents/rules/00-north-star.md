@@ -1,37 +1,35 @@
 ---
 trigger: always_on
-description: "Giữ project bám North Star 2.0: model → scenario → simulate → assess → compare → human review → replay."
+description: "Giữ project bám North Star: model → scenario → simulate → assess → compare → human review → replay."
 ---
-# North Star 2.0 — Project Guardrail
 
-Mọi thay đổi code phải phục vụ vòng lặp:
+## Documentation Authority
 
-```text
-MODEL → SCENARIO → SIMULATE → ASSESS → COMPARE → REVIEW → REPLAY
-```
+Documentation priority:
 
-## Bất biến
-- Tách `PLANNED`, `OBSERVED`, `SIMULATED` state.
-- Scenario là context trung tâm; SimulationRun là một lần chạy có provenance.
-- 2D/3D/Inspector dùng cùng Domain Model và shared state.
-- Analysis/simulation không nằm trong React/Cesium renderer.
-- Result phải gắn scenario/version/config/input/model version.
-- Thay đổi lớn không ghi đè lịch sử; tạo version/event mới.
-- Không có “magic result”; luôn có assumptions, data quality, limitations.
-- Human review là bước bắt buộc trước mọi decision record.
-- Không tự động chuyển simulation result thành hành động sử dụng vũ khí thực tế.
+1. docs/NORTH_STAR/NORTH_STAR.md
+2. Existing architecture documentation, if present
+3. Current approved feature specifications
+4. Validation and test documents
+5. Research and reference documents
+6. Historical and legacy documents
 
-## Khi nhận feature request
-Trước khi code, xác định:
-1. Feature phục vụ bước nào của decision loop?
-2. Domain object/state nào bị ảnh hưởng?
-3. Scenario/SimulationRun nào bị ảnh hưởng?
-4. 2D/3D/Inspector cần đồng bộ gì?
-5. Provenance/debug nào phải lưu?
-6. Regression scenario nào cần cập nhật?
+Never treat legacy or historical documents as authoritative
+when they conflict with the North Star or current architecture.
 
-## Không được làm
-- Business logic quan trọng trong UI/renderer.
-- Hard-code tham số phân tích không có tên/đơn vị/nguồn/assumption.
-- Phán “phương án tốt nhất” mà không cho xem bằng chứng/giới hạn.
-- Xóa cảnh báo dữ liệu thiếu chỉ để demo đẹp hơn.
+## Mandatory Invariants
+
+- Model before render.
+- Simulate before conclude.
+- Human before action.
+- Canonical domain registries are authoritative.
+- instances[] is a legacy active-plan projection only.
+- PLANNED, OBSERVED and SIMULATED state are distinct.
+- Scenario, Plan and SimulationRun must have explicit ownership and provenance.
+- Significant canonical changes require validation, revision and audit according to their applicable scope.
+- Historical observations/simulations must not be silently removed merely because a Placement is deleted.
+- Domain/analysis logic must not be placed in UI, Cesium or renderer components.
+- Important results must disclose their inputs, assumptions, data quality and limitations.
+- No autonomous operational decision or weapon control.
+- Human review precedes any Decision Record.
+- AI agents do not stage, commit or push without explicit human authorization.
