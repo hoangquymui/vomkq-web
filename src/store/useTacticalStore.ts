@@ -32,6 +32,8 @@ import type { EquipmentDefinition, EquipmentPlacement, ObservationState } from '
 import type { SimulationState, SimulationRun } from '../domain/types/simulation';
 import { hydrateLegacyInstance, parseLegacyInstance, applyEquipmentPatchToCanonical, type LegacyPresentationState } from '../domain/adapters/legacyEquipmentAdapter';
 import { validateCanonicalStatePackageV1 } from '../domain/serialization/canonicalStatePackage';
+import type { AuditActor } from '../domain/types/audit';
+import { createAuditAppend, revisionScopeKey } from '../domain/audit/auditEngine';
 /**
  * Trạng thái cố vấn vị trí đặt khí tài (VECTOR AI local).
  * - idle     : chưa chạy
@@ -89,6 +91,12 @@ interface TacticalState {
   simulations: Record<string, Record<string, SimulationState>>;
   // === Presentation/UI State ===
   visuals: Record<string, LegacyPresentationState>;
+
+  // === Audit & Revision (Provenance) ===
+  revisions: Record<string, import('../domain/types/audit').RevisionMetadata>;
+  revisionHeads: Record<string, string>;
+  auditEvents: Record<string, import('../domain/types/audit').AuditEvent>;
+  auditEventOrder: string[];
 
   activeScenarioId: string | null;
   activePlanId: string | null;
@@ -410,6 +418,65 @@ export function validatePlanGraph(state: TacticalState, planId: string): void {
   }
 }
 
+function appendAuditToState(
+  state: any,
+  nextStateMap: any,
+  scope: import('../domain/types/audit').RevisionScope,
+  action: import('../domain/types/audit').AuditAction,
+  targetType: import('../domain/types/audit').AuditTargetType,
+  targetIds: string[],
+  actorType: import('../domain/types/audit').AuditActorType = 'HUMAN',
+  sourceType: import('../domain/types/audit').AuditSourceType = 'USER_ACTION',
+  derivedFromRevisionId: string | null = null
+) {
+  const prevStateForFingerprint = {
+    scenarios: state.scenarios,
+    plans: state.plans,
+    placements: state.placements,
+    definitions: state.definitions,
+    observations: state.observations,
+    simulationRuns: state.simulationRuns,
+    simulations: state.simulations
+  };
+
+  const nextStateForFingerprint = {
+    scenarios: nextStateMap.scenarios || state.scenarios,
+    plans: nextStateMap.plans || state.plans,
+    placements: nextStateMap.placements || state.placements,
+    definitions: nextStateMap.definitions || state.definitions,
+    observations: nextStateMap.observations || state.observations,
+    simulationRuns: nextStateMap.simulationRuns || state.simulationRuns,
+    simulations: nextStateMap.simulations || state.simulations
+  };
+
+  const actor: AuditActor = { type: actorType };
+
+  const result = createAuditAppend(
+    scope,
+    prevStateForFingerprint,
+    nextStateForFingerprint,
+    nextStateMap.revisions || state.revisions,
+    nextStateMap.revisionHeads || state.revisionHeads,
+    action,
+    targetType,
+    targetIds,
+    actor,
+    sourceType,
+    derivedFromRevisionId
+  );
+
+  if (!result) return {};
+
+  const { revision, event } = result;
+
+  return {
+    revisions: { ...(nextStateMap.revisions || state.revisions), [revision.revisionId]: revision },
+    revisionHeads: { ...(nextStateMap.revisionHeads || state.revisionHeads), [revisionScopeKey(scope)]: revision.revisionId },
+    auditEvents: { ...(nextStateMap.auditEvents || state.auditEvents), [event.eventId]: event },
+    auditEventOrder: [...(nextStateMap.auditEventOrder || state.auditEventOrder), event.eventId]
+  };
+}
+
 export const useTacticalStore = create<TacticalState>((set, get) => ({
   // Canonical State Initialization
   scenarios: {},
@@ -420,6 +487,11 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   observations: {},
   simulations: {},
   visuals: {},
+
+  revisions: {},
+  revisionHeads: {},
+  auditEvents: {},
+  auditEventOrder: [],
 
   activeScenarioId: null,
   activePlanId: null,
@@ -619,7 +691,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         return hydrateLegacyInstance(placement, definition, observation, visual, undefined);
       });
 
-    return {
+    const nextState = {
       plans: nextPlans,
       placements: nextPlacements,
       definitions: nextDefinitions,
@@ -628,6 +700,22 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       activePlanId: newPlanId,
       instances: nextInstances
     };
+
+    const derivedFromRevisionId = state.revisionHeads[revisionScopeKey({ type: 'PLAN', id: srcId })] || null;
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'PLAN', id: newPlanId },
+      'BRANCH',
+      'PLAN',
+      [newPlanId],
+      'HUMAN',
+      'USER_ACTION',
+      derivedFromRevisionId
+    );
+
+    return { ...nextState, ...auditUpdates };
   }),
 
   switchActivePlan: (planId: string) => set((state) => {
@@ -935,16 +1023,27 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         undefined
       );
 
-      return {
+      const nextState = {
         placements: { ...state.placements, [pid]: parsed.placement },
         definitions: { ...state.definitions, [parsed.definition.id]: parsed.definition },
         observations: { ...state.observations, [pid]: parsed.observation },
         visuals: { ...state.visuals, [pid]: parsed.visual },
         instances: [...state.instances, projectedLegacy],
         selectedInstanceId: instance.instanceId,
-        activeTool: 'select',
+        activeTool: 'select' as const,
         pendingTemplate: null,
       };
+
+      const auditUpdates = appendAuditToState(
+        state,
+        nextState,
+        { type: 'PLAN', id: planId },
+        'ADD',
+        'EQUIPMENT',
+        [pid]
+      );
+
+      return { ...nextState, ...auditUpdates };
     }),
 
   updateEquipment: (instanceId, updates) => {
@@ -1001,7 +1100,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         existingSimulation
       );
 
-      return {
+      const nextState = {
         placements: { ...state.placements, [placement.id]: updatedCanonical.placement },
         definitions: { ...state.definitions, [definition.id]: updatedCanonical.definition },
         observations: { ...state.observations, [placement.id]: updatedCanonical.observation },
@@ -1011,6 +1110,17 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         ),
         coverageVolumes: nextVolumes,
       };
+
+      const auditUpdates = appendAuditToState(
+        state,
+        nextState,
+        { type: 'PLAN', id: state.activePlanId! },
+        'UPDATE',
+        'EQUIPMENT',
+        [placement.id]
+      );
+
+      return { ...nextState, ...auditUpdates };
     });
   },
 
@@ -1081,7 +1191,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         delete nextDefinitions[definitionId];
       }
 
-      return {
+      const nextState = {
         placements: nextPlacements,
         definitions: nextDefinitions,
         visuals: nextVisuals,
@@ -1089,6 +1199,17 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         selectedInstanceId: state.selectedInstanceId === instanceId ? null : state.selectedInstanceId,
         coverageVolumes: nextVolumes,
       };
+
+      const auditUpdates = appendAuditToState(
+        state,
+        nextState,
+        { type: 'PLAN', id: state.activePlanId! },
+        'REMOVE',
+        'EQUIPMENT',
+        [instanceId]
+      );
+
+      return { ...nextState, ...auditUpdates };
     });
   },
 
@@ -1225,11 +1346,22 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         : undefined;
       const hydrated = hydrateLegacyInstance(placement, newDefinition, observation, visual, simulation);
 
-      return {
+      const nextState = {
         definitions: { ...state.definitions, [newDefinition.id]: newDefinition },
         instances: state.instances.map((item) => (item.instanceId === instanceId ? hydrated : item)),
         samEngagementModes: { ...state.samEngagementModes, [instanceId]: mode },
       };
+
+      const auditUpdates = appendAuditToState(
+        state,
+        nextState,
+        { type: 'PLAN', id: state.activePlanId! },
+        'OPERATIONAL_CHANGE',
+        'EQUIPMENT',
+        [instanceId]
+      );
+
+      return { ...nextState, ...auditUpdates };
     }),
   clearSamVolumes: () => set({ samVolumes: {} }),
 
@@ -1601,18 +1733,29 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         })
         .filter((inst): inst is EquipmentInstance => inst !== null);
 
-      return {
+      const nextState = {
         placements: nextPlacements,
         definitions: nextDefinitions,
         visuals: nextVisuals,
         instances: nextInstances,
         selectedInstanceId: null,
         pendingTemplate: null,
-        activeTool: 'select',
+        activeTool: 'select' as const,
         measurePoints: [],
         coverageVolumes: {},
         samEngagementModes: {},
       };
+
+      const auditUpdates = appendAuditToState(
+        state,
+        nextState,
+        { type: 'PLAN', id: state.activePlanId! },
+        'CLEAR_ALL',
+        'PLAN',
+        [state.activePlanId!]
+      );
+
+      return { ...nextState, ...auditUpdates };
     });
   },
 
@@ -1740,7 +1883,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         })
         .filter((inst): inst is EquipmentInstance => inst !== null);
 
-      return {
+      const nextState = {
         placements: nextPlacements,
         definitions: nextDefinitions,
         observations: nextObservations,
@@ -1749,6 +1892,21 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         selectedInstanceId: nextInstances[0]?.instanceId || null,
         samEngagementModes: {},
       };
+
+      const importedIds = Object.keys(idMap).map(k => idMap[k]);
+
+      const auditUpdates = appendAuditToState(
+        state,
+        nextState,
+        { type: 'PLAN', id: planId },
+        'IMPORT',
+        'EQUIPMENT',
+        importedIds,
+        'UNKNOWN',
+        'IMPORT'
+      );
+
+      return { ...nextState, ...auditUpdates };
     });
   },
 
@@ -2099,7 +2257,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         })
         .filter((i): i is EquipmentInstance => i !== null);
 
-      return {
+      const nextState = {
         placements: nextPlacements,
         definitions: nextDefinitions,
         observations: nextObservations,
@@ -2108,6 +2266,21 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         selectedInstanceId: idMap['eq_radar_tamdao'] || nextInstances[0]?.instanceId || null,
         samEngagementModes: {},
       };
+
+      const importedIds = Object.keys(idMap).map(k => idMap[k]);
+
+      const auditUpdates = appendAuditToState(
+        state,
+        nextState,
+        { type: 'PLAN', id: planId },
+        'IMPORT',
+        'EQUIPMENT',
+        importedIds,
+        'SYSTEM',
+        'SYSTEM'
+      );
+
+      return { ...nextState, ...auditUpdates };
     });
   },
 
@@ -2164,7 +2337,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         })
         .filter((inst): inst is EquipmentInstance => inst !== null);
 
-      return {
+      const nextState = {
         canonicalInitialized: true,
         activeScenarioId: clone.context.activeScenarioId,
         activePlanId: clone.context.activePlanId,
@@ -2179,6 +2352,19 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         visuals: clone.visuals,
         instances: nextInstances,
       };
+
+      const auditUpdates = appendAuditToState(
+        get(),
+        nextState,
+        { type: 'WORKSPACE', id: 'canonical-root' },
+        'IMPORT',
+        'WORKSPACE',
+        ['canonical-root'],
+        'UNKNOWN',
+        'IMPORT'
+      );
+
+      return { ...nextState, ...auditUpdates };
     });
   },
 }));
