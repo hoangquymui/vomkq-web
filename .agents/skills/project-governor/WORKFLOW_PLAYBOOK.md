@@ -1,4 +1,4 @@
-# ANTIGRAVITY WORKFLOW PLAYBOOK v1.3 — SINGLE MARKDOWN PACKAGE PIPELINE
+# ANTIGRAVITY WORKFLOW PLAYBOOK v1.4 — HEAD-AWARE FAST-VALIDATION PIPELINE
 
 This playbook implements Project Governor v1.3 with Antigravity generating a single Markdown package for ChatGPT review. OCR and OpenCode delegation are removed.
 
@@ -11,12 +11,12 @@ This playbook implements Project Governor v1.3 with Antigravity generating a sin
 → /implement-feature
 → focused tests
 → full validation
-→ /evidence-package (Antigravity generates single Markdown file)
+→ /evidence-package (Antigravity generates complete HEAD-aware Markdown evidence)
 → ChatGPT independent review
-→ NO-GO? /debug-issue → /evidence-repack → ChatGPT re-review
+→ NO-GO? /debug-issue → /evidence-package (repack mode) → ChatGPT re-review
 → GO
 → human authorization
-→ /prepare-commit
+→ human-only prepare/stage/commit (manual commands, never an agent slash step)
 → verify clean commit
 → ChatGPT next-checkpoint contract
 ```
@@ -38,20 +38,21 @@ Audit target boundary against repository reality. Context is context, not author
 
 Implement smallest coherent diff; no unrelated cleanup; no hidden schema changes; validate before side effects; preserve canonical authority/history/isolation.
 
-Run focused tests, then default full validation:
+Run focused tests + TypeScript during editing; once code stabilizes, run final full validation according to `FAST_VALIDATION.md` (no needless repeated production builds):
 
 ```bash
 npx vitest run
 npm run build
-git diff --check
+git diff HEAD --check
 git status --short
-git diff --stat
+git diff HEAD --stat
+git diff --cached --stat
 ```
 
 Do not commit/push. Report exact implementation + validation only; do not self-certify final GO.
 
 # 6. /evidence-package
-Antigravity generates a single Markdown file outside the tree. Follow `POST_IMPLEMENT_REVIEW_PROTOCOL.md`. Package must reflect latest code and latest completed validation.
+Antigravity generates a single Markdown file outside the tree. Follow `POST_IMPLEMENT_REVIEW_PROTOCOL.md`. Package must reflect the latest code, `git diff HEAD` (not only unstaged diff), current index, untracked inventory and latest *completed* validation. Use `.agents/tools/capture_checkpoint_evidence.py` when suitable.
 
 # 7. ChatGPT Review
 Use `GPT_ENGINEER_REVIEW_PROMPT.md`. Verdict: `GO`, `NO-GO`, or `EVIDENCE-INCOMPLETE`.
@@ -59,14 +60,14 @@ Use `GPT_ENGINEER_REVIEW_PROMPT.md`. Verdict: `GO`, `NO-GO`, or `EVIDENCE-INCOMP
 # 8. /debug-issue
 Input current diff + ChatGPT P0/P1 findings. Fix only confirmed blockers within scope. Do not opportunistically implement deferred P2/P3. Re-run focused + full validation.
 
-# 9. /evidence-repack
+# 9. Evidence repack (mode of /evidence-package, not a standalone slash workflow)
 Any code change invalidates the old package. Generate a fresh package; include previous findings and diff since previous review.
 
 # 10. ChatGPT Re-review
 Classify each prior blocker: `FIXED`, `PARTIALLY FIXED`, `NOT FIXED`, `REGRESSION INTRODUCED`. GO only with no unresolved P0/P1 and complete evidence.
 
-# 11. /prepare-commit
-Only after ChatGPT GO + explicit human authorization:
+# 11. HUMAN COMMIT HANDOFF (not a slash workflow)
+Only after ChatGPT GO, provide these instructions for the human to execute; Antigravity must not run them:
 
 ```bash
 git add <exact intended paths>
@@ -81,7 +82,7 @@ git status --short
 Do not use `git add -A` by default. Do not push unless explicitly requested.
 
 # 12. NEXT CHECKPOINT PLANNING
-Only after successful commit and clean status. Derive the next contract from North Star + committed repository state + final review + remaining boundaries + deferred P2/P3. Never derive it solely from Antigravity report.
+Only after verified human commit and inventory of any remaining unrelated dirty/untracked files. Derive the next contract from North Star + committed repository state + final review + remaining boundaries + deferred P2/P3. Never derive it solely from Antigravity report.
 
 # 13. CHANGE-SPECIFIC MINI WORKFLOWS
 

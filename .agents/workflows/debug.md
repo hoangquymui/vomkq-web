@@ -4,6 +4,8 @@ description:
 
 # Debug Workflow
 
+> Legacy detailed checklist. For normal repository bugs, start with `/debug-issue`; use the detailed steps below only when input/units/processing trace is required. Do not run both as independent jobs.
+
 ## Bước 1
 Mô tả triệu chứng và cách tái hiện.
 

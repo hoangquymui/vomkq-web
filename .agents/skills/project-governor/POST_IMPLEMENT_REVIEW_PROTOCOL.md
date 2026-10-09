@@ -1,4 +1,4 @@
-# POST-IMPLEMENTATION REVIEW PROTOCOL v1.3 — SINGLE MARKDOWN PACKAGE
+# POST-IMPLEMENTATION REVIEW PROTOCOL v1.4 — HEAD-AWARE SINGLE MARKDOWN PACKAGE
 
 **Purpose:** Convert the current repository state after Antigravity implementation into a single evidence-first Markdown file outside the repository for independent ChatGPT review.
 
@@ -41,13 +41,13 @@ Known incomplete commands:
 (Exact `git status --short`)
 
 # 06. DIFF STAT
-(Exact `git diff --stat`)
+(Exact `git diff HEAD --stat` and `git diff --cached --stat`)
 
 # 07. DIFF CHECK
-(Exact `git diff --check`)
+(Exact `git diff HEAD --check` and `git diff --cached --check`)
 
 # 08. FULL DIFF
-(Exact current raw diff for intended files)
+(Complete `git diff HEAD -- <intended paths>`; HEAD/index hash; include staged+unstaged, plus untracked intended source content. Never truncate.)
 
 # 09. CHANGED FILES
 (File | Expected? | Mechanical change type | Notes)
@@ -99,12 +99,19 @@ For re-reviews, append:
 git branch --show-current
 git log -3 --oneline
 git status --short
-git diff --stat
-git diff --check
-git diff -- <all intended changed files>
+git diff HEAD --stat
+git diff HEAD --check
+git diff HEAD -- <all intended changed files>
+git diff --cached --stat
+git diff --cached --check
+git diff --cached -- <all intended changed files>
+git ls-files --others --exclude-standard
+git ls-files -s -- <all intended changed files>
 ```
 
-If staged changes exist, also capture cached diff/check/stat.
+Always capture the staged state explicitly, including the fact it is empty. Enumerate untracked files; intended untracked source/test files require complete readable content. Record SHA-256 of the full raw diff. Package build/test log only when actually available and completed; never invent exit codes. `git diff --check` does not scan untracked.
+
+Use `.agents/tools/capture_checkpoint_evidence.py` (read-only Git capture, external output) if available; manually add the approved contract, architecture context, relevant code and complete real validation logs. The generator must not claim GO.
 
 ## Changed-symbol evidence
 For each changed unit record file, symbol, changed hunk, direct callers, dependencies, validators/guards, selectors/projections, and related tests.

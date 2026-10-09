@@ -5,6 +5,8 @@ description: Checks whether a simulation campaign is ready for structured human 
 
 # Review Readiness
 
+**Scope:** Human review of simulation/assessment results only; not source code/Git diff acceptance. Use `/evidence-package` + Governor for code checkpoint review.
+
 1. Kiểm tra scenario/campaign status.
 2. Kiểm tra result provenance.
 3. Kiểm tra assumptions/data quality/limitations.

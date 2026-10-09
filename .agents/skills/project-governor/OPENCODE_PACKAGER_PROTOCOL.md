@@ -1,4 +1,4 @@
-# EVIDENCE PACKAGER PROTOCOL v1.3 — SINGLE MARKDOWN PACKAGE
+# EVIDENCE PACKAGER PROTOCOL v1.4 — HEAD-AWARE SINGLE MARKDOWN PACKAGE (legacy filename)
 
 **Role:** Deterministic context/evidence collector (executed by Antigravity)
 **OpenCode/OCR:** Removed
@@ -35,8 +35,10 @@ Never replace these with prose summaries in the package:
 
 ```text
 git status
-git diff
-git diff --check
+git diff HEAD
+git diff --cached
+git diff HEAD --check
+git ls-files --others --exclude-standard
 exact test commands/results
 exact build completion output
 repository search output

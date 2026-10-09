@@ -180,7 +180,7 @@ unless evidence directly supports them.
 Check that:
 - full test vs subset is accurately labeled
 - build actually finished
-- git diff --check is current
+- `git diff HEAD --check` and `git diff --cached --check` are current; HEAD/index/untracked scope is recorded
 - package was generated after latest fixes
 - git status matches claimed scope
 
@@ -250,7 +250,7 @@ VALIDATION CHECK
 Report exact status of:
 - tests
 - build
-- git diff --check
+- git diff HEAD --check + git diff --cached --check
 - git status
 
 REMAINING COMPATIBILITY BOUNDARIES
@@ -263,7 +263,7 @@ Do NOT design the next checkpoint.
 
 If GO:
 State that the checkpoint is technically ready for human commit authorization.
-Stop there. Do NOT propose the next checkpoint yet. Wait for human authorization, commit, and verification of clean status before proposing the next checkpoint.
+Stop there. Do NOT propose the next checkpoint yet. Wait for human authorization, commit, and verification of Git status with unrelated changes safely isolated (not forcibly deleted) before proposing the next checkpoint.
 
 Do not write implementation code.
 ```
@@ -305,8 +305,8 @@ Return:
 
 ---
 
-# v1.3 NEXT-CHECKPOINT RULE
+# v1.4 NEXT-CHECKPOINT RULE
 
-Do not issue an executable next-checkpoint contract unless the current checkpoint is GO, committed, and clean status has been verified. Before commit, only record deferred P2/P3 concerns and remaining boundaries.
+Do not issue an executable next-checkpoint contract unless the current checkpoint is GO, committed by the human, and residual Git status/untracked inventory has been verified and safely isolated. Before commit, only record deferred P2/P3 concerns and remaining boundaries.
 
 If the package is missing raw current diff, current git status, required test/build evidence, or checkpoint-required search evidence, return `EVIDENCE-INCOMPLETE`.

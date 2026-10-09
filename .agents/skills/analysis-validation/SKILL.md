@@ -1,6 +1,8 @@
 ---
 name: analysis-validation
-description: Validates analysis and simulation integrity, provenance, edge cases and repeatability.
+description: >-
+  Validates analysis and simulation integrity, provenance, edge cases and
+  repeatability.
 ---
 
 # Analysis / Simulation Validation

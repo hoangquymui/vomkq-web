@@ -4,6 +4,8 @@ description:
 
 # Development Workflow
 
+> Legacy lightweight checklist. For approved architecture checkpoints use `/feature-plan` then `/implement-feature`; do not launch this alongside `/implement-feature` for the same change.
+
 ## Mục tiêu
 Phát triển một tính năng mới trong dự án vomkq-web theo cách có kiểm soát,
 không tự ý thay đổi kiến trúc hoặc hành vi hiện có nếu chưa kiểm tra ảnh hưởng.

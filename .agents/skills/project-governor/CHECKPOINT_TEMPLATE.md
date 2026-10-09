@@ -148,10 +148,12 @@ Compatibility/migration cases:
 
 ```text
 npx vitest run
-npm run build
-git diff --check
+npm run build # run after stable code per FAST_VALIDATION.md
+git diff HEAD --check
+git diff --cached --check
 git status --short
-git diff --stat
+git diff HEAD --stat
+git diff --cached --stat
 ```
 
 Add checkpoint-specific regression commands here:

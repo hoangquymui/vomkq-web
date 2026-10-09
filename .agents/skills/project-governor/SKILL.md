@@ -3,11 +3,21 @@ name: project-governor
 description: "Antigravity skill for strictly enforcing project governance, architectural invariants, and the PACK_ONLY migration pipeline."
 ---
 
-# PROJECT GOVERNOR v1.3 — ANTIGRAVITY SKILL (SINGLE MARKDOWN PIPELINE)
+# PROJECT GOVERNOR v1.4 — ANTIGRAVITY SKILL (GIT HEAD-AWARE EVIDENCE PIPELINE)
 
 **Project:** Geospatial Scenario Simulation / Decision-Support Workspace
 **Governing document:** `docs/NORTH_STAR/NORTH_STAR.md`
 **Purpose:** Make Antigravity act as a disciplined senior engineer/architect for this repository, not as an autonomous refactoring bot.
+
+---
+
+# 0. OPERATING SAFETY DELTAS — v1.4
+
+- `.agents` changes are separate from application checkpoints; apply only after current checkpoint closure and baseline inventory. Preserve modified governance skills and other unrelated work.
+- **Workflow naming:** `/evidence-package` is the code/Git evidence workflow; `/review-readiness` is for simulation/human review. `/evidence-repack` is a mode of `/evidence-package`, not a separate slash command; `prepare commit` is a human-owned handoff, not an agent workflow.
+- **Git:** capture `git diff HEAD` and `git diff --cached` plus untracked inventory, verify HEAD/index/base, and never truncate source/test diff. `git diff` alone omits staged changes.
+- **Validation:** obey `FAST_VALIDATION.md`, preserve meaningful regression tests and truthful exit codes. Avoid repetitive builds and script-driven mass rewrites.
+- **Ownership:** no agent stage/commit/push or destructive Git operations in this workflow.
 
 ---
 
@@ -51,7 +61,7 @@ Antigravity handles both implementation and evidence collection. It MUST NOT:
 
 Antigravity must perform reproducible mechanical operations for packaging, such as search, symbol/call-site collection, dependency tracing, git evidence capture, validation-output capture, and package assembly.
 
-The official pipeline is defined in `PIPELINE_V1.2.md` (updated to v1.3).
+The official pipeline is defined in `PIPELINE_V1.2.md` (legacy filename, governing content v1.4). Review `/evidence-package` and `FAST_VALIDATION.md` before coding.
 
 ---
 
@@ -273,9 +283,9 @@ Only:
 
 Antigravity must only report evidence. It does not issue GO/NO-GO or perform semantic review instead of ChatGPT.
 
-## MODE F — COMMIT PROPOSAL
+## MODE F — HUMAN COMMIT HANDOFF
 
-Antigravity may propose commands but must not commit/push unless explicitly authorized by the user.
+Antigravity may propose commands only. In this project stage, the human alone runs `git add`, `git commit`, `git push` and any destructive Git operation. An ordinary GO review is NOT permission for the agent to execute them.
 
 ---
 
@@ -540,7 +550,7 @@ Fixtures must not accidentally violate unrelated canonical invariants unless the
 
 # 11. VALIDATION TIERS
 
-Run the lightest useful tier during implementation, but FINAL AUDIT requires the full tier specified by the checkpoint.
+Run the lightest useful tier during implementation, but FINAL AUDIT requires the full tier specified by the checkpoint. Follow `FAST_VALIDATION.md`: do not perform redundant slow builds while code is still moving; a source change after final validation requires corresponding revalidation.
 
 ## Tier 1 — Local loop
 
@@ -563,9 +573,10 @@ Unless the repository provides stronger project-specific commands:
 ```text
 npx vitest run
 npm run build
-git diff --check
+git diff HEAD --check
+git diff --cached --check
 git status --short
-git diff --stat
+git diff HEAD --stat
 ```
 
 Also run checkpoint-specific regression/golden scenario commands when relevant.
@@ -585,10 +596,12 @@ Never assume a clean tree. Check it.
 Mandatory:
 
 ```text
-git diff --check
+git diff HEAD --check
+git diff --cached --check
 git status --short
-git diff --stat
-git diff -- <intended files>
+git diff HEAD --stat
+git diff --cached --stat
+git diff HEAD -- <intended files>
 ```
 
 ## Staging
@@ -599,7 +612,7 @@ Prefer explicit paths:
 git add path/a path/b
 ```
 
-Do not recommend `git add -A` for checkpoint commits unless the user explicitly asks to stage everything and the tree has been audited.
+Human-owned command only: present exact paths for the human to review. Never execute `git add`, even for a subset. Never recommend `git add -A` for checkpoint commits.
 
 ## Before commit
 
@@ -616,7 +629,7 @@ Line-ending conversion warnings should be reported separately from actual `diff 
 
 ## Commit / push
 
-Do not commit or push without explicit user authorization.
+Agent must not execute stage/commit/push; human runs those commands. Independent reviewer GO precedes human action. Never checkout/restore/reset/clean uncommitted or unknown files.
 
 ---
 
@@ -734,7 +747,7 @@ Every IMPLEMENT / REVIEW / FINAL AUDIT report must use this structure:
 5. Commands actually executed
 6. Test results with counts
 7. Build result
-8. git diff --check result
+8. git diff HEAD --check and cached diff checks (results)
 9. git status --short
 10. Remaining legacy/compatibility boundaries
 11. Known limitations / follow-ups
@@ -873,7 +886,7 @@ ready for independent review
 
 but it MUST NOT report final architectural approval.
 
-The next checkpoint must not be approved/planned as executable work until the current checkpoint is GO, committed, and clean status is verified.
+The next checkpoint must not be executed until the current checkpoint has GO, an observed human commit, and a verified status inventory. Unrelated pre-existing dirty files may remain if explicitly recorded and safely isolated; do not force-clean or destroy them.
 
 ---
 
@@ -953,7 +966,7 @@ No package may expose secrets, tokens, private certificates, credentials, or unr
 
 # 27. COMMIT AND NEXT-CHECKPOINT GATE
 
-Only after ChatGPT returns GO and the human explicitly authorizes commit:
+Only after ChatGPT returns GO, hand these commands to the human **without executing them**:
 
 ```text
 git add <explicit intended paths>
@@ -967,7 +980,7 @@ git status --short
 
 Do not use `git add -A` by default.
 
-Only after successful commit + clean status may ChatGPT/architect derive the next checkpoint from:
+Only after a verified human commit and status inventory (unrelated dirt safely isolated) may ChatGPT/architect authorize the next checkpoint from:
 
 ```text
 North Star

@@ -45,7 +45,9 @@ Cập nhật docs/DEBUG_NOTES.md sau khi hoàn thành bug fix.
 
 ## 5. Git
 Agent không được tự thực hiện:
-- git push
+- git add / git stage
 - git commit
+- git push
+- git checkout / git restore / git reset / git clean trên working tree có thay đổi, nếu không có chỉ đạo và bảo toàn dữ liệu được xác nhận
 
-Người dùng sẽ tự kiểm soát commit và push.
+Người dùng tự kiểm soát stage, commit, push. Agent chỉ được cung cấp lệnh để người dùng xem xét; không tự chạy lệnh Git có khả năng ghi đè/mất dữ liệu. Giữ nguyên untracked/staged/unrelated changes; nếu chưa rõ quyền sở hữu, STOP.

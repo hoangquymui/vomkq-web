@@ -7,7 +7,7 @@ description: Audits the current project against the North Star before code chang
 
 Mục tiêu: hiểu project hiện tại trước khi sửa.
 
-1. Đọc `KE_HOACH_KIM_CHI_NAM_PHAN_MEM_MO_PHONG_PHONG_KHONG.md` và rules.
+1. Đọc `docs/NORTH_STAR/NORTH_STAR.md` và rules.
 2. Scan repo: domain, stores, scenario, analysis, simulation, 2D, 3D, Inspector, tests, config.
 3. Vẽ dependency: Domain → Application → Analysis/Simulation → Visualization.
 4. Tìm nơi đang gộp PLAN/OBSERVED/SIMULATED.

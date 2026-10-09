@@ -1,4 +1,4 @@
-# PROJECT GOVERNOR v1.3 — SINGLE MARKDOWN PACKAGE PIPELINE
+# PROJECT GOVERNOR v1.4 — GIT HEAD-AWARE PIPELINE (legacy filename retained)
 
 **Status:** Active operating profile
 **Evidence mode:** SINGLE MARKDOWN PACKAGE
@@ -67,11 +67,13 @@ Antigravity consumes North Star + Governor + Checkpoint Contract, edits only app
 ## Gate 3 — Validation
 
 ```bash
+npx tsc -b --pretty false
 npx vitest run
-npm run build
-git diff --check
+npm run build  # once on stable final code; rerun only after relevant changes
+git diff HEAD --check
 git status --short
-git diff --stat
+git diff HEAD --stat
+git diff --cached --stat
 ```
 
 Checkpoint-specific commands may add to this gate.
@@ -85,8 +87,8 @@ Allowed outcomes: `GO`, `NO-GO`, `EVIDENCE-INCOMPLETE`.
 ## Gate 6 — Fix loop
 Only confirmed P0/P1 blockers are mandatory in the current checkpoint. After any code change, the previous package is stale; create a fresh EVIDENCE PACKAGE.
 
-## Gate 7 — Commit
-Only after GO + explicit human authorization:
+## Gate 7 — Commit (HUMAN ONLY)
+Only after GO, hand these commands to the human. Antigravity MUST NOT execute stage/commit/push:
 
 ```bash
 git add <explicit intended paths>
@@ -99,12 +101,12 @@ git status --short
 ```
 
 ## Gate 8 — Next checkpoint
-Plan the next checkpoint only from committed repository state + final review + remaining boundaries + North Star priorities.
+Plan the next checkpoint only after verifying the human commit and inventorying remaining dirty/untracked files; preserve unrelated changes. Use committed repository state + final review + remaining boundaries + North Star priorities.
 
 ## Hard rules
 - Antigravity never self-certifies architecture.
 - ChatGPT never returns GO without current raw evidence in the package.
 - Human controls commit/push.
 - Stale packages are invalid.
-- Next checkpoint is not approved before current checkpoint is committed and clean.
+- Next checkpoint execution waits for a verified human commit and safely isolated Git status; do not require destructive cleaning of unrelated files.
 - The single Markdown package and temporary logs must be stored outside the Git repository.

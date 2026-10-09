@@ -1,4 +1,4 @@
-# POST-IMPLEMENTATION REVIEW PACKAGE TEMPLATE — v1.3 SINGLE FILE
+# POST-IMPLEMENTATION REVIEW PACKAGE TEMPLATE — v1.4 HEAD-AWARE SINGLE FILE
 
 Use this template to generate the single Markdown file (`REVIEW_PACKAGE.md`) for ChatGPT review.
 
@@ -36,13 +36,13 @@ Previous package:
 (Exact `git status --short`)
 
 ## 06. DIFF STAT
-(Exact `git diff --stat`)
+(Exact `git diff HEAD --stat`; show staged status separately)
 
 ## 07. DIFF CHECK
-(Exact `git diff --check`)
+(Exact `git diff HEAD --check` and `git diff --cached --check`)
 
 ## 08. FULL DIFF
-(Exact current raw diff for intended files)
+(Exact complete `git diff HEAD -- <intended files>` plus untracked intended files, HEAD/index provenance and SHA-256; no excerpts)
 
 ## 09. CHANGED FILES
 `File | Expected? | Mechanical change type | Notes`

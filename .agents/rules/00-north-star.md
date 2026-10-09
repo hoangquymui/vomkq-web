@@ -23,7 +23,7 @@ when they conflict with the North Star or current architecture.
 - Simulate before conclude.
 - Human before action.
 - Canonical domain registries are authoritative.
-- instances[] is a legacy active-plan projection only.
+- Sau Checkpoint 1K, `instances[]` không phải trường state lưu trữ: chỉ được tạo projection tương thích `EquipmentInstance` qua `selectActiveEquipment(state)`. Nếu 1K chưa commit/verify, không tự giả định cutover hoàn tất.
 - PLANNED, OBSERVED and SIMULATED state are distinct.
 - Scenario, Plan and SimulationRun must have explicit ownership and provenance.
 - Significant canonical changes require validation, revision and audit according to their applicable scope.

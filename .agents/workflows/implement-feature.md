@@ -8,9 +8,9 @@
 6. Nối UI/2D/3D vào shared state/result.
 7. Thêm incomplete/stale/error states.
 8. Thêm tests/regression.
-9. Chạy typecheck/lint/test/build phù hợp.
+9. Local loop: typecheck + focused tests. Chỉ khi code ổn định mới chạy full suite + production build cuối; tránh build lặp không có lý do. Không vô hiệu hóa test hoặc gán PASS không có log.
 10. Kiểm tra provenance + debug context.
-11. Review diff.
+11. Xuất review evidence theo `/evidence-package` (Git HEAD-aware; staged/unstaged/untracked), không dùng `/review-readiness` của simulation để nghiệm thu code.
 12. Báo cáo files changed, tests, limitations, important parameters.
 
-Không tự git push.
+Không tự stage/commit/push; không checkout/restore/reset/clean hoặc xóa untracked để xử lý dirty tree.
