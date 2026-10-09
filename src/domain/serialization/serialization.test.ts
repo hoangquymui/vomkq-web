@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'vitest';
-import { useTacticalStore } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
 import { migrateLegacyLayoutToV1 } from './legacyLayoutMigration';
 import type { LayoutSaveData } from '../../types/layout';
 
@@ -12,7 +12,7 @@ describe('1H Versioned Canonical Serialization', () => {
       activePlanId: 'p_sample',
       activeSimulationRunId: null,
       simulationRuns: {},
-      placements: {}, definitions: {}, observations: {}, simulations: {}, visuals: {}, instances: [],
+      placements: {}, definitions: {}, observations: {}, simulations: {}, visuals: {},
       canonicalInitialized: true,
     });
   };
@@ -93,7 +93,7 @@ describe('1H Versioned Canonical Serialization', () => {
     const exportedBefore = useTacticalStore.getState().exportCanonicalPackage();
     
     // Poison instances
-    useTacticalStore.setState({ instances: [{ instanceId: 'POISON', category: 'RadarCanhGioi', templateId: 'poison' } as any] });
+    useTacticalStore.setState({ instances: [{ instanceId: 'POISON' }] } as any);
     
     const exportedAfter = useTacticalStore.getState().exportCanonicalPackage();
     expect(exportedAfter.placements).toEqual(exportedBefore.placements);
@@ -190,10 +190,29 @@ describe('1H Versioned Canonical Serialization', () => {
   });
 
   test('N. canonical serialization never reconstructs authority from instances[]', () => {
-    // Tested in F. Explicitly check the other way: if we empty instances[], export is still whole.
-    useTacticalStore.setState({ instances: [] });
-    const exported = useTacticalStore.getState().exportCanonicalPackage();
-    expect(Object.keys(exported.placements).length).toBeGreaterThan(0); // Canonical is intact
+    // 1. When canonical placements exist, emptying instances[] does not alter canonical export
+    const canonicalCount = Object.keys(useTacticalStore.getState().placements).length;
+    expect(canonicalCount).toBeGreaterThan(0);
+
+    useTacticalStore.setState({ instances: [] } as any);
+    const exportedFull = useTacticalStore.getState().exportCanonicalPackage();
+    expect(Object.keys(exportedFull.placements).length).toBe(canonicalCount);
+
+    // 2. When canonical state is reset/empty, rogue instances[] are never reconstructed into canonical package
+    resetStore();
+    expect(Object.keys(useTacticalStore.getState().placements).length).toBe(0);
+
+    useTacticalStore.setState({
+      instances: [
+        { instanceId: 'ghost_legacy_1', name: 'Ghost Radar', templateId: 'radar_36d6' },
+        { instanceId: 'ghost_legacy_2', name: 'Ghost SAM', templateId: 'sam_s300' }
+      ]
+    } as any);
+
+    const exportedEmpty = useTacticalStore.getState().exportCanonicalPackage();
+    expect(Object.keys(exportedEmpty.placements).length).toBe(0);
+    expect(exportedEmpty.placements['ghost_legacy_1']).toBeUndefined();
+    expect(exportedEmpty.placements['ghost_legacy_2']).toBeUndefined();
   });
 
   test('O. simulationRuns round-trip', () => {
@@ -240,9 +259,8 @@ describe('1H Versioned Canonical Serialization', () => {
   test('S. fresh instances projection produced inside same transition', () => {
     const exported = useTacticalStore.getState().exportCanonicalPackage();
     resetStore();
-    useTacticalStore.setState({ instances: [] });
     useTacticalStore.getState().importCanonicalPackage(exported);
-    expect(useTacticalStore.getState().instances.length).toBeGreaterThan(0);
+    expect(selectActiveEquipment(useTacticalStore.getState()).length).toBeGreaterThan(0);
   });
 
   test('T. exported package mutation cannot mutate store', () => {

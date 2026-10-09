@@ -11,7 +11,7 @@ import {
   Shield,
   Layers,
 } from 'lucide-react';
-import { useTacticalStore } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
 import type { LayoutSaveData } from '../../types/layout';
 import { CATEGORY_META } from '../../types/equipment';
 
@@ -19,11 +19,11 @@ export const LayoutModal: React.FC = () => {
   const {
     showLayoutModal,
     setShowLayoutModal,
-    instances,
     exportToLayout,
     importFromLayout,
     clearAll,
   } = useTacticalStore();
+  const instances = useTacticalStore(selectActiveEquipment);
 
   const [activeTab, setActiveTab] = useState<'export' | 'import'>('export');
   const [layoutName, setLayoutName] = useState<string>(() => {

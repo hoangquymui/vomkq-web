@@ -29,7 +29,6 @@ describe('Checkpoint 1I: Final Semantic Correction', () => {
       definitions: {},
       observations: {},
       visuals: {},
-      instances: [],
       simulationRuns: {},
       simulations: {},
       revisions: {},
