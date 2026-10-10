@@ -130,7 +130,8 @@ export function createAuditAppend(
   targetIds: string[],
   actor: AuditActor,
   source: AuditSourceType,
-  derivedFromRevisionId?: string | null
+  derivedFromRevisionId?: string | null,
+  reason?: string
 ): AppendAuditResult {
 
   const scopeKey = revisionScopeKey(scope);
@@ -152,7 +153,15 @@ export function createAuditAppend(
   }
 
   // Pure data equality check based on full deterministic string representation, avoiding hash collisions.
-  if (prevFingerprintStr === nextFingerprintStr && action !== 'IMPORT' && action !== 'BRANCH') {
+  if (
+    prevFingerprintStr === nextFingerprintStr &&
+    action !== 'IMPORT' &&
+    action !== 'BRANCH' &&
+    action !== 'WITHDRAW' &&
+    action !== 'ARCHIVE' &&
+    action !== 'RESTORE' &&
+    action !== 'TRASH'
+  ) {
     return null;
   }
 
@@ -171,7 +180,8 @@ export function createAuditAppend(
     createdAt: now,
     actor,
     source,
-    canonicalFingerprint: fingerprint
+    canonicalFingerprint: fingerprint,
+    ...(reason ? { reason } : {})
   };
 
   const event: AuditEvent = {
@@ -182,7 +192,8 @@ export function createAuditAppend(
     source,
     action,
     targetType,
-    targetIds
+    targetIds,
+    ...(reason ? { reason } : {})
   };
 
   return { revision, event };

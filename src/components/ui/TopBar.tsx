@@ -10,10 +10,21 @@ import {
   Sparkles,
   FolderKanban,
 } from 'lucide-react';
-import { useTacticalStore } from '../../store/useTacticalStore';
+import {
+  useTacticalStore,
+  selectActiveScenario,
+  selectActivePlan,
+  selectPlansForActiveScenario,
+  SCENARIO_STATUS_LABELS,
+  PLAN_STATUS_LABELS,
+} from '../../store/useTacticalStore';
 import { PRESET_LOCATIONS } from '../../data/equipmentTemplates';
 
 export const TopBar: React.FC = () => {
+  const activeScenario = useTacticalStore(selectActiveScenario);
+  const activePlan = useTacticalStore(selectActivePlan);
+  const plans = useTacticalStore(selectPlansForActiveScenario);
+
   const {
     viewMode,
     setViewMode,
@@ -34,6 +45,8 @@ export const TopBar: React.FC = () => {
     aiAdvisorPanelOpen,
     toggleAiAdvisorPanel,
     setShowLayoutModal,
+    setShowWorkspaceModal,
+    switchActivePlan,
   } = useTacticalStore();
 
   return (
@@ -56,6 +69,97 @@ export const TopBar: React.FC = () => {
             Hệ Thống Mô Phỏng & Lập Kế Hoạch Phòng Không Trên Địa Hình Thực Tế
           </p>
         </div>
+      </div>
+
+      {/* 1.5. Ngữ cảnh Kịch bản & Phương án tác chiến */}
+      <div className="flex items-center gap-2 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-cyan-800/40 shadow-sm">
+        {/* Kịch bản badge */}
+        <div className="flex items-center gap-1.5 border-r border-slate-700/80 pr-2">
+          <Globe2 className="w-3.5 h-3.5 text-cyan-400" />
+          <span
+            className="text-xs font-mono font-semibold text-slate-200 max-w-[120px] lg:max-w-[160px] truncate"
+            title={activeScenario?.name || 'Kịch bản'}
+          >
+            {activeScenario ? activeScenario.name : 'Chưa chọn'}
+          </span>
+          {activeScenario && (
+            <span
+              className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold uppercase ${
+                activeScenario.status === 'active'
+                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                  : activeScenario.status === 'archived'
+                  ? 'bg-slate-800 text-slate-400 border border-slate-700'
+                  : 'bg-amber-950 text-amber-300 border border-amber-500/40'
+              }`}
+            >
+              {SCENARIO_STATUS_LABELS[activeScenario.status] || activeScenario.status}
+            </span>
+          )}
+        </div>
+
+        {/* Quick Plan Switcher */}
+        <div className="flex items-center gap-1.5">
+          <Layers className="w-3.5 h-3.5 text-cyan-400" />
+          {plans.length > 0 ? (
+            <select
+              value={activePlan?.id || ''}
+              onChange={(e) => {
+                if (e.target.value) {
+                  try {
+                    switchActivePlan(e.target.value);
+                  } catch (err: any) {
+                    console.error('Lỗi khi chuyển đổi Phương án:', err);
+                  }
+                }
+              }}
+              className="bg-transparent text-cyan-300 font-mono text-xs font-bold focus:outline-none cursor-pointer max-w-[140px] lg:max-w-[200px] truncate"
+              title="Chuyển đổi Phương án tác chiến"
+            >
+              {plans.map((p) => (
+                <option key={p.id} value={p.id} className="bg-slate-900 text-slate-200">
+                  {p.name} (v{p.version}{p.revisionNumber && p.revisionNumber > 1 ? `.r${p.revisionNumber}` : ''} - {PLAN_STATUS_LABELS[p.status] || p.status})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-xs text-slate-500 font-mono italic">Chưa có phương án</span>
+          )}
+          {activePlan && (
+            <div className="flex items-center gap-1">
+              {activePlan.revisionNumber && activePlan.revisionNumber > 1 && (
+                <span className="text-[9px] px-1 py-0.2 rounded font-mono font-bold bg-violet-950 text-violet-300 border border-violet-500/40">
+                  r{activePlan.revisionNumber}
+                </span>
+              )}
+              <span
+                className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold uppercase ${
+                  activePlan.status === 'approved'
+                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                    : activePlan.status === 'proposed'
+                    ? 'bg-sky-950 text-sky-300 border border-sky-500/40'
+                    : activePlan.status === 'withdrawn'
+                    ? 'bg-slate-800 text-slate-400 border border-slate-600'
+                    : activePlan.status === 'archived'
+                    ? 'bg-slate-800 text-slate-400 border border-slate-600'
+                    : activePlan.status === 'trashed'
+                    ? 'bg-rose-950 text-rose-300 border border-rose-600/40'
+                    : 'bg-amber-950 text-amber-300 border border-amber-500/40'
+                }`}
+              >
+                {PLAN_STATUS_LABELS[activePlan.status] || activePlan.status}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Nút mở Không Gian Modal */}
+        <button
+          onClick={() => setShowWorkspaceModal(true)}
+          className="ml-1 px-2 py-0.5 text-[11px] font-bold rounded bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 transition-all cursor-pointer shadow-sm"
+          title="Mở Quản lý Không gian tác chiến (Kịch bản & Phương án)"
+        >
+          Không Gian
+        </button>
       </div>
 
       {/* 2. Điều hướng Khu vực, Chế độ 3D/2D & Bản đồ */}

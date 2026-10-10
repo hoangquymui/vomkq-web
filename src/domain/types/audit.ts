@@ -30,7 +30,18 @@ export interface RevisionMetadata {
   canonicalFingerprint: string;
 }
 
-export type AuditAction = 'ADD' | 'UPDATE' | 'REMOVE' | 'CLEAR_ALL' | 'IMPORT' | 'BRANCH' | 'OPERATIONAL_CHANGE';
+export type AuditAction =
+  | 'ADD'
+  | 'UPDATE'
+  | 'REMOVE'
+  | 'CLEAR_ALL'
+  | 'IMPORT'
+  | 'BRANCH'
+  | 'OPERATIONAL_CHANGE'
+  | 'WITHDRAW'
+  | 'ARCHIVE'
+  | 'RESTORE'
+  | 'TRASH';
 export type AuditTargetType = 'EQUIPMENT' | 'PLAN' | 'SCENARIO' | 'WORKSPACE';
 
 export interface AuditEvent {

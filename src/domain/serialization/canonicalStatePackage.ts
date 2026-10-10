@@ -3,8 +3,11 @@ import type { Plan } from '../types/plan';
 import type { EquipmentDefinition, EquipmentPlacement, ObservationState } from '../types/equipment';
 import type { SimulationState, SimulationRun } from '../types/simulation';
 import type { LegacyPresentationState } from '../adapters/legacyEquipmentAdapter';
+import type { AuditEvent, RevisionMetadata } from '../types/audit';
 
 export const CANONICAL_SCHEMA_VERSION = 1;
+export const CANONICAL_SCHEMA_VERSION_V1 = 1;
+export const CANONICAL_SCHEMA_VERSION_V2 = 2;
 
 export interface CanonicalStatePackageV1 {
   schemaVersion: 1;
@@ -27,17 +30,35 @@ export interface CanonicalStatePackageV1 {
   visuals: Record<string, LegacyPresentationState>;
 }
 
-export function validateCanonicalStatePackageV1(pkg: any): asserts pkg is CanonicalStatePackageV1 {
-  if (!pkg || typeof pkg !== 'object') {
-    throw new Error('Package must be an object');
-  }
-  if (pkg.schemaVersion !== CANONICAL_SCHEMA_VERSION) {
-    throw new Error(`Unsupported schema version: ${pkg.schemaVersion}`);
-  }
-  if (!pkg.context || !pkg.scenarios || !pkg.plans || !pkg.placements || !pkg.definitions || !pkg.observations || !pkg.simulationRuns || !pkg.simulations || !pkg.visuals) {
-    throw new Error('Malformed CanonicalStatePackageV1: missing required registries or context');
-  }
-  
+export interface CanonicalStatePackageV2 {
+  schemaVersion: 2;
+  metadata: {
+    exportedAt: string;
+    layoutName?: string;
+    description?: string;
+  };
+  context: {
+    activeScenarioId: string | null;
+    activePlanId: string | null;
+    activeSimulationRunId: string | null;
+  };
+  scenarios: Record<string, Scenario>;
+  plans: Record<string, Plan>;
+  placements: Record<string, EquipmentPlacement>;
+  definitions: Record<string, EquipmentDefinition>;
+  observations: Record<string, ObservationState>;
+  simulationRuns: Record<string, SimulationRun>;
+  simulations: Record<string, Record<string, SimulationState>>;
+  visuals: Record<string, LegacyPresentationState>;
+  auditEvents: Record<string, AuditEvent>;
+  auditEventOrder: string[];
+  revisions: Record<string, RevisionMetadata>;
+  revisionHeads: Record<string, string>;
+}
+
+export type CanonicalStatePackage = CanonicalStatePackageV1 | CanonicalStatePackageV2;
+
+function validateCanonicalGraph(pkg: any): void {
   // Validate context references
   const { activeScenarioId, activePlanId, activeSimulationRunId } = pkg.context;
   if (activeScenarioId && !pkg.scenarios[activeScenarioId]) {
@@ -143,4 +164,89 @@ export function validateCanonicalStatePackageV1(pkg: any): asserts pkg is Canoni
       throw new Error(`SimulationRun ${runId} Plan mismatch with Scenario`);
     }
   }
+}
+
+export function validateCanonicalStatePackageV1(pkg: any): asserts pkg is CanonicalStatePackageV1 {
+  if (!pkg || typeof pkg !== 'object') {
+    throw new Error('Package must be an object');
+  }
+  if (pkg.schemaVersion !== CANONICAL_SCHEMA_VERSION_V1) {
+    throw new Error(`Unsupported schema version: ${pkg.schemaVersion}`);
+  }
+  if (!pkg.context || !pkg.scenarios || !pkg.plans || !pkg.placements || !pkg.definitions || !pkg.observations || !pkg.simulationRuns || !pkg.simulations || !pkg.visuals) {
+    throw new Error('Malformed CanonicalStatePackageV1: missing required registries or context');
+  }
+  validateCanonicalGraph(pkg);
+}
+
+export function validateCanonicalStatePackageV2(pkg: any): asserts pkg is CanonicalStatePackageV2 {
+  if (!pkg || typeof pkg !== 'object') {
+    throw new Error('Package must be an object');
+  }
+  if (pkg.schemaVersion !== CANONICAL_SCHEMA_VERSION_V2) {
+    throw new Error(`Unsupported schema version: ${pkg.schemaVersion}`);
+  }
+  if (!pkg.context || !pkg.scenarios || !pkg.plans || !pkg.placements || !pkg.definitions || !pkg.observations || !pkg.simulationRuns || !pkg.simulations || !pkg.visuals) {
+    throw new Error('Malformed CanonicalStatePackageV2: missing required registries or context');
+  }
+  if (!pkg.auditEvents || !pkg.auditEventOrder || !pkg.revisions || !pkg.revisionHeads) {
+    throw new Error('Malformed CanonicalStatePackageV2: missing required audit or revision history registries');
+  }
+  validateCanonicalGraph(pkg);
+
+  // Validate audit and revision integrity
+  for (const eventId of pkg.auditEventOrder) {
+    if (!pkg.auditEvents[eventId]) {
+      throw new Error(`auditEventOrder references missing AuditEvent ${eventId}`);
+    }
+  }
+  for (const [revHeadKey, revId] of Object.entries(pkg.revisionHeads as Record<string, string>)) {
+    if (!pkg.revisions[revId]) {
+      throw new Error(`revisionHeads key ${revHeadKey} references missing Revision ${revId}`);
+    }
+  }
+}
+
+export function validateCanonicalStatePackage(pkg: any): asserts pkg is CanonicalStatePackage {
+  if (!pkg || typeof pkg !== 'object') {
+    throw new Error('Package must be an object');
+  }
+  if (pkg.schemaVersion === CANONICAL_SCHEMA_VERSION_V1) {
+    validateCanonicalStatePackageV1(pkg);
+  } else if (pkg.schemaVersion === CANONICAL_SCHEMA_VERSION_V2) {
+    validateCanonicalStatePackageV2(pkg);
+  } else {
+    throw new Error(`Unsupported schema version: ${pkg.schemaVersion}`);
+  }
+}
+
+export function migrateCanonicalPackageV1ToV2(pkg: CanonicalStatePackageV1): CanonicalStatePackageV2 {
+  validateCanonicalStatePackageV1(pkg);
+  const normalizedPlans: Record<string, Plan> = {};
+  for (const [planId, plan] of Object.entries(pkg.plans)) {
+    normalizedPlans[planId] = {
+      ...plan,
+    };
+  }
+
+  return {
+    schemaVersion: CANONICAL_SCHEMA_VERSION_V2,
+    metadata: {
+      ...pkg.metadata,
+      description: 'Migrated from CanonicalStatePackageV1. Historical audit trail absent in V1 payload.',
+    },
+    context: { ...pkg.context },
+    scenarios: { ...pkg.scenarios },
+    plans: normalizedPlans,
+    placements: { ...pkg.placements },
+    definitions: { ...pkg.definitions },
+    observations: { ...pkg.observations },
+    simulationRuns: { ...pkg.simulationRuns },
+    simulations: { ...pkg.simulations },
+    visuals: { ...pkg.visuals },
+    auditEvents: {},
+    auditEventOrder: [],
+    revisions: {},
+    revisionHeads: {},
+  };
 }

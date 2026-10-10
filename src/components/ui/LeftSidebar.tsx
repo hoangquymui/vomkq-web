@@ -13,8 +13,15 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Lock,
 } from 'lucide-react';
-import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
+import {
+  useTacticalStore,
+  selectActiveEquipment,
+  selectActiveScenario,
+  selectActivePlan,
+  PLAN_STATUS_LABELS,
+} from '../../store/useTacticalStore';
 import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
 import type { EquipmentTemplate } from '../../types/equipment';
 import { ASSET_TYPE_REGISTRY } from '../../utils/assetVisualization';
@@ -25,6 +32,13 @@ export const LeftSidebar: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
 
   const instances = useTacticalStore(selectActiveEquipment);
+  const activeScenario = useTacticalStore(selectActiveScenario);
+  const activePlan = useTacticalStore(selectActivePlan);
+  const isReadOnly =
+    !activePlan ||
+    activePlan.status !== 'draft' ||
+    activeScenario?.status === 'archived' ||
+    activeScenario?.status === 'trashed';
   const {
     selectedInstanceId,
     pendingTemplate,
@@ -86,6 +100,20 @@ export const LeftSidebar: React.FC = () => {
       {/* Thân Sidebar */}
       {!collapsed && (
         <div className="w-full h-full bg-slate-950/85 backdrop-blur-md border-r border-slate-800 flex flex-col select-none">
+          {isReadOnly && (
+            <div className="bg-amber-950/70 border-b border-amber-600/40 px-3 py-2 text-xs flex items-center gap-2 text-amber-200">
+              <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="text-[11px] leading-tight font-medium">
+                {!activePlan
+                  ? 'Chưa chọn Phương án (Chỉ xem)'
+                  : activeScenario?.status === 'trashed'
+                  ? 'Kịch bản trong thùng rác (Chỉ xem)'
+                  : activeScenario?.status === 'archived'
+                  ? 'Kịch bản đã lưu trữ (Chỉ xem)'
+                  : `Phương án [${activePlan.name}] (${PLAN_STATUS_LABELS[activePlan.status] || activePlan.status}) — Chỉ xem`}
+              </span>
+            </div>
+          )}
           {/* Tabs Selector */}
           <div className="flex border-b border-slate-800 bg-slate-900/50 p-1">
             <button
@@ -180,7 +208,10 @@ export const LeftSidebar: React.FC = () => {
 
                     {/* Nút triển khai */}
                     <button
+                      disabled={isReadOnly}
+                      title={isReadOnly ? 'Không thể đặt khí tài trong chế độ Chỉ xem' : undefined}
                       onClick={() => {
+                        if (isReadOnly) return;
                         if (isSelectedForPlacement) {
                           setPendingTemplate(null);
                         } else {
@@ -188,13 +219,15 @@ export const LeftSidebar: React.FC = () => {
                         }
                       }}
                       className={`w-full mt-2.5 py-1.5 px-3 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                        isSelectedForPlacement
+                        isReadOnly
+                          ? 'bg-slate-800/80 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
+                          : isSelectedForPlacement
                           ? 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border border-rose-600'
                           : 'bg-cyan-950/80 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-600/60'
                       }`}
                     >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      <span>{isSelectedForPlacement ? 'Hủy đặt khí tài' : 'Triển khai lên bản đồ'}</span>
+                      {isReadOnly ? <Lock className="w-3.5 h-3.5" /> : <PlusCircle className="w-3.5 h-3.5" />}
+                      <span>{isReadOnly ? 'Chế độ chỉ xem' : isSelectedForPlacement ? 'Hủy đặt khí tài' : 'Triển khai lên bản đồ'}</span>
                     </button>
                   </div>
                 );
@@ -318,6 +351,7 @@ export const LeftSidebar: React.FC = () => {
                             </button>
 
                             {/* Xóa khí tài */}
+                            {!isReadOnly && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -328,6 +362,7 @@ export const LeftSidebar: React.FC = () => {
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
+                            )}
                           </div>
                         </div>
 

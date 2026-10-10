@@ -24,8 +24,9 @@ import {
   Mountain,
   ArrowDown,
   AlertTriangle,
+  Lock,
 } from 'lucide-react';
-import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment, selectActiveScenario, selectActivePlan } from '../../store/useTacticalStore';
 import type { OperationalStatus } from '../../types/equipment';
 import type { SpxTargetHeightTier } from '../../types/spxRadarCoverage';
 import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
@@ -85,6 +86,12 @@ const DomeToggle: React.FC<{
 
 export const RightInspector: React.FC = () => {
   const instances = useTacticalStore(selectActiveEquipment);
+  const activeScenario = useTacticalStore(selectActiveScenario);
+  const activePlan = useTacticalStore(selectActivePlan);
+  const isPlanReadOnly = !activePlan || activePlan.status !== 'draft';
+  const isScenarioArchived = Boolean(activeScenario && activeScenario.status === 'archived');
+  const isScenarioTrashed = Boolean(activeScenario && activeScenario.status === 'trashed');
+  const isReadOnly = isPlanReadOnly || isScenarioArchived || isScenarioTrashed;
   const {
     selectedInstanceId,
     selectEquipment,
@@ -336,14 +343,50 @@ export const RightInspector: React.FC = () => {
 
   if (!selected || !caps) {
     return (
-      <aside className="absolute top-14 right-0 bottom-0 w-80 sm:w-84 bg-slate-950/85 backdrop-blur-md border-l border-slate-800/80 p-4 z-20 flex flex-col justify-center items-center text-center select-none text-slate-400">
-        <div className="w-12 h-12 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-center text-slate-600 mb-3 shadow-inner">
-          <Shield className="w-6 h-6" />
+      <aside className="absolute top-14 right-0 bottom-0 w-80 sm:w-84 bg-slate-950/85 backdrop-blur-md border-l border-slate-800/80 p-4 z-20 flex flex-col justify-between select-none text-slate-400">
+        <div className="flex-1 flex flex-col justify-center items-center text-center">
+          <div className="w-12 h-12 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-center text-slate-600 mb-3 shadow-inner">
+            <Shield className="w-6 h-6" />
+          </div>
+          <h3 className="text-sm font-semibold text-slate-200 font-mono">BẢNG THUỘC TÍNH KHÍ TÀI</h3>
+          <p className="text-xs text-slate-500 mt-2 max-w-[230px] leading-relaxed">
+            Nhấp chọn một khí tài trên bản đồ tác chiến hoặc từ danh sách biên chế để xem và cấu hình chi tiết.
+          </p>
         </div>
-        <h3 className="text-sm font-semibold text-slate-200 font-mono">BẢNG THUỘC TÍNH KHÍ TÀI</h3>
-        <p className="text-xs text-slate-500 mt-2 max-w-[230px] leading-relaxed">
-          Nhấp chọn một khí tài trên bản đồ tác chiến hoặc từ danh sách biên chế để xem và cấu hình chi tiết.
-        </p>
+
+        {/* Tóm tắt ngữ cảnh Phương án hiện hành */}
+        <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2 text-left">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono text-cyan-400 font-bold uppercase">NGỮ CẢNH TÁC CHIẾN</span>
+            {activePlan && (
+              <span
+                className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase ${
+                  activePlan.status === 'approved'
+                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                    : activePlan.status === 'proposed'
+                    ? 'bg-sky-950 text-sky-300 border border-sky-500/40'
+                    : 'bg-amber-950 text-amber-300 border border-amber-500/40'
+                }`}
+              >
+                {activePlan.status}
+              </span>
+            )}
+          </div>
+          <div className="text-xs font-mono text-slate-200 space-y-1">
+            <div>
+              Kịch bản: <span className="text-slate-400">{activeScenario?.name || 'Chưa chọn'}</span>
+            </div>
+            <div>
+              Phương án:{' '}
+              <span className="text-slate-400">
+                {activePlan ? `${activePlan.name} (v${activePlan.version})` : 'Chưa có'}
+              </span>
+            </div>
+            <div>
+              Biên chế: <span className="text-cyan-300 font-bold">{instances.length} khí tài</span>
+            </div>
+          </div>
+        </div>
       </aside>
     );
   }
@@ -400,11 +443,12 @@ export const RightInspector: React.FC = () => {
             <input
               type="text"
               value={selected.name}
+              disabled={isReadOnly}
               onChange={(e) =>
                 updateEquipment(selected.instanceId, { name: e.target.value })
               }
-              title="Nhấp để sửa tên hiển thị khí tài"
-              className="mt-1 font-bold text-xs text-slate-100 bg-transparent border-b border-transparent hover:border-slate-700 focus:border-cyan-500 focus:outline-none w-full truncate"
+              title={isReadOnly ? 'Chế độ chỉ đọc' : 'Nhấp để sửa tên hiển thị khí tài'}
+              className="mt-1 font-bold text-xs text-slate-100 bg-transparent border-b border-transparent hover:border-slate-700 focus:border-cyan-500 focus:outline-none w-full truncate disabled:opacity-70 disabled:cursor-not-allowed"
             />
           </div>
         </div>
@@ -417,6 +461,23 @@ export const RightInspector: React.FC = () => {
           <X className="w-4 h-4" />
         </button>
       </div>
+
+      {isReadOnly && (
+        <div className="bg-amber-950/70 border-b border-amber-600/40 px-3 py-2 text-xs flex items-center gap-2 text-amber-200 shrink-0">
+          <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span className="text-[11px] leading-tight font-medium">
+            {!activePlan
+              ? 'Chưa chọn Kế hoạch (Chỉ đọc)'
+              : isScenarioTrashed
+              ? 'Kịch bản đang ở Thùng rác (Chỉ đọc)'
+              : isScenarioArchived
+              ? 'Kịch bản đã lưu trữ (Chỉ đọc)'
+              : activePlan.status === 'archived'
+              ? `Phương án [${activePlan.name}] đã lưu trữ (Chỉ đọc)`
+              : `Kế hoạch [${activePlan.name}] (${activePlan.status}) — Chỉ đọc`}
+          </span>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* PHẦN CUỘN CHÍNH CỦA INSPECTOR */}
@@ -470,12 +531,15 @@ export const RightInspector: React.FC = () => {
             ).map((st) => (
               <button
                 key={st.id}
+                disabled={isReadOnly}
                 onClick={() =>
                   updateEquipment(selected.instanceId, {
                     status: st.id as OperationalStatus,
                   })
                 }
-                className={`py-1.5 px-2 rounded-lg border text-[10.5px] font-medium transition-all cursor-pointer ${selected.status === st.id
+                className={`py-1.5 px-2 rounded-lg border text-[10.5px] font-medium transition-all ${
+                  isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                } ${selected.status === st.id
                   ? `${st.color} shadow-sm font-bold`
                   : 'border-slate-800/90 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                   }`}
@@ -488,12 +552,15 @@ export const RightInspector: React.FC = () => {
           {/* Thanh nút thao tác nhanh: Di chuyển, Ghim góc nhìn, Xóa */}
           <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-800/80">
             <button
+              disabled={isReadOnly}
               onClick={() => setActiveTool(activeTool === 'move' ? 'select' : 'move')}
-              className={`py-1.5 px-2 rounded-lg border font-semibold text-[10.5px] flex items-center justify-center gap-1 transition-all cursor-pointer ${activeTool === 'move'
+              className={`py-1.5 px-2 rounded-lg border font-semibold text-[10.5px] flex items-center justify-center gap-1 transition-all ${
+                isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+              } ${activeTool === 'move'
                 ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.5)] animate-pulse'
                 : 'bg-slate-950 hover:bg-slate-900 text-cyan-300 border-slate-800 hover:border-cyan-500/40'
                 }`}
-              title="Di chuyển đài sang vị trí tọa độ mới trên bản đồ"
+              title={isReadOnly ? 'Chế độ chỉ đọc' : 'Di chuyển đài sang vị trí tọa độ mới trên bản đồ'}
             >
               <Move className="w-3 h-3" />
               <span>{activeTool === 'move' ? 'Đặt vị trí...' : 'Di chuyển'}</span>
@@ -518,13 +585,18 @@ export const RightInspector: React.FC = () => {
             </button>
 
             <button
+              disabled={isReadOnly}
               onClick={() => {
                 if (window.confirm(`Xóa khí tài [${selected.shortId || selected.name}] khỏi trận địa?`)) {
                   removeEquipment(selected.instanceId);
                 }
               }}
-              className="py-1.5 px-2 rounded-lg border border-rose-900/60 bg-rose-950/30 hover:bg-rose-950/70 text-rose-300 font-semibold text-[10.5px] flex items-center justify-center gap-1 transition-all cursor-pointer"
-              title="Xóa khí tài khỏi trận địa"
+              className={`py-1.5 px-2 rounded-lg border font-semibold text-[10.5px] flex items-center justify-center gap-1 transition-all ${
+                isReadOnly
+                  ? 'border-slate-800 bg-slate-950 text-slate-600 cursor-not-allowed opacity-50'
+                  : 'border-rose-900/60 bg-rose-950/30 hover:bg-rose-950/70 text-rose-300 cursor-pointer'
+              }`}
+              title={isReadOnly ? 'Chế độ chỉ đọc' : 'Xóa khí tài khỏi trận địa'}
             >
               <Trash2 className="w-3 h-3" />
               <span>Xóa</span>
@@ -571,24 +643,27 @@ export const RightInspector: React.FC = () => {
                 <span className="w-12 text-slate-400 text-[10px]">VĨ ĐỘ:</span>
                 <input
                   type="number"
+                  disabled={isReadOnly}
                   value={latDms.d}
                   onChange={(e) => handleDmsChange('lat', 'd', Number(e.target.value))}
-                  className="w-9 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200"
+                  className="w-9 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
                 <span>°</span>
                 <input
                   type="number"
+                  disabled={isReadOnly}
                   value={latDms.m}
                   onChange={(e) => handleDmsChange('lat', 'm', Number(e.target.value))}
-                  className="w-9 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200"
+                  className="w-9 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
                 <span>'</span>
                 <input
                   type="number"
                   step="0.1"
+                  disabled={isReadOnly}
                   value={latDms.s}
                   onChange={(e) => handleDmsChange('lat', 's', Number(e.target.value))}
-                  className="w-11 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200"
+                  className="w-11 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
                 <span>"</span>
                 <span className="text-cyan-400 font-bold ml-0.5">N</span>
@@ -597,24 +672,27 @@ export const RightInspector: React.FC = () => {
                 <span className="w-12 text-slate-400 text-[10px]">KINH:</span>
                 <input
                   type="number"
+                  disabled={isReadOnly}
                   value={lonDms.d}
                   onChange={(e) => handleDmsChange('lon', 'd', Number(e.target.value))}
-                  className="w-9 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200"
+                  className="w-9 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
                 <span>°</span>
                 <input
                   type="number"
+                  disabled={isReadOnly}
                   value={lonDms.m}
                   onChange={(e) => handleDmsChange('lon', 'm', Number(e.target.value))}
-                  className="w-9 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200"
+                  className="w-9 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
                 <span>'</span>
                 <input
                   type="number"
                   step="0.1"
+                  disabled={isReadOnly}
                   value={lonDms.s}
                   onChange={(e) => handleDmsChange('lon', 's', Number(e.target.value))}
-                  className="w-11 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200"
+                  className="w-11 bg-slate-950 border border-slate-700 rounded px-1 text-center text-xs text-slate-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
                 <span>"</span>
                 <span className="text-cyan-400 font-bold ml-0.5">E</span>
@@ -627,13 +705,14 @@ export const RightInspector: React.FC = () => {
                 <input
                   type="number"
                   step="0.0001"
+                  disabled={isReadOnly}
                   value={selected.latitude}
                   onChange={(e) =>
                     updateEquipment(selected.instanceId, {
                       latitude: parseFloat(e.target.value) || 0,
                     })
                   }
-                  className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
@@ -641,13 +720,14 @@ export const RightInspector: React.FC = () => {
                 <input
                   type="number"
                   step="0.0001"
+                  disabled={isReadOnly}
                   value={selected.longitude}
                   onChange={(e) =>
                     updateEquipment(selected.instanceId, {
                       longitude: parseFloat(e.target.value) || 0,
                     })
                   }
-                  className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -666,13 +746,14 @@ export const RightInspector: React.FC = () => {
               <div className="flex items-center gap-1">
                 <input
                   type="number"
+                  disabled={isReadOnly}
                   value={selected.antennaHeightAGL}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value) || 0;
                     updateEquipment(selected.instanceId, { antennaHeightAGL: val });
                     updateSelectedSpx({ radarHeightAGL: val });
                   }}
-                  className="w-full bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-slate-200 font-mono text-xs focus:border-cyan-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-slate-200 font-mono text-xs focus:border-cyan-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                 />
                 <span className="text-[10px] text-slate-400">m</span>
               </div>
@@ -691,12 +772,13 @@ export const RightInspector: React.FC = () => {
             </div>
             <select
               value={selected.commandedByInstanceId || ''}
+              disabled={isReadOnly}
               onChange={(e) =>
                 updateEquipment(selected.instanceId, {
                   commandedByInstanceId: e.target.value || null,
                 })
               }
-              className="w-full bg-slate-950 text-slate-200 text-xs px-2.5 py-1 rounded border border-slate-700 focus:outline-none focus:border-amber-500 cursor-pointer"
+              className="w-full bg-slate-950 text-slate-200 text-xs px-2.5 py-1 rounded border border-slate-700 focus:outline-none focus:border-amber-500 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <option value="">-- Độc lập (Không gán SCH) --</option>
               {commandPosts.map((cp) => (
@@ -765,9 +847,10 @@ export const RightInspector: React.FC = () => {
                     <input
                       type="number"
                       step="1000"
+                      disabled={isReadOnly}
                       value={instSpxConfig.endRangeM}
                       onChange={(e) => updateSelectedSpx({ endRangeM: parseFloat(e.target.value) || 1000 })}
-                      className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-cyan-300 font-bold mb-1.5"
+                      className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-cyan-300 font-bold mb-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
 
                     {/* Chips cự ly chọn nhanh */}
@@ -784,8 +867,11 @@ export const RightInspector: React.FC = () => {
                       ].map((chip) => (
                         <button
                           key={chip.m}
+                          disabled={isReadOnly}
                           onClick={() => updateSelectedSpx({ endRangeM: chip.m })}
-                          className={`py-1 rounded text-[10px] font-mono border transition-all cursor-pointer ${instSpxConfig.endRangeM === chip.m
+                          className={`py-1 rounded text-[10px] font-mono border transition-all ${
+                            isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                          } ${instSpxConfig.endRangeM === chip.m
                             ? 'bg-cyan-900 text-cyan-300 border-cyan-400 font-bold'
                             : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
                             }`}
@@ -953,11 +1039,12 @@ export const RightInspector: React.FC = () => {
                       min={selected.category === 'PhaoPhongKhong' ? 1 : 10}
                       max={selected.category === 'PhaoPhongKhong' ? 15 : 300}
                       step={selected.category === 'PhaoPhongKhong' ? 0.5 : 5}
+                      disabled={isReadOnly}
                       value={selected.rangeKm}
                       onChange={(e) =>
                         updateEquipment(selected.instanceId, { rangeKm: parseFloat(e.target.value) || 10 })
                       }
-                      className="w-full accent-rose-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+                      className="w-full accent-rose-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
 
@@ -970,6 +1057,7 @@ export const RightInspector: React.FC = () => {
                         step="0.5"
                         min="0.1"
                         max="50"
+                        disabled={isReadOnly}
                         value={
                           selected.minEngagementRangeKm ??
                           (selected.category === 'TenLuaPhongKhong' ? 3 : 0.2)
@@ -979,7 +1067,7 @@ export const RightInspector: React.FC = () => {
                             minEngagementRangeKm: parseFloat(e.target.value) || 0.1,
                           })
                         }
-                        className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-rose-300 text-xs font-bold focus:border-rose-500 focus:outline-none"
+                        className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-rose-300 text-xs font-bold focus:border-rose-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
                     <div>
@@ -989,6 +1077,7 @@ export const RightInspector: React.FC = () => {
                         step="1000"
                         min="500"
                         max="50000"
+                        disabled={isReadOnly}
                         value={
                           selected.maxEngagementAltitudeM ??
                           (selected.category === 'TenLuaPhongKhong' ? 27000 : 2500)
@@ -998,7 +1087,7 @@ export const RightInspector: React.FC = () => {
                             maxEngagementAltitudeM: parseFloat(e.target.value) || 1000,
                           })
                         }
-                        className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-rose-300 text-xs font-bold focus:border-rose-500 focus:outline-none"
+                        className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-rose-300 text-xs font-bold focus:border-rose-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -1071,8 +1160,11 @@ export const RightInspector: React.FC = () => {
                           return (
                             <button
                               key={m.id}
+                              disabled={isReadOnly}
                               onClick={() => setSamEngagementMode(selected.instanceId, m.id)}
-                              className={`px-2 py-1 text-[10px] font-mono rounded border transition-all text-left truncate ${isActive
+                              className={`px-2 py-1 text-[10px] font-mono rounded border transition-all text-left truncate ${
+                                isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                              } ${isActive
                                   ? 'bg-rose-950/80 border-rose-500 text-rose-300 font-bold shadow-sm'
                                   : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                                 }`}
@@ -1111,13 +1203,14 @@ export const RightInspector: React.FC = () => {
                       min="100"
                       max="800"
                       step="20"
+                      disabled={isReadOnly}
                       value={selected.rangeKm}
                       onChange={(e) =>
                         updateEquipment(selected.instanceId, {
                           rangeKm: parseFloat(e.target.value) || 600,
                         })
                       }
-                      className="w-full accent-purple-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+                      className="w-full accent-purple-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
 
@@ -1194,9 +1287,10 @@ export const RightInspector: React.FC = () => {
                     min="0"
                     max="60"
                     step="2"
+                    disabled={isReadOnly}
                     value={selected.scanSpeed}
                     onChange={(e) => updateEquipment(selected.instanceId, { scanSpeed: parseFloat(e.target.value) })}
-                    className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+                    className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               )}
@@ -1219,12 +1313,15 @@ export const RightInspector: React.FC = () => {
                         MÔ HÌNH VÒM 3D & GÓC TÀ
                       </span>
                       <button
+                        disabled={isReadOnly}
                         onClick={() =>
                           updateEquipment(selected.instanceId, {
                             showDome: !selected.showDome,
                           })
                         }
-                        className={`px-2 py-0.5 rounded-md border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${selected.showDome
+                        className={`px-2 py-0.5 rounded-md border text-[10px] font-mono font-bold flex items-center gap-1 transition-all ${
+                          isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                        } ${selected.showDome
                             ? 'bg-cyan-950 text-cyan-300 border-cyan-500/60 shadow-[0_0_8px_rgba(6,182,212,0.3)]'
                             : 'bg-slate-950 text-slate-500 border-slate-800'
                           }`}
@@ -1272,13 +1369,14 @@ export const RightInspector: React.FC = () => {
                         <input
                           type="number"
                           step="0.1"
+                          disabled={isReadOnly}
                           value={selected.minElevationDeg}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
                             updateEquipment(selected.instanceId, { minElevationDeg: val });
                             updateSelectedSpx({ minElevationDeg: val });
                           }}
-                          className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none"
+                          className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                         />
                       </div>
                       <div>
@@ -1286,13 +1384,14 @@ export const RightInspector: React.FC = () => {
                         <input
                           type="number"
                           step="1"
+                          disabled={isReadOnly}
                           value={selected.maxElevationDeg}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
                             updateEquipment(selected.instanceId, { maxElevationDeg: val });
                             updateSelectedSpx({ maxElevationDeg: val });
                           }}
-                          className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none"
+                          className="w-full bg-slate-950 border border-slate-700 px-2 py-1 rounded text-slate-200 text-xs focus:border-cyan-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                         />
                       </div>
                     </div>
@@ -1410,17 +1509,19 @@ export const RightInspector: React.FC = () => {
                                       onClick={() => {
                                         setTargetHeightMeters(row.altitudeM);
                                         setSelectedAltitudeM(row.altitudeM);
-                                        const km = !isNaN(numVal1) ? numVal1 : numVal2;
-                                        if (km && !isNaN(km)) {
-                                          updateEquipment(selected.instanceId, {
-                                            rangeKm: km,
-                                            targetAltitudeM: row.altitudeM,
-                                          });
-                                          updateSelectedSpx({ endRangeM: km * 1000 });
-                                        } else {
-                                          updateEquipment(selected.instanceId, {
-                                            targetAltitudeM: row.altitudeM,
-                                          });
+                                        if (!isReadOnly) {
+                                          const km = !isNaN(numVal1) ? numVal1 : numVal2;
+                                          if (km && !isNaN(km)) {
+                                            updateEquipment(selected.instanceId, {
+                                              rangeKm: km,
+                                              targetAltitudeM: row.altitudeM,
+                                            });
+                                            updateSelectedSpx({ endRangeM: km * 1000 });
+                                          } else {
+                                            updateEquipment(selected.instanceId, {
+                                              targetAltitudeM: row.altitudeM,
+                                            });
+                                          }
                                         }
                                       }}
                                       className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${isRowAltitudeActive
@@ -1440,6 +1541,7 @@ export const RightInspector: React.FC = () => {
                                     {row.val1 !== '-' && !isNaN(numVal1) ? (
                                       <button
                                         type="button"
+                                        disabled={isReadOnly}
                                         onClick={() => {
                                           updateEquipment(selected.instanceId, {
                                             rangeKm: numVal1,
@@ -1449,7 +1551,9 @@ export const RightInspector: React.FC = () => {
                                           setTargetHeightMeters(row.altitudeM);
                                           setSelectedAltitudeM(row.altitudeM);
                                         }}
-                                        className={`w-full py-1 px-1.5 rounded font-mono font-bold text-[10px] transition-all cursor-pointer border ${isCol1Active
+                                        className={`w-full py-1 px-1.5 rounded font-mono font-bold text-[10px] transition-all border ${
+                                          isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                                        } ${isCol1Active
                                             ? 'bg-cyan-600 text-white border-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.6)] animate-pulse'
                                             : 'bg-slate-900/90 text-cyan-300 border-slate-800 hover:border-cyan-500/50 hover:bg-cyan-950/50'
                                           }`}
@@ -1468,6 +1572,7 @@ export const RightInspector: React.FC = () => {
                                       {row.val2 !== undefined && row.val2 !== '-' && numVal2 !== undefined && !isNaN(numVal2) ? (
                                         <button
                                           type="button"
+                                          disabled={isReadOnly}
                                           onClick={() => {
                                             updateEquipment(selected.instanceId, {
                                               rangeKm: numVal2,
@@ -1477,7 +1582,9 @@ export const RightInspector: React.FC = () => {
                                             setTargetHeightMeters(row.altitudeM);
                                             setSelectedAltitudeM(row.altitudeM);
                                           }}
-                                          className={`w-full py-1 px-1.5 rounded font-mono font-bold text-[10px] transition-all cursor-pointer border ${isCol2Active
+                                          className={`w-full py-1 px-1.5 rounded font-mono font-bold text-[10px] transition-all border ${
+                                            isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                                          } ${isCol2Active
                                               ? 'bg-emerald-600 text-white border-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.6)] animate-pulse'
                                               : 'bg-slate-900/90 text-emerald-400 border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-950/50'
                                             }`}
@@ -1827,12 +1934,15 @@ export const RightInspector: React.FC = () => {
                         {isSpyder ? 'VÒM HỎA LỰC SPYDER (KÉP SR/MR)' : 'VÒM HỎA LỰC ĐÁNH CHẶN 3D'}
                       </span>
                       <button
+                        disabled={isReadOnly}
                         onClick={() =>
                           updateEquipment(selected.instanceId, {
                             showDome: !selected.showDome,
                           })
                         }
-                        className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${selected.showDome
+                        className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all ${
+                          isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                        } ${selected.showDome
                             ? isSpyder
                               ? 'bg-sky-950 text-sky-300 border-sky-500/60 shadow-[0_0_8px_rgba(14,165,233,0.3)]'
                               : 'bg-rose-950 text-rose-300 border-rose-500/60 shadow-[0_0_8px_rgba(244,63,94,0.3)]'
@@ -2106,12 +2216,15 @@ export const RightInspector: React.FC = () => {
                       VÒM TRINH SÁT THỤ ĐỘNG 3D
                     </span>
                     <button
+                      disabled={isReadOnly}
                       onClick={() =>
                         updateEquipment(selected.instanceId, {
                           showDome: !selected.showDome,
                         })
                       }
-                      className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${selected.showDome
+                      className={`px-2 py-1 rounded-lg border text-[10px] font-mono font-bold flex items-center gap-1 transition-all ${
+                        isReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                      } ${selected.showDome
                           ? 'bg-purple-950 text-purple-300 border-purple-500/60 shadow-[0_0_8px_rgba(168,85,247,0.3)]'
                           : 'bg-slate-950 text-slate-500 border-slate-800'
                         }`}

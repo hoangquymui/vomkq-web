@@ -20,7 +20,7 @@ import {
   AlertTriangle,
   Crosshair,
 } from 'lucide-react';
-import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
+import { useTacticalStore, selectActiveEquipment, selectActiveScenario, selectActivePlan } from '../../store/useTacticalStore';
 import { ensureVectorAiReady, listVectorAiModels, VECTOR_AI_BASE_URL } from '../../services/vectorAiClient';
 import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
 import type { AiAdvisorStatus } from '../../store/useTacticalStore';
@@ -54,6 +54,9 @@ function statusBadgeClass(status: AiAdvisorStatus): string {
 
 export const AiPlacementAdvisorPanel: React.FC = () => {
   const instances = useTacticalStore(selectActiveEquipment);
+  const activeScenario = useTacticalStore(selectActiveScenario);
+  const activePlan = useTacticalStore(selectActivePlan);
+  const isReadOnly = !activePlan || activePlan.status !== 'draft' || activeScenario?.status === 'archived';
   const {
     aiAdvisorPanelOpen,
     setAiAdvisorPanelOpen,
@@ -317,12 +320,20 @@ export const AiPlacementAdvisorPanel: React.FC = () => {
                 )}
 
                 <button
-                  onClick={() => placeEquipmentAtSuggestion(index)}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded border border-emerald-600/60 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 text-[11px] font-semibold transition-colors"
-                  title="Đặt khí tài đang chọn tại toạ độ gợi ý này"
+                  disabled={isReadOnly}
+                  onClick={() => {
+                    if (isReadOnly) return;
+                    placeEquipmentAtSuggestion(index);
+                  }}
+                  className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded border text-[11px] font-semibold transition-colors ${
+                    isReadOnly
+                      ? 'border-slate-700 bg-slate-800/80 text-slate-500 cursor-not-allowed opacity-60'
+                      : 'border-emerald-600/60 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300'
+                  }`}
+                  title={isReadOnly ? 'Chế độ chỉ đọc: Không thể đặt khí tài' : 'Đặt khí tài đang chọn tại toạ độ gợi ý này'}
                 >
                   <Navigation className="w-3 h-3" />
-                  <span>Đặt tại đây</span>
+                  <span>{isReadOnly ? 'Chế độ chỉ đọc' : 'Đặt tại đây'}</span>
                 </button>
               </div>
             ))}

@@ -887,6 +887,9 @@ export const CesiumGlobe: React.FC = () => {
 
       const state = useTacticalStore.getState();
       const currentResults = state.spxResults;
+      const reqScenarioId = state.activeScenarioId;
+      const reqPlanId = state.activePlanId;
+      const reqGen = state.workspaceContextGeneration;
 
       for (const inst of candidateRadars) {
         if (isCancelled) break;
@@ -910,7 +913,12 @@ export const CesiumGlobe: React.FC = () => {
             viewer.scene.terrainProvider,
             instConfig
           );
-          if (!isCancelled) {
+          const stateNow = useTacticalStore.getState();
+          const isStale = isCancelled ||
+            stateNow.activeScenarioId !== reqScenarioId ||
+            stateNow.activePlanId !== reqPlanId ||
+            stateNow.workspaceContextGeneration !== reqGen;
+          if (!isStale) {
             setSpxResult(inst.instanceId, res);
           }
         } catch (err) {
@@ -918,7 +926,8 @@ export const CesiumGlobe: React.FC = () => {
         }
       }
 
-      if (!isCancelled) {
+      const stateEnd = useTacticalStore.getState();
+      if (!isCancelled && stateEnd.workspaceContextGeneration === reqGen) {
         setIsCalculatingSpx(false);
       }
     };
@@ -963,6 +972,9 @@ export const CesiumGlobe: React.FC = () => {
       const latestState = useTacticalStore.getState();
       const currentVolumes = latestState.coverageVolumes;
       const currentSamVolumes = latestState.samVolumes;
+      const reqScenarioId = latestState.activeScenarioId;
+      const reqPlanId = latestState.activePlanId;
+      const reqGen = latestState.workspaceContextGeneration;
 
       let hasPending = false;
       for (const inst of candidateRadars) {
@@ -1003,8 +1015,8 @@ export const CesiumGlobe: React.FC = () => {
             radialStepMeters: Math.max(1500, Math.round((inst.rangeKm * 1000) / 45)),
           };
           const cacheKey = generateVolumeCacheKey(inst, params);
-          const stateNow = useTacticalStore.getState();
-          if (stateNow.coverageVolumes[inst.instanceId]?.cacheKey === cacheKey) {
+          const stateBefore = useTacticalStore.getState();
+          if (stateBefore.coverageVolumes[inst.instanceId]?.cacheKey === cacheKey) {
             continue;
           }
 
@@ -1014,7 +1026,12 @@ export const CesiumGlobe: React.FC = () => {
             params
           );
 
-          if (!isCancelled) {
+          const stateAfter = useTacticalStore.getState();
+          const isStale = isCancelled ||
+            stateAfter.activeScenarioId !== reqScenarioId ||
+            stateAfter.activePlanId !== reqPlanId ||
+            stateAfter.workspaceContextGeneration !== reqGen;
+          if (!isStale) {
             setCoverageVolume(inst.instanceId, vol);
           }
         } catch (e) {
@@ -1028,8 +1045,8 @@ export const CesiumGlobe: React.FC = () => {
         try {
           const mode = inst.samEngagementMode || samEngagementModes[inst.instanceId] || 'head_on';
           const samCacheKey = getSamVolumeCacheKey(inst, { mode, azimuthStepDeg, kFactor });
-          const stateNow = useTacticalStore.getState();
-          if (stateNow.samVolumes[inst.instanceId]?.cacheKey === samCacheKey) {
+          const stateBefore = useTacticalStore.getState();
+          if (stateBefore.samVolumes[inst.instanceId]?.cacheKey === samCacheKey) {
             continue;
           }
 
@@ -1038,7 +1055,13 @@ export const CesiumGlobe: React.FC = () => {
             viewer.scene.terrainProvider,
             { mode, azimuthStepDeg, kFactor }
           );
-          if (!isCancelled) {
+
+          const stateAfter = useTacticalStore.getState();
+          const isStale = isCancelled ||
+            stateAfter.activeScenarioId !== reqScenarioId ||
+            stateAfter.activePlanId !== reqPlanId ||
+            stateAfter.workspaceContextGeneration !== reqGen;
+          if (!isStale) {
             setSamVolume(inst.instanceId, vol);
           }
         } catch (e) {
@@ -1046,7 +1069,13 @@ export const CesiumGlobe: React.FC = () => {
         }
       }
 
-      if (!isCancelled) {
+      const stateEnd = useTacticalStore.getState();
+      if (
+        !isCancelled &&
+        stateEnd.workspaceContextGeneration === reqGen &&
+        stateEnd.activePlanId === reqPlanId &&
+        stateEnd.activeScenarioId === reqScenarioId
+      ) {
         setIsCalculatingVolume(false);
       }
     };

@@ -26,12 +26,20 @@ import type { RadarCoverageVolume } from '../types/radarVolume';
 import { invalidateVolumeCache } from '../utils/radarVolumeEngine';
 import { destinationPoint } from '../utils/radarLosEngine';
 
-import type { Scenario } from '../domain/types/scenario';
-import type { Plan } from '../domain/types/plan';
+import { SCENARIO_STATUS_LABELS, type Scenario, type ScenarioStatus } from '../domain/types/scenario';
+import { PLAN_STATUS_LABELS, type Plan, type PlanStatus } from '../domain/types/plan';
+export { SCENARIO_STATUS_LABELS, PLAN_STATUS_LABELS };
+export type { ScenarioStatus, PlanStatus };
 import type { EquipmentDefinition, EquipmentPlacement, ObservationState } from '../domain/types/equipment';
 import type { SimulationState, SimulationRun } from '../domain/types/simulation';
 import { hydrateLegacyInstance, parseLegacyInstance, applyEquipmentPatchToCanonical, type LegacyPresentationState } from '../domain/adapters/legacyEquipmentAdapter';
-import { validateCanonicalStatePackageV1 } from '../domain/serialization/canonicalStatePackage';
+import {
+  validateCanonicalStatePackage,
+  migrateCanonicalPackageV1ToV2,
+  type CanonicalStatePackage,
+  type CanonicalStatePackageV1,
+  type CanonicalStatePackageV2,
+} from '../domain/serialization/canonicalStatePackage';
 import type { AuditActor } from '../domain/types/audit';
 import { createAuditAppend, revisionScopeKey } from '../domain/audit/auditEngine';
 
@@ -113,10 +121,50 @@ interface TacticalState {
    * consistency, and finally setting `canonicalInitialized = true`.
    */
   ensureActiveWorkspace: () => void;
-  createPlanAlternative: (sourcePlanId?: string) => void;
+  createPlanAlternative: (sourcePlanId?: string, name?: string) => void;
   switchActivePlan: (planId: string) => void;
   saveActivePlan: () => void;
   validateActiveScenarioContext: () => void;
+
+  // Checkpoint 2A: Scenario & Plan Workspace Actions
+  createScenario: (name: string, terrainVersion?: string) => string;
+  switchScenario: (scenarioId: string) => void;
+  renameScenario: (scenarioId: string, newName: string) => void;
+  archiveScenario: (scenarioId: string) => void;
+  restoreScenario: (scenarioId: string) => void;
+  trashDraftScenario: (scenarioId: string) => void;
+  restoreDraftScenario: (scenarioId: string) => void;
+  purgeTrashedScenario: (scenarioId: string) => void;
+
+  createEmptyPlan: (name?: string) => string;
+  renamePlan: (planId: string, newName: string) => void;
+  proposePlan: (planId: string) => void;
+  withdrawAndReviseProposedPlan: (planId: string, reason: string) => string;
+  trashDraftPlan: (planId: string) => void;
+  restoreDraftPlan: (planId: string) => void;
+  purgeTrashedPlan: (planId: string) => void;
+  archivePlan: (planId: string) => void;
+  restorePlan: (planId: string) => void;
+
+  emptyTrash: (scope?: 'all' | 'plans' | 'scenarios') => {
+    purgedPlans: string[];
+    purgedScenarios: string[];
+    retainedPlans: { id: string; name: string; reason: string }[];
+    retainedScenarios: { id: string; name: string; reason: string }[];
+  };
+  getTrashSummary: (scope?: 'all' | 'plans' | 'scenarios') => {
+    eligiblePlans: Plan[];
+    eligibleScenarios: Scenario[];
+    retainedPlans: { plan: Plan; reason: string }[];
+    retainedScenarios: { scenario: Scenario; reason: string }[];
+  };
+
+  // Workspace Context Generation Token & UI Modal State
+  workspaceContextGeneration: number;
+  showWorkspaceModal: boolean;
+  setShowWorkspaceModal: (show: boolean) => void;
+  workspaceModalTab: 'scenarios' | 'plans';
+  setWorkspaceModalTab: (tab: 'scenarios' | 'plans') => void;
 
   // Battlefield Entities
   selectedInstanceId: string | null;
@@ -310,8 +358,9 @@ interface TacticalState {
   importFromLayout: (layout: LayoutSaveData) => void;
   exportToLayout: (layoutName: string) => LayoutSaveData;
   loadSampleScenario: () => void;
-  exportCanonicalPackage: (layoutName?: string) => import('../domain/serialization/canonicalStatePackage').CanonicalStatePackageV1;
-  importCanonicalPackage: (pkg: import('../domain/serialization/canonicalStatePackage').CanonicalStatePackageV1) => void;
+  exportCanonicalPackage: (layoutName?: string) => CanonicalStatePackageV1;
+  exportCanonicalPackageV2: (layoutName?: string) => CanonicalStatePackageV2;
+  importCanonicalPackage: (pkg: CanonicalStatePackage) => void;
 }
 
 /**
@@ -340,6 +389,7 @@ export function validateMutationGuard(state: TacticalState): void {
   const scenario = state.scenarios[state.activeScenarioId];
   if (!scenario) throw new Error('Active scenario does not exist');
   if (scenario.status === 'archived') throw new Error('Scenario is archived');
+  if (scenario.status === 'trashed') throw new Error('Scenario is trashed');
 
   if (!state.activePlanId) throw new Error('No active plan');
   const plan = state.plans[state.activePlanId];
@@ -413,7 +463,8 @@ function appendAuditToState(
   targetIds: string[],
   actorType: import('../domain/types/audit').AuditActorType = 'HUMAN',
   sourceType: import('../domain/types/audit').AuditSourceType = 'USER_ACTION',
-  derivedFromRevisionId: string | null = null
+  derivedFromRevisionId: string | null = null,
+  reason?: string
 ) {
   const prevStateForFingerprint = {
     scenarios: state.scenarios,
@@ -448,7 +499,8 @@ function appendAuditToState(
     targetIds,
     actor,
     sourceType,
-    derivedFromRevisionId
+    derivedFromRevisionId,
+    reason
   );
 
   if (!result) return {};
@@ -461,6 +513,139 @@ function appendAuditToState(
     auditEvents: { ...(nextStateMap.auditEvents || state.auditEvents), [event.eventId]: event },
     auditEventOrder: [...(nextStateMap.auditEventOrder || state.auditEventOrder), event.eventId]
   };
+}
+
+export function isPlanEligibleForPurge(
+  state: {
+    plans: Record<string, Plan>;
+    scenarios: Record<string, Scenario>;
+    simulationRuns: Record<string, SimulationRun>;
+    placements: Record<string, EquipmentPlacement>;
+  },
+  planId: string
+): { eligible: boolean; reason?: string } {
+  const plan = state.plans[planId];
+  if (!plan) return { eligible: false, reason: 'Phương án không tồn tại' };
+  if (plan.status !== 'trashed') {
+    return { eligible: false, reason: 'Chỉ có thể xóa vĩnh viễn phương án đang trong Thùng rác' };
+  }
+  if (plan.withdrawnAt || plan.withdrawnReason) {
+    return { eligible: false, reason: 'Phương án đã từng được đề xuất hoặc thu hồi trong lịch sử, không thể xóa' };
+  }
+  if (
+    plan.archivedFromStatus === 'proposed' ||
+    plan.archivedFromStatus === 'approved' ||
+    plan.archivedFromStatus === 'withdrawn'
+  ) {
+    return { eligible: false, reason: 'Phương án có nguồn gốc trạng thái đã trình xét duyệt, không thể xóa' };
+  }
+  if (plan.baseRevisionPlanId) {
+    return { eligible: false, reason: 'Phương án là bản sửa đổi phụ thuộc vào phương án khác' };
+  }
+  const hasDependentRevisions = Object.values(state.plans).some((p) => p.baseRevisionPlanId === planId);
+  if (hasDependentRevisions) {
+    return { eligible: false, reason: 'Phương án đang là gốc của các bản sửa đổi khác' };
+  }
+  const hasRuns = Object.values(state.simulationRuns).some((r) => r.planId === planId);
+  if (hasRuns) {
+    return { eligible: false, reason: 'Phương án đang được liên kết với kết quả mô phỏng (SimulationRun)' };
+  }
+  const planPlacementIds = new Set(
+    Object.values(state.placements)
+      .filter((p) => p.planId === planId)
+      .map((p) => p.id)
+  );
+  const referencedByOtherPlan = Object.values(state.placements).some(
+    (p) => p.planId !== planId && p.network?.commandedBy && planPlacementIds.has(p.network.commandedBy)
+  );
+  if (referencedByOtherPlan) {
+    return { eligible: false, reason: 'Khí tài trong phương án đang được liên kết chỉ huy bởi phương án khác' };
+  }
+  return { eligible: true };
+}
+
+export function isScenarioEligibleForPurge(
+  state: {
+    scenarios: Record<string, Scenario>;
+    plans: Record<string, Plan>;
+    simulationRuns: Record<string, SimulationRun>;
+    placements: Record<string, EquipmentPlacement>;
+  },
+  scenarioId: string
+): { eligible: boolean; reason?: string } {
+  const scenario = state.scenarios[scenarioId];
+  if (!scenario) return { eligible: false, reason: 'Kịch bản không tồn tại' };
+  if (scenario.status !== 'trashed') {
+    return { eligible: false, reason: 'Chỉ có thể xóa vĩnh viễn kịch bản đang trong Thùng rác' };
+  }
+  const hasRuns = Object.values(state.simulationRuns).some((r) => r.scenarioId === scenarioId);
+  if (hasRuns) {
+    return {
+      eligible: false,
+      reason: 'Kịch bản đang được liên kết với kết quả mô phỏng (SimulationRun). Vui lòng sử dụng Lưu trữ.',
+    };
+  }
+  const childPlans = Object.values(state.plans).filter((p) => p.scenarioId === scenarioId);
+  const childPlanIds = new Set(childPlans.map((p) => p.id));
+
+  // Kiểm tra khí tài trong kịch bản có bị khí tài thuộc kịch bản khác tham chiếu chỉ huy hay không
+  const scenarioPlacementIds = new Set(
+    Object.values(state.placements)
+      .filter((p) => childPlanIds.has(p.planId))
+      .map((p) => p.id)
+  );
+  const referencedByOtherPlacement = Object.values(state.placements).some(
+    (p) => !childPlanIds.has(p.planId) && p.network?.commandedBy && scenarioPlacementIds.has(p.network.commandedBy)
+  );
+  if (referencedByOtherPlacement) {
+    return {
+      eligible: false,
+      reason: 'Khí tài trong kịch bản đang được liên kết chỉ huy bởi khí tài thuộc kịch bản khác',
+    };
+  }
+
+  for (const childPlan of childPlans) {
+    if (
+      childPlan.status === 'proposed' ||
+      childPlan.status === 'approved' ||
+      childPlan.status === 'withdrawn' ||
+      childPlan.status === 'archived'
+    ) {
+      return {
+        eligible: false,
+        reason: `Kịch bản chứa phương án "${childPlan.name}" ở trạng thái ${childPlan.status}. Vui lòng sử dụng Lưu trữ.`,
+      };
+    }
+    if (childPlan.withdrawnAt || childPlan.withdrawnReason) {
+      return {
+        eligible: false,
+        reason: `Kịch bản chứa phương án "${childPlan.name}" đã từng thu hồi trong lịch sử.`,
+      };
+    }
+    if (childPlan.baseRevisionPlanId) {
+      return {
+        eligible: false,
+        reason: `Kịch bản chứa phương án "${childPlan.name}" có liên kết bản sửa đổi.`,
+      };
+    }
+    const hasExternalDependent = Object.values(state.plans).some(
+      (p) => p.scenarioId !== scenarioId && p.baseRevisionPlanId === childPlan.id
+    );
+    if (hasExternalDependent) {
+      return {
+        eligible: false,
+        reason: `Kịch bản chứa phương án "${childPlan.name}" là gốc của phương án thuộc kịch bản khác.`,
+      };
+    }
+    const hasPlanRuns = Object.values(state.simulationRuns).some((r) => r.planId === childPlan.id);
+    if (hasPlanRuns) {
+      return {
+        eligible: false,
+        reason: `Kịch bản chứa phương án "${childPlan.name}" có kết quả mô phỏng.`,
+      };
+    }
+  }
+  return { eligible: true };
 }
 
 export const useTacticalStore = create<TacticalState>((set, get) => ({
@@ -512,7 +697,16 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         scenarios[nextScenarioId] = { id: nextScenarioId, name: 'Default Scenario', terrainVersion: 'v1', createdAt: Date.now(), status: 'active' };
       }
       if (!plans[nextPlanId]) {
-        plans[nextPlanId] = { id: nextPlanId, scenarioId: nextScenarioId, version: 1, name: 'Default Plan', status: 'draft' };
+        plans[nextPlanId] = {
+          id: nextPlanId,
+          scenarioId: nextScenarioId,
+          version: 1,
+          name: 'Default Plan',
+          status: 'draft',
+          alternativeId: nextPlanId,
+          revisionNumber: 1,
+          baseRevisionPlanId: null,
+        };
       } else if (plans[nextPlanId].scenarioId !== nextScenarioId) {
         throw new Error('ensureActiveWorkspace: default-plan exists but belongs to a different scenario');
       }
@@ -524,7 +718,16 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       if (!scenarios[nextScenarioId]) throw new Error('ensureActiveWorkspace: activeScenarioId points to missing scenario');
       nextPlanId = `plan_${nextScenarioId}_default`;
       if (!plans[nextPlanId]) {
-        plans[nextPlanId] = { id: nextPlanId, scenarioId: nextScenarioId, version: 1, name: 'Default Plan', status: 'draft' };
+        plans[nextPlanId] = {
+          id: nextPlanId,
+          scenarioId: nextScenarioId,
+          version: 1,
+          name: 'Default Plan',
+          status: 'draft',
+          alternativeId: nextPlanId,
+          revisionNumber: 1,
+          baseRevisionPlanId: null,
+        };
       } else if (plans[nextPlanId].scenarioId !== nextScenarioId) {
         throw new Error('ensureActiveWorkspace: scenario-specific default plan belongs to a different scenario');
       }
@@ -587,16 +790,18 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     return {};
   }),
 
-  createPlanAlternative: (sourcePlanId?: string) => set((state) => {
+  createPlanAlternative: (sourcePlanId?: string, name?: string) => set((state) => {
     if (!state.activeScenarioId) throw new Error('createPlanAlternative: No active scenario');
     const scenario = state.scenarios[state.activeScenarioId];
     if (scenario?.status === 'archived') throw new Error('createPlanAlternative: Scenario is archived');
+    if (scenario?.status === 'trashed') throw new Error('createPlanAlternative: Scenario is trashed');
 
     const srcId = sourcePlanId || state.activePlanId;
     if (!srcId) throw new Error('createPlanAlternative: No source plan');
     const sourcePlan = state.plans[srcId];
     if (!sourcePlan) throw new Error('createPlanAlternative: Source plan not found');
     if (sourcePlan.scenarioId !== state.activeScenarioId) throw new Error('createPlanAlternative: Source plan from another scenario');
+    if (sourcePlan.status === 'trashed') throw new Error('createPlanAlternative: Cannot create alternative from trashed plan');
 
     validatePlanGraph(state, srcId);
 
@@ -610,12 +815,17 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     };
 
     const newPlanId = generateUniqueId('plan', state.plans);
-    const newPlan = {
-      ...sourcePlan,
+    const plansInScenario = Object.values(state.plans).filter(p => p.scenarioId === state.activeScenarioId);
+    const maxVersion = Math.max(...plansInScenario.map(p => p.version), sourcePlan.version);
+    const newPlan: Plan = {
       id: newPlanId,
-      name: sourcePlan.name + ' (Alternative)',
+      scenarioId: sourcePlan.scenarioId,
+      version: maxVersion + 1,
+      name: (name && name.trim()) || `${sourcePlan.name} (Phương án thay thế)`,
       status: 'draft' as const,
-      version: sourcePlan.version + 1,
+      alternativeId: newPlanId,
+      revisionNumber: 1,
+      baseRevisionPlanId: null,
     };
 
     const nextPlans = { ...state.plans, [newPlanId]: newPlan };
@@ -673,7 +883,22 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       definitions: nextDefinitions,
       observations: nextObservations,
       visuals: nextVisuals,
-      activePlanId: newPlanId,    };
+      activePlanId: newPlanId,
+      selectedInstanceId: null,
+      activeTool: 'select' as const,
+      pendingTemplate: null,
+      measurePoints: [],
+      activeSimulationRunId: null,
+      coverageVolumes: {},
+      spxResults: {},
+      samVolumes: {},
+      aiAdvisorSuggestions: [],
+      aiAdvisorRoute: [],
+      aiAdvisorSummary: '',
+      aiAdvisorError: null,
+      aiAdvisorStatus: 'idle' as const,
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
 
     const derivedFromRevisionId = state.revisionHeads[revisionScopeKey({ type: 'PLAN', id: srcId })] || null;
 
@@ -697,12 +922,30 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     if (!plan) throw new Error('switchActivePlan: Target plan does not exist');
     if (!state.activeScenarioId) throw new Error('switchActivePlan: Target Scenario missing');
     if (plan.scenarioId !== state.activeScenarioId) throw new Error('switchActivePlan: Target plan belongs to another scenario');
+    if (plan.status === 'trashed') throw new Error('switchActivePlan: Cannot select trashed plan');
+    if (plan.status === 'withdrawn') throw new Error('switchActivePlan: Cannot select withdrawn plan');
+    if (plan.status === 'archived') throw new Error('switchActivePlan: Cannot select archived plan');
 
     validatePlanGraph(state, planId);
 
-    // Calculate new projection
+    // Calculate new projection and purge transient calculation caches
     return {
-      activePlanId: planId,    };
+      activePlanId: planId,
+      selectedInstanceId: null,
+      activeTool: 'select' as const,
+      pendingTemplate: null,
+      measurePoints: [],
+      activeSimulationRunId: null,
+      coverageVolumes: {},
+      spxResults: {},
+      samVolumes: {},
+      aiAdvisorSuggestions: [],
+      aiAdvisorRoute: [],
+      aiAdvisorSummary: '',
+      aiAdvisorError: null,
+      aiAdvisorStatus: 'idle' as const,
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
   }),
 
   saveActivePlan: () => {
@@ -720,6 +963,1154 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     validatePlanGraph(state, state.activePlanId);
     // No Zustand set() call — validation only.
   },
+
+  createScenario: (name: string, terrainVersion = 'v1') => {
+    if (!name || !name.trim()) throw new Error('createScenario: Scenario name cannot be empty');
+    let createdScenarioId = '';
+    set((state) => {
+      const generateUniqueId = (prefix: string, existing: Record<string, any>) => {
+        let id;
+        do {
+          id = prefix + '_' + Date.now() + Math.random().toString(36).substring(2, 7);
+        } while (existing[id]);
+        return id;
+      };
+
+      const newScenarioId = generateUniqueId('scen', state.scenarios);
+      createdScenarioId = newScenarioId;
+      const newScenario = {
+        id: newScenarioId,
+        name: name.trim(),
+        terrainVersion: terrainVersion || 'v1',
+        createdAt: Date.now(),
+        status: 'draft' as const,
+      };
+
+      const baselinePlanId = generateUniqueId('plan_' + newScenarioId + '_base', state.plans);
+      const baselinePlan: Plan = {
+        id: baselinePlanId,
+        scenarioId: newScenarioId,
+        version: 1,
+        name: 'Phương án gốc',
+        status: 'draft' as const,
+        alternativeId: baselinePlanId,
+        revisionNumber: 1,
+        baseRevisionPlanId: null,
+      };
+
+      const nextState = {
+        scenarios: { ...state.scenarios, [newScenarioId]: newScenario },
+        plans: { ...state.plans, [baselinePlanId]: baselinePlan },
+        activeScenarioId: newScenarioId,
+        activePlanId: baselinePlanId,
+        selectedInstanceId: null,
+        activeTool: 'select' as const,
+        pendingTemplate: null,
+        measurePoints: [],
+        activeSimulationRunId: null,
+        coverageVolumes: {},
+        spxResults: {},
+        samVolumes: {},
+        aiAdvisorSuggestions: [],
+        aiAdvisorRoute: [],
+        aiAdvisorSummary: '',
+        aiAdvisorError: null,
+        aiAdvisorStatus: 'idle' as const,
+        workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+      };
+
+      const auditUpdates = appendAuditToState(
+        state,
+        nextState,
+        { type: 'WORKSPACE', id: 'canonical-root' },
+        'ADD',
+        'SCENARIO',
+        [newScenarioId],
+        'HUMAN',
+        'USER_ACTION'
+      );
+
+      return { ...nextState, ...auditUpdates };
+    });
+    return createdScenarioId;
+  },
+
+  switchScenario: (scenarioId: string) => set((state) => {
+    const scenario = state.scenarios[scenarioId];
+    if (!scenario) throw new Error('switchScenario: Target scenario does not exist');
+    if (scenario.status === 'trashed') throw new Error('switchScenario: Cannot switch to trashed scenario');
+
+    const matchingPlans = Object.values(state.plans).filter(
+      p => p.scenarioId === scenarioId && p.status !== 'trashed' && p.status !== 'withdrawn' && p.status !== 'archived'
+    );
+    let targetPlanId: string | null = null;
+    if (matchingPlans.length > 0) {
+      matchingPlans.sort((a, b) => a.version - b.version || a.id.localeCompare(b.id));
+      targetPlanId = matchingPlans[0].id;
+      validatePlanGraph(state, targetPlanId);
+    }
+
+    return {
+      activeScenarioId: scenarioId,
+      activePlanId: targetPlanId,
+      selectedInstanceId: null,
+      activeTool: 'select' as const,
+      pendingTemplate: null,
+      measurePoints: [],
+      activeSimulationRunId: null,
+      coverageVolumes: {},
+      spxResults: {},
+      samVolumes: {},
+      aiAdvisorSuggestions: [],
+      aiAdvisorRoute: [],
+      aiAdvisorSummary: '',
+      aiAdvisorError: null,
+      aiAdvisorStatus: 'idle' as const,
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
+  }),
+
+  renameScenario: (scenarioId: string, newName: string) => set((state) => {
+    const scenario = state.scenarios[scenarioId];
+    if (!scenario) throw new Error('renameScenario: Scenario does not exist');
+    if (scenario.status === 'archived') throw new Error('renameScenario: Cannot rename archived scenario');
+    if (scenario.status === 'trashed') throw new Error('renameScenario: Cannot rename trashed scenario');
+    if (!newName || !newName.trim()) throw new Error('renameScenario: Scenario name cannot be empty');
+
+    const nextState = {
+      scenarios: {
+        ...state.scenarios,
+        [scenarioId]: { ...scenario, name: newName.trim() }
+      }
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'WORKSPACE', id: 'canonical-root' },
+      'UPDATE',
+      'SCENARIO',
+      [scenarioId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  archiveScenario: (scenarioId: string) => set((state) => {
+    const scenario = state.scenarios[scenarioId];
+    if (!scenario) throw new Error('archiveScenario: Target scenario does not exist');
+    if (scenario.status === 'archived') throw new Error('archiveScenario: Scenario is already archived');
+    if (scenario.status === 'trashed') throw new Error('archiveScenario: Cannot archive trashed scenario');
+
+    const isTargetActive = state.activeScenarioId === scenarioId;
+    const contextHygiene = isTargetActive
+      ? {
+          activeSimulationRunId: null,
+          selectedInstanceId: null,
+          activeTool: 'select' as const,
+          pendingTemplate: null,
+          measurePoints: [],
+          coverageVolumes: {},
+          spxResults: {},
+          samVolumes: {},
+          aiAdvisorSuggestions: [],
+          aiAdvisorRoute: [],
+          aiAdvisorSummary: '',
+          aiAdvisorError: null,
+          aiAdvisorStatus: 'idle' as const,
+        }
+      : {};
+
+    const nextState = {
+      scenarios: {
+        ...state.scenarios,
+        [scenarioId]: {
+          ...scenario,
+          status: 'archived' as const,
+          archivedAt: Date.now(),
+        },
+      },
+      ...contextHygiene,
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'WORKSPACE', id: 'canonical-root' },
+      'ARCHIVE',
+      'SCENARIO',
+      [scenarioId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  restoreScenario: (scenarioId: string) => set((state) => {
+    const scenario = state.scenarios[scenarioId];
+    if (!scenario) throw new Error('restoreScenario: Target scenario does not exist');
+    if (scenario.status !== 'archived') throw new Error('restoreScenario: Scenario is not archived');
+
+    const nextState = {
+      scenarios: {
+        ...state.scenarios,
+        [scenarioId]: {
+          ...scenario,
+          status: 'active' as const,
+          archivedAt: undefined,
+        },
+      },
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'WORKSPACE', id: 'canonical-root' },
+      'RESTORE',
+      'SCENARIO',
+      [scenarioId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  trashDraftScenario: (scenarioId: string) => set((state) => {
+    const scenario = state.scenarios[scenarioId];
+    if (!scenario) throw new Error('trashDraftScenario: Target scenario does not exist');
+    if (scenario.status === 'trashed') throw new Error('trashDraftScenario: Scenario is already trashed');
+    if (scenario.status === 'archived') throw new Error('trashDraftScenario: Cannot trash archived scenario. Restore first.');
+
+    const childPlans = Object.values(state.plans).filter((p) => p.scenarioId === scenarioId);
+    const nonDraftPlans = childPlans.filter(
+      (p) => p.status === 'proposed' || p.status === 'approved' || p.status === 'withdrawn' || p.status === 'archived'
+    );
+    if (nonDraftPlans.length > 0) {
+      throw new Error('trashDraftScenario: Cannot trash scenario containing proposed or approved plans. Use archive instead.');
+    }
+    const hasSimulationRuns = Object.values(state.simulationRuns).some((r) => r.scenarioId === scenarioId);
+    if (hasSimulationRuns) {
+      throw new Error('trashDraftScenario: Cannot trash scenario referenced by simulation runs. Use archive instead.');
+    }
+
+    let nextActiveScenarioId = state.activeScenarioId;
+    let nextActivePlanId = state.activePlanId;
+    if (state.activeScenarioId === scenarioId) {
+      const remainingScenarios = Object.values(state.scenarios).filter(
+        (s) => s.id !== scenarioId && s.status !== 'trashed'
+      );
+      if (remainingScenarios.length > 0) {
+        nextActiveScenarioId = remainingScenarios[0].id;
+        const matchingPlans = Object.values(state.plans).filter(
+          (p) => p.scenarioId === nextActiveScenarioId && p.status !== 'trashed' && p.status !== 'withdrawn' && p.status !== 'archived'
+        );
+        matchingPlans.sort((a, b) => a.version - b.version || a.id.localeCompare(b.id));
+        nextActivePlanId = matchingPlans.length > 0 ? matchingPlans[0].id : null;
+      } else {
+        nextActiveScenarioId = null;
+        nextActivePlanId = null;
+      }
+    }
+
+    const nextState = {
+      scenarios: {
+        ...state.scenarios,
+        [scenarioId]: {
+          ...scenario,
+          status: 'trashed' as const,
+          trashedAt: Date.now(),
+        },
+      },
+      activeScenarioId: nextActiveScenarioId,
+      activePlanId: nextActivePlanId,
+      activeSimulationRunId: state.activeScenarioId === scenarioId ? null : state.activeSimulationRunId,
+      selectedInstanceId: null,
+      activeTool: 'select' as const,
+      pendingTemplate: null,
+      measurePoints: [],
+      coverageVolumes: {},
+      spxResults: {},
+      samVolumes: {},
+      aiAdvisorSuggestions: [],
+      aiAdvisorRoute: [],
+      aiAdvisorSummary: '',
+      aiAdvisorError: null,
+      aiAdvisorStatus: 'idle' as const,
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'WORKSPACE', id: 'canonical-root' },
+      'TRASH',
+      'SCENARIO',
+      [scenarioId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  restoreDraftScenario: (scenarioId: string) => set((state) => {
+    const scenario = state.scenarios[scenarioId];
+    if (!scenario) throw new Error('restoreDraftScenario: Target scenario does not exist');
+    if (scenario.status !== 'trashed') throw new Error('restoreDraftScenario: Scenario is not trashed');
+
+    const nextState = {
+      scenarios: {
+        ...state.scenarios,
+        [scenarioId]: {
+          ...scenario,
+          status: 'draft' as const,
+          trashedAt: undefined,
+        },
+      },
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'WORKSPACE', id: 'canonical-root' },
+      'RESTORE',
+      'SCENARIO',
+      [scenarioId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  purgeTrashedScenario: (scenarioId: string) => set((state) => {
+    const scenario = state.scenarios[scenarioId];
+    if (!scenario) throw new Error('purgeTrashedScenario: Target scenario does not exist');
+    const el = isScenarioEligibleForPurge(state, scenarioId);
+    if (!el.eligible) {
+      throw new Error(`purgeTrashedScenario: ${el.reason || 'Scenario is not eligible for purge'}`);
+    }
+
+    const childPlans = Object.values(state.plans).filter((p) => p.scenarioId === scenarioId);
+    const childPlanIds = new Set(childPlans.map((p) => p.id));
+
+    const scenarioPlacementIds = new Set(
+      Object.values(state.placements)
+        .filter((p) => childPlanIds.has(p.planId))
+        .map((p) => p.id)
+    );
+    const scenarioDefIds = new Set(
+      Object.values(state.definitions)
+        .filter((d) => childPlanIds.has(d.planId))
+        .map((d) => d.id)
+    );
+
+    const nextPlacements = { ...state.placements };
+    for (const pId of scenarioPlacementIds) delete nextPlacements[pId];
+
+    const nextDefinitions = { ...state.definitions };
+    for (const dId of scenarioDefIds) delete nextDefinitions[dId];
+
+    const nextObservations = { ...state.observations };
+    for (const pId of scenarioPlacementIds) delete nextObservations[pId];
+
+    const nextVisuals = { ...state.visuals };
+    for (const pId of scenarioPlacementIds) delete nextVisuals[pId];
+
+    const nextPlans = { ...state.plans };
+    for (const pId of childPlanIds) delete nextPlans[pId];
+
+    const nextScenarios = { ...state.scenarios };
+    delete nextScenarios[scenarioId];
+
+    const nextCoverageVolumes = { ...state.coverageVolumes };
+    const nextSpxResults = { ...state.spxResults };
+    const nextSamVolumes = { ...state.samVolumes };
+    const nextCoverageResults = { ...state.coverageResults };
+    const nextCoverageFields = { ...state.coverageFields };
+    for (const pId of scenarioPlacementIds) {
+      delete nextCoverageVolumes[pId];
+      delete nextSpxResults[pId];
+      delete nextSamVolumes[pId];
+      delete nextCoverageResults[pId];
+      delete nextCoverageFields[pId];
+    }
+
+    const nextSamEngagementModes = { ...state.samEngagementModes };
+    for (const pId of scenarioPlacementIds) {
+      delete nextSamEngagementModes[pId];
+    }
+
+    let nextActiveScenarioId = state.activeScenarioId;
+    let nextActivePlanId = state.activePlanId;
+    let contextHygiene = {};
+
+    if (state.activeScenarioId === scenarioId) {
+      const remainingScenarios = Object.values(nextScenarios).filter(
+        (s) => s.id !== scenarioId && s.status !== 'trashed'
+      );
+      if (remainingScenarios.length > 0) {
+        nextActiveScenarioId = remainingScenarios[0].id;
+        const matchingPlans = Object.values(nextPlans).filter(
+          (p) =>
+            p.scenarioId === nextActiveScenarioId &&
+            p.status !== 'trashed' &&
+            p.status !== 'withdrawn' &&
+            p.status !== 'archived'
+        );
+        matchingPlans.sort((a, b) => a.version - b.version || a.id.localeCompare(b.id));
+        nextActivePlanId = matchingPlans.length > 0 ? matchingPlans[0].id : null;
+      } else {
+        nextActiveScenarioId = null;
+        nextActivePlanId = null;
+      }
+      contextHygiene = {
+        activeSimulationRunId: null,
+        selectedInstanceId: null,
+        activeTool: 'select' as const,
+        pendingTemplate: null,
+        measurePoints: [],
+        aiAdvisorSuggestions: [],
+        aiAdvisorRoute: [],
+        aiAdvisorSummary: '',
+        aiAdvisorError: null,
+        aiAdvisorStatus: 'idle' as const,
+      };
+    }
+
+    const nextState = {
+      scenarios: nextScenarios,
+      plans: nextPlans,
+      placements: nextPlacements,
+      definitions: nextDefinitions,
+      observations: nextObservations,
+      visuals: nextVisuals,
+      coverageVolumes: nextCoverageVolumes,
+      spxResults: nextSpxResults,
+      samVolumes: nextSamVolumes,
+      coverageResults: nextCoverageResults,
+      coverageFields: nextCoverageFields,
+      samEngagementModes: nextSamEngagementModes,
+      activeScenarioId: nextActiveScenarioId,
+      activePlanId: nextActivePlanId,
+      ...contextHygiene,
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'WORKSPACE', id: 'canonical-root' },
+      'REMOVE',
+      'SCENARIO',
+      [scenarioId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  createEmptyPlan: (name?: string) => {
+    let createdPlanId = '';
+    set((state) => {
+      if (!state.activeScenarioId) throw new Error('createEmptyPlan: No active scenario');
+      const scenario = state.scenarios[state.activeScenarioId];
+      if (!scenario) throw new Error('createEmptyPlan: Active scenario does not exist');
+      if (scenario.status === 'archived') throw new Error('createEmptyPlan: Scenario is archived');
+      if (scenario.status === 'trashed') throw new Error('createEmptyPlan: Scenario is trashed');
+
+      const generateUniqueId = (prefix: string, existing: Record<string, any>) => {
+        let id;
+        do {
+          id = prefix + '_' + Date.now() + Math.random().toString(36).substring(2, 7);
+        } while (existing[id]);
+        return id;
+      };
+
+      const newPlanId = generateUniqueId('plan', state.plans);
+      createdPlanId = newPlanId;
+      const plansInScenario = Object.values(state.plans).filter((p) => p.scenarioId === state.activeScenarioId);
+      const maxVersion = plansInScenario.length > 0 ? Math.max(...plansInScenario.map((p) => p.version)) : 0;
+      const newPlan: Plan = {
+        id: newPlanId,
+        scenarioId: state.activeScenarioId,
+        version: maxVersion + 1,
+        name: (name && name.trim()) || 'Phương án mới',
+        status: 'draft' as const,
+        alternativeId: newPlanId,
+        revisionNumber: 1,
+        baseRevisionPlanId: null,
+      };
+
+      const nextState = {
+        plans: { ...state.plans, [newPlanId]: newPlan },
+        activePlanId: newPlanId,
+        selectedInstanceId: null,
+        activeTool: 'select' as const,
+        pendingTemplate: null,
+        measurePoints: [],
+        activeSimulationRunId: null,
+        coverageVolumes: {},
+        spxResults: {},
+        samVolumes: {},
+        aiAdvisorSuggestions: [],
+        aiAdvisorRoute: [],
+        aiAdvisorSummary: '',
+        aiAdvisorError: null,
+        aiAdvisorStatus: 'idle' as const,
+        workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+      };
+
+      const auditUpdates = appendAuditToState(
+        state,
+        nextState,
+        { type: 'PLAN', id: newPlanId },
+        'ADD',
+        'PLAN',
+        [newPlanId],
+        'HUMAN',
+        'USER_ACTION'
+      );
+
+      return { ...nextState, ...auditUpdates };
+    });
+    return createdPlanId;
+  },
+
+  renamePlan: (planId: string, newName: string) => set((state) => {
+    const plan = state.plans[planId];
+    if (!plan) throw new Error('renamePlan: Plan does not exist');
+    const scenario = state.scenarios[plan.scenarioId];
+    if (scenario?.status === 'archived') throw new Error('renamePlan: Scenario is archived');
+    if (scenario?.status === 'trashed') throw new Error('renamePlan: Scenario is trashed');
+    if (plan.scenarioId !== state.activeScenarioId) throw new Error('renamePlan: Plan does not belong to active scenario');
+    if (plan.status !== 'draft') throw new Error('renamePlan: Only draft plans can be renamed');
+    if (!newName || !newName.trim()) throw new Error('renamePlan: Plan name cannot be empty');
+
+    const nextState = {
+      plans: {
+        ...state.plans,
+        [planId]: { ...plan, name: newName.trim() }
+      }
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'PLAN', id: planId },
+      'UPDATE',
+      'PLAN',
+      [planId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  proposePlan: (planId: string) => set((state) => {
+    const plan = state.plans[planId];
+    if (!plan) throw new Error('proposePlan: Plan does not exist');
+    const scenario = state.scenarios[plan.scenarioId];
+    if (scenario?.status === 'archived') throw new Error('proposePlan: Scenario is archived');
+    if (scenario?.status === 'trashed') throw new Error('proposePlan: Scenario is trashed');
+    if (plan.scenarioId !== state.activeScenarioId) throw new Error('proposePlan: Plan does not belong to active scenario');
+    if (plan.status !== 'draft') throw new Error('proposePlan: Only draft plans can be proposed');
+    validatePlanGraph(state, planId);
+
+    const nextState = {
+      plans: {
+        ...state.plans,
+        [planId]: { ...plan, status: 'proposed' as const }
+      }
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'PLAN', id: planId },
+      'UPDATE',
+      'PLAN',
+      [planId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  withdrawAndReviseProposedPlan: (planId: string, reason: string) => {
+    if (!reason || !reason.trim()) {
+      throw new Error('withdrawAndReviseProposedPlan: Reason is required to withdraw a proposal');
+    }
+    let createdRevisionPlanId = '';
+    set((state) => {
+      const plan = state.plans[planId];
+      if (!plan) throw new Error('withdrawAndReviseProposedPlan: Plan does not exist');
+      const scenario = state.scenarios[plan.scenarioId];
+      if (scenario?.status === 'archived') throw new Error('withdrawAndReviseProposedPlan: Scenario is archived');
+      if (scenario?.status === 'trashed') throw new Error('withdrawAndReviseProposedPlan: Scenario is trashed');
+      if (plan.scenarioId !== state.activeScenarioId) throw new Error('withdrawAndReviseProposedPlan: Plan does not belong to active scenario');
+      if (plan.status !== 'proposed') throw new Error('withdrawAndReviseProposedPlan: Only proposed plans can be withdrawn and revised');
+
+      validatePlanGraph(state, planId);
+
+      const generateUniqueId = (prefix: string, existing: Record<string, any>) => {
+        let id;
+        do {
+          id = prefix + '_' + Date.now() + Math.random().toString(36).substring(2, 7);
+        } while (existing[id]);
+        return id;
+      };
+
+      const newPlanId = generateUniqueId('plan', state.plans);
+      createdRevisionPlanId = newPlanId;
+
+      const currentAlternativeId = plan.alternativeId || plan.id;
+      const nextRevisionNumber = (plan.revisionNumber || 1) + 1;
+
+      // 1. Mark existing proposed plan as immutable withdrawn snapshot
+      const withdrawnPlan: Plan = {
+        ...plan,
+        status: 'withdrawn' as const,
+        withdrawnAt: Date.now(),
+        withdrawnReason: reason.trim(),
+      };
+
+      // 2. Create new draft revision of the SAME alternative
+      const newDraftPlan: Plan = {
+        id: newPlanId,
+        scenarioId: plan.scenarioId,
+        version: plan.version, // SAME alternative version!
+        name: plan.name,
+        status: 'draft' as const,
+        alternativeId: currentAlternativeId,
+        revisionNumber: nextRevisionNumber,
+        baseRevisionPlanId: plan.id,
+      };
+
+      const nextPlans = {
+        ...state.plans,
+        [planId]: withdrawnPlan,
+        [newPlanId]: newDraftPlan,
+      };
+
+      const nextPlacements = { ...state.placements };
+      const nextDefinitions = { ...state.definitions };
+      const nextObservations = { ...state.observations };
+      const nextVisuals = { ...state.visuals };
+
+      const placementIdMap: Record<string, string> = {};
+
+      // Clone placements and definitions for the new revision
+      for (const p of Object.values(state.placements)) {
+        if (p.planId === planId) {
+          const newPlacementId = generateUniqueId('P_rev', nextPlacements);
+          placementIdMap[p.id] = newPlacementId;
+
+          const oldDefId = p.definitionId;
+          const newDefId = generateUniqueId('D_rev', nextDefinitions);
+
+          const oldDef = state.definitions[oldDefId];
+          nextDefinitions[newDefId] = { ...oldDef, id: newDefId, planId: newPlanId };
+
+          nextPlacements[newPlacementId] = {
+            ...p,
+            id: newPlacementId,
+            planId: newPlanId,
+            definitionId: newDefId,
+          };
+
+          const oldVisual = state.visuals[p.id];
+          if (oldVisual) {
+            nextVisuals[newPlacementId] = { ...oldVisual };
+          }
+
+          nextObservations[newPlacementId] = {
+            placementId: newPlacementId,
+            status: 'Active',
+          };
+        }
+      }
+
+      // Remap network references
+      for (const pid of Object.values(placementIdMap)) {
+        const p = nextPlacements[pid];
+        if (p.network?.commandedBy && placementIdMap[p.network.commandedBy]) {
+          p.network = { ...p.network, commandedBy: placementIdMap[p.network.commandedBy] };
+        }
+      }
+
+      const nextState = {
+        plans: nextPlans,
+        placements: nextPlacements,
+        definitions: nextDefinitions,
+        observations: nextObservations,
+        visuals: nextVisuals,
+        activePlanId: newPlanId,
+        selectedInstanceId: null,
+        activeTool: 'select' as const,
+        pendingTemplate: null,
+        measurePoints: [],
+        activeSimulationRunId: null,
+        coverageVolumes: {},
+        spxResults: {},
+        samVolumes: {},
+        aiAdvisorSuggestions: [],
+        aiAdvisorRoute: [],
+        aiAdvisorSummary: '',
+        aiAdvisorError: null,
+        aiAdvisorStatus: 'idle' as const,
+        workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+      };
+
+      // Audit withdrawal of old proposal
+      const withdrawAudit = appendAuditToState(
+        state,
+        nextState,
+        { type: 'PLAN', id: planId },
+        'WITHDRAW',
+        'PLAN',
+        [planId],
+        'HUMAN',
+        'USER_ACTION',
+        null,
+        reason.trim()
+      );
+
+      const stateWithWithdraw = { ...nextState, ...withdrawAudit };
+      const derivedFromRevisionId = stateWithWithdraw.revisionHeads[revisionScopeKey({ type: 'PLAN', id: planId })] || null;
+
+      // Audit branch/new revision
+      const branchAudit = appendAuditToState(
+        stateWithWithdraw,
+        stateWithWithdraw,
+        { type: 'PLAN', id: newPlanId },
+        'BRANCH',
+        'PLAN',
+        [newPlanId],
+        'HUMAN',
+        'USER_ACTION',
+        derivedFromRevisionId
+      );
+
+      return { ...stateWithWithdraw, ...branchAudit };
+    });
+    return createdRevisionPlanId;
+  },
+
+  trashDraftPlan: (planId: string) => set((state) => {
+    const plan = state.plans[planId];
+    if (!plan) throw new Error('trashDraftPlan: Plan does not exist');
+    const scenario = state.scenarios[plan.scenarioId];
+    if (scenario?.status === 'archived') throw new Error('trashDraftPlan: Scenario is archived');
+    if (scenario?.status === 'trashed') throw new Error('trashDraftPlan: Scenario is trashed');
+    if (plan.status !== 'draft') throw new Error('trashDraftPlan: Only draft plans can be moved to trash');
+
+    const hasSimulationRuns = Object.values(state.simulationRuns).some((r) => r.planId === planId);
+    if (hasSimulationRuns) {
+      throw new Error('trashDraftPlan: Cannot trash plan referenced by simulation runs');
+    }
+
+    let nextActivePlanId = state.activePlanId;
+    let contextHygiene = {};
+    if (state.activePlanId === planId) {
+      const remainingPlans = Object.values(state.plans).filter(
+        (p) =>
+          p.scenarioId === plan.scenarioId &&
+          p.id !== planId &&
+          p.status !== 'trashed' &&
+          p.status !== 'withdrawn' &&
+          p.status !== 'archived'
+      );
+      remainingPlans.sort((a, b) => a.version - b.version || a.id.localeCompare(b.id));
+      nextActivePlanId = remainingPlans.length > 0 ? remainingPlans[0].id : null;
+      contextHygiene = {
+        activeSimulationRunId: null,
+        selectedInstanceId: null,
+        activeTool: 'select' as const,
+        pendingTemplate: null,
+        measurePoints: [],
+        coverageVolumes: {},
+        spxResults: {},
+        samVolumes: {},
+        aiAdvisorSuggestions: [],
+        aiAdvisorRoute: [],
+        aiAdvisorSummary: '',
+        aiAdvisorError: null,
+        aiAdvisorStatus: 'idle' as const,
+      };
+    }
+
+    const nextState = {
+      plans: {
+        ...state.plans,
+        [planId]: {
+          ...plan,
+          status: 'trashed' as const,
+          trashedAt: Date.now(),
+        },
+      },
+      activePlanId: nextActivePlanId,
+      ...contextHygiene,
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'PLAN', id: planId },
+      'TRASH',
+      'PLAN',
+      [planId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  restoreDraftPlan: (planId: string) => set((state) => {
+    const plan = state.plans[planId];
+    if (!plan) throw new Error('restoreDraftPlan: Plan does not exist');
+    const scenario = state.scenarios[plan.scenarioId];
+    if (scenario?.status === 'archived') throw new Error('restoreDraftPlan: Scenario is archived');
+    if (scenario?.status === 'trashed') throw new Error('restoreDraftPlan: Scenario is trashed');
+    if (plan.status !== 'trashed') throw new Error('restoreDraftPlan: Plan is not trashed');
+
+    let nextActivePlanId = state.activePlanId;
+    if (!nextActivePlanId && state.activeScenarioId === plan.scenarioId) {
+      nextActivePlanId = planId;
+    }
+
+    const nextState = {
+      plans: {
+        ...state.plans,
+        [planId]: {
+          ...plan,
+          status: 'draft' as const,
+          trashedAt: undefined,
+        },
+      },
+      activePlanId: nextActivePlanId,
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'PLAN', id: planId },
+      'RESTORE',
+      'PLAN',
+      [planId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  purgeTrashedPlan: (planId: string) => set((state) => {
+    const plan = state.plans[planId];
+    if (!plan) throw new Error('purgeTrashedPlan: Plan does not exist');
+    const el = isPlanEligibleForPurge(state, planId);
+    if (!el.eligible) {
+      throw new Error(`purgeTrashedPlan: ${el.reason || 'Plan is not eligible for purge'}`);
+    }
+
+    const planPlacementIds = new Set(
+      Object.values(state.placements)
+        .filter((p) => p.planId === planId)
+        .map((p) => p.id)
+    );
+    const planDefIds = new Set(
+      Object.values(state.definitions)
+        .filter((d) => d.planId === planId)
+        .map((d) => d.id)
+    );
+
+    const nextPlacements = { ...state.placements };
+    for (const pId of planPlacementIds) delete nextPlacements[pId];
+
+    const nextDefinitions = { ...state.definitions };
+    for (const dId of planDefIds) delete nextDefinitions[dId];
+
+    const nextObservations = { ...state.observations };
+    for (const pId of planPlacementIds) delete nextObservations[pId];
+
+    const nextVisuals = { ...state.visuals };
+    for (const pId of planPlacementIds) delete nextVisuals[pId];
+
+    const nextPlans = { ...state.plans };
+    delete nextPlans[planId];
+
+    const nextCoverageVolumes = { ...state.coverageVolumes };
+    const nextSpxResults = { ...state.spxResults };
+    const nextSamVolumes = { ...state.samVolumes };
+    const nextCoverageResults = { ...state.coverageResults };
+    const nextCoverageFields = { ...state.coverageFields };
+    for (const pId of planPlacementIds) {
+      delete nextCoverageVolumes[pId];
+      delete nextSpxResults[pId];
+      delete nextSamVolumes[pId];
+      delete nextCoverageResults[pId];
+      delete nextCoverageFields[pId];
+    }
+
+    const nextSamEngagementModes = { ...state.samEngagementModes };
+    for (const pId of planPlacementIds) {
+      delete nextSamEngagementModes[pId];
+    }
+
+    let nextActivePlanId = state.activePlanId;
+    let contextHygiene = {};
+    if (state.activePlanId === planId) {
+      const remainingPlans = Object.values(nextPlans).filter(
+        (p) =>
+          p.scenarioId === plan.scenarioId &&
+          p.status !== 'trashed' &&
+          p.status !== 'withdrawn' &&
+          p.status !== 'archived'
+      );
+      remainingPlans.sort((a, b) => a.version - b.version || a.id.localeCompare(b.id));
+      nextActivePlanId = remainingPlans.length > 0 ? remainingPlans[0].id : null;
+      contextHygiene = {
+        activeSimulationRunId: null,
+        selectedInstanceId: null,
+        activeTool: 'select' as const,
+        pendingTemplate: null,
+        measurePoints: [],
+        aiAdvisorSuggestions: [],
+        aiAdvisorRoute: [],
+        aiAdvisorSummary: '',
+        aiAdvisorError: null,
+        aiAdvisorStatus: 'idle' as const,
+      };
+    }
+
+    const nextState = {
+      plans: nextPlans,
+      placements: nextPlacements,
+      definitions: nextDefinitions,
+      observations: nextObservations,
+      visuals: nextVisuals,
+      coverageVolumes: nextCoverageVolumes,
+      spxResults: nextSpxResults,
+      samVolumes: nextSamVolumes,
+      coverageResults: nextCoverageResults,
+      coverageFields: nextCoverageFields,
+      samEngagementModes: nextSamEngagementModes,
+      activePlanId: nextActivePlanId,
+      ...contextHygiene,
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'WORKSPACE', id: 'canonical-root' },
+      'REMOVE',
+      'PLAN',
+      [planId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  getTrashSummary: (scope?: 'all' | 'plans' | 'scenarios') => {
+    const state = get();
+    const targetScope = scope || 'all';
+
+    const eligiblePlans: Plan[] = [];
+    const retainedPlans: { plan: Plan; reason: string }[] = [];
+    const eligibleScenarios: Scenario[] = [];
+    const retainedScenarios: { scenario: Scenario; reason: string }[] = [];
+
+    if (targetScope === 'all' || targetScope === 'plans') {
+      const trashedPlans = Object.values(state.plans).filter((p) => p.status === 'trashed');
+      for (const p of trashedPlans) {
+        const el = isPlanEligibleForPurge(state, p.id);
+        if (el.eligible) {
+          eligiblePlans.push(p);
+        } else {
+          retainedPlans.push({ plan: p, reason: el.reason || 'Bị bảo vệ lịch sử' });
+        }
+      }
+    }
+
+    if (targetScope === 'all' || targetScope === 'scenarios') {
+      const trashedScenarios = Object.values(state.scenarios).filter((s) => s.status === 'trashed');
+      for (const s of trashedScenarios) {
+        const el = isScenarioEligibleForPurge(state, s.id);
+        if (el.eligible) {
+          eligibleScenarios.push(s);
+        } else {
+          retainedScenarios.push({ scenario: s, reason: el.reason || 'Bị bảo vệ lịch sử' });
+        }
+      }
+    }
+
+    return {
+      eligiblePlans,
+      eligibleScenarios,
+      retainedPlans,
+      retainedScenarios,
+    };
+  },
+
+  emptyTrash: (scope?: 'all' | 'plans' | 'scenarios') => {
+    const summary = get().getTrashSummary(scope);
+
+    // Purge eligible plans first, then scenarios
+    for (const p of summary.eligiblePlans) {
+      get().purgeTrashedPlan(p.id);
+    }
+    for (const s of summary.eligibleScenarios) {
+      get().purgeTrashedScenario(s.id);
+    }
+
+    return {
+      purgedPlans: summary.eligiblePlans.map((p) => p.id),
+      purgedScenarios: summary.eligibleScenarios.map((s) => s.id),
+      retainedPlans: summary.retainedPlans.map((r) => ({
+        id: r.plan.id,
+        name: r.plan.name,
+        reason: r.reason,
+      })),
+      retainedScenarios: summary.retainedScenarios.map((r) => ({
+        id: r.scenario.id,
+        name: r.scenario.name,
+        reason: r.reason,
+      })),
+    };
+  },
+
+  archivePlan: (planId: string) => set((state) => {
+    const plan = state.plans[planId];
+    if (!plan) throw new Error('archivePlan: Plan does not exist');
+    const scenario = state.scenarios[plan.scenarioId];
+    if (scenario?.status === 'archived') throw new Error('archivePlan: Scenario is archived');
+    if (scenario?.status === 'trashed') throw new Error('archivePlan: Scenario is trashed');
+    if (plan.status === 'archived') throw new Error('archivePlan: Plan is already archived');
+    if (plan.status === 'trashed') throw new Error('archivePlan: Cannot archive trashed plan');
+
+    let nextActivePlanId = state.activePlanId;
+    let contextHygiene = {};
+    if (state.activePlanId === planId) {
+      const remainingPlans = Object.values(state.plans).filter(
+        (p) =>
+          p.scenarioId === plan.scenarioId &&
+          p.id !== planId &&
+          p.status !== 'trashed' &&
+          p.status !== 'withdrawn' &&
+          p.status !== 'archived'
+      );
+      remainingPlans.sort((a, b) => a.version - b.version || a.id.localeCompare(b.id));
+      nextActivePlanId = remainingPlans.length > 0 ? remainingPlans[0].id : null;
+      contextHygiene = {
+        activeSimulationRunId: null,
+        selectedInstanceId: null,
+        activeTool: 'select' as const,
+        pendingTemplate: null,
+        measurePoints: [],
+        coverageVolumes: {},
+        spxResults: {},
+        samVolumes: {},
+        aiAdvisorSuggestions: [],
+        aiAdvisorRoute: [],
+        aiAdvisorSummary: '',
+        aiAdvisorError: null,
+        aiAdvisorStatus: 'idle' as const,
+      };
+    }
+
+    const nextState = {
+      plans: {
+        ...state.plans,
+        [planId]: {
+          ...plan,
+          status: 'archived' as const,
+          archivedAt: Date.now(),
+          archivedFromStatus: plan.status,
+        },
+      },
+      activePlanId: nextActivePlanId,
+      ...contextHygiene,
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'PLAN', id: planId },
+      'ARCHIVE',
+      'PLAN',
+      [planId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  restorePlan: (planId: string) => set((state) => {
+    const plan = state.plans[planId];
+    if (!plan) throw new Error('restorePlan: Plan does not exist');
+    const scenario = state.scenarios[plan.scenarioId];
+    if (scenario?.status === 'archived') throw new Error('restorePlan: Scenario is archived');
+    if (scenario?.status === 'trashed') throw new Error('restorePlan: Scenario is trashed');
+    if (plan.status !== 'archived') throw new Error('restorePlan: Plan is not archived');
+
+    const restoredStatus = plan.archivedFromStatus || 'draft';
+
+    let nextActivePlanId = state.activePlanId;
+    if (!nextActivePlanId && state.activeScenarioId === plan.scenarioId && restoredStatus !== 'withdrawn') {
+      nextActivePlanId = planId;
+    }
+
+    const nextState = {
+      plans: {
+        ...state.plans,
+        [planId]: {
+          ...plan,
+          status: restoredStatus,
+          archivedAt: undefined,
+          archivedFromStatus: undefined,
+        },
+      },
+      activePlanId: nextActivePlanId,
+      workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
+    };
+
+    const auditUpdates = appendAuditToState(
+      state,
+      nextState,
+      { type: 'PLAN', id: planId },
+      'RESTORE',
+      'PLAN',
+      [planId],
+      'HUMAN',
+      'USER_ACTION'
+    );
+
+    return { ...nextState, ...auditUpdates };
+  }),
+
+  workspaceContextGeneration: 0,
+  showWorkspaceModal: false,
+  setShowWorkspaceModal: (show: boolean) => set({ showWorkspaceModal: show }),
+  workspaceModalTab: 'plans' as const,
+  setWorkspaceModalTab: (tab: 'scenarios' | 'plans') => set({ workspaceModalTab: tab }),
 
   selectedInstanceId: null,
 
@@ -1327,6 +2718,17 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 
   runAiPlacementAnalysis: async (model) => {
     const state = get();
+    const reqScenarioId = state.activeScenarioId;
+    const reqPlanId = state.activePlanId;
+    const reqGen = state.workspaceContextGeneration;
+    const isStale = () => {
+      const now = get();
+      return (
+        now.workspaceContextGeneration !== reqGen ||
+        now.activePlanId !== reqPlanId ||
+        now.activeScenarioId !== reqScenarioId
+      );
+    };
     const template = resolveAdvisorTemplate(state);
 
     // Ghi lại template đã chọn để UI phản ánh đúng khí tài vừa dùng
@@ -1334,6 +2736,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 
     // 1. Kiểm tra backend (health)
     const health = await checkVectorAiHealth();
+    if (isStale()) return;
     if (!health.ok) {
       // Backend local không trả lời (kể cả timeout) => coi như chưa kết nối
       const isOffline = health.error.kind === 'offline' || health.error.kind === 'timeout';
@@ -1378,6 +2781,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       model,
       messages: buildPlacementMessages(context),
     });
+    if (isStale()) return;
     if (!answer.ok) {
       set({
         aiAdvisorStatus:
@@ -1394,6 +2798,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       return;
     }
 
+    if (isStale()) return;
     set({
       aiAdvisorStatus: 'ready',
       aiAdvisorError: null,
@@ -2005,9 +3410,41 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     });
   },
 
-  importCanonicalPackage: (pkg) => {
-    validateCanonicalStatePackageV1(pkg);
-    const clone = structuredClone(pkg);
+  exportCanonicalPackageV2: (layoutName) => {
+    const state = get();
+    return structuredClone({
+      schemaVersion: 2,
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        layoutName: layoutName || 'Exported Package V2',
+      },
+      context: {
+        activeScenarioId: state.activeScenarioId,
+        activePlanId: state.activePlanId,
+        activeSimulationRunId: state.activeSimulationRunId,
+      },
+      scenarios: state.scenarios,
+      plans: state.plans,
+      placements: state.placements,
+      definitions: state.definitions,
+      observations: state.observations,
+      simulationRuns: state.simulationRuns,
+      simulations: state.simulations,
+      visuals: state.visuals,
+      revisions: state.revisions,
+      revisionHeads: state.revisionHeads,
+      auditEvents: state.auditEvents,
+      auditEventOrder: state.auditEventOrder,
+    });
+  },
+
+  importCanonicalPackage: (pkg: CanonicalStatePackage) => {
+    validateCanonicalStatePackage(pkg);
+    const isV2 = pkg.schemaVersion === 2;
+    const v2Pkg = isV2
+      ? (pkg as CanonicalStatePackageV2)
+      : migrateCanonicalPackageV1ToV2(pkg as CanonicalStatePackageV1);
+    const clone = structuredClone(v2Pkg);
 
     set(() => {
       const nextState = {
@@ -2023,8 +3460,28 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         simulationRuns: clone.simulationRuns,
         simulations: clone.simulations,
         visuals: clone.visuals,
+        revisions: clone.revisions || {},
+        revisionHeads: clone.revisionHeads || {},
+        auditEvents: clone.auditEvents || {},
+        auditEventOrder: clone.auditEventOrder || [],
+        selectedInstanceId: null,
+        coverageVolumes: {},
+        spxResults: {},
+        samVolumes: {},
+        coverageResults: {},
+        coverageFields: {},
+        aiAdvisorSuggestions: [],
+        aiAdvisorRoute: [],
+        aiAdvisorSummary: '',
+        aiAdvisorError: null,
+        aiAdvisorStatus: 'idle' as const,
+        workspaceContextGeneration: (get().workspaceContextGeneration || 0) + 1,
+        showWorkspaceModal: false,
+        workspaceModalTab: 'plans' as const,
       };
 
+      // Append IMPORT audit event on top of loaded history without overwriting prior records.
+      // For V1 packages, this records the import itself without fabricating fake past history.
       const auditUpdates = appendAuditToState(
         get(),
         nextState,
@@ -2042,6 +3499,82 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 }));
 
 // === Canonical Read Model (Selectors) ===
+
+export const selectScenarios = (() => {
+  let lastScenarios: Record<string, Scenario> | null = null;
+  let lastResult: Scenario[] = [];
+
+  return (state: TacticalState): Scenario[] => {
+    if (lastScenarios === state.scenarios) {
+      return lastResult;
+    }
+    lastScenarios = state.scenarios;
+    lastResult = Object.values(state.scenarios).filter((s) => s.status !== 'trashed');
+    return lastResult;
+  };
+})();
+
+export const selectAllScenarios = (() => {
+  let lastScenarios: Record<string, Scenario> | null = null;
+  let lastResult: Scenario[] = [];
+
+  return (state: TacticalState): Scenario[] => {
+    if (lastScenarios === state.scenarios) {
+      return lastResult;
+    }
+    lastScenarios = state.scenarios;
+    lastResult = Object.values(state.scenarios);
+    return lastResult;
+  };
+})();
+
+export const selectPlansForActiveScenario = (() => {
+  let lastPlans: Record<string, Plan> | null = null;
+  let lastActiveScenarioId: string | null = null;
+  let lastResult: Plan[] = [];
+
+  return (state: TacticalState): Plan[] => {
+    if (
+      lastPlans === state.plans &&
+      lastActiveScenarioId === state.activeScenarioId
+    ) {
+      return lastResult;
+    }
+    lastPlans = state.plans;
+    lastActiveScenarioId = state.activeScenarioId;
+    lastResult = state.activeScenarioId
+      ? Object.values(state.plans).filter(
+          (p) =>
+            p.scenarioId === state.activeScenarioId &&
+            p.status !== 'trashed' &&
+            p.status !== 'withdrawn' &&
+            p.status !== 'archived'
+        )
+      : [];
+    return lastResult;
+  };
+})();
+
+export const selectAllPlansForActiveScenario = (() => {
+  let lastPlans: Record<string, Plan> | null = null;
+  let lastActiveScenarioId: string | null = null;
+  let lastResult: Plan[] = [];
+
+  return (state: TacticalState): Plan[] => {
+    if (
+      lastPlans === state.plans &&
+      lastActiveScenarioId === state.activeScenarioId
+    ) {
+      return lastResult;
+    }
+    lastPlans = state.plans;
+    lastActiveScenarioId = state.activeScenarioId;
+    lastResult = state.activeScenarioId
+      ? Object.values(state.plans).filter((p) => p.scenarioId === state.activeScenarioId)
+      : [];
+    return lastResult;
+  };
+})();
 
 export const selectActiveScenario = (state: TacticalState) =>
   state.activeScenarioId ? state.scenarios[state.activeScenarioId] || null : null;

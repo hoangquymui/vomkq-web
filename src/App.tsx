@@ -13,6 +13,7 @@ import { LayoutModal } from "./components/ui/LayoutModal";
 import { TacticalLayerControls } from "./components/ui/TacticalLayerControls";
 import { TacticalMapLegend } from "./components/ui/TacticalMapLegend";
 import { AiPlacementAdvisorPanel } from "./components/ui/AiPlacementAdvisorPanel";
+import { WorkspaceModal } from "./components/ui/WorkspaceModal";
 
 export function App() {
 
@@ -59,6 +60,9 @@ export function App() {
 
       {/* Modal Quản lý Bố Cục Trận Địa (Lưu / Nạp / Xóa JSON) */}
       <LayoutModal />
+
+      {/* Modal Không Gian Làm Việc Scenario / Kế Hoạch (Checkpoint 2A) */}
+      <WorkspaceModal />
 
       {/* Bảng phân tích Mặt Cắt Ngang 2D (Cross Section) */}
       <RadarCrossSectionPanel />

@@ -2845,3 +2845,176 @@ Người dùng yêu cầu thực hiện 3 điều chỉnh:
 - **Giá trị sau**: `const launchLimitM = minElevationDeg > 0 ? Math.round(deltaH * cotMinElev) : Infinity;`
 - **Cách xác minh**: Chọn lại tổ hợp pháo 57mm trên bản đồ, vòm xanh lá (Emerald) bung tỏa dạng nón úp bao phủ từ mặt đất/mặt biển lên đến độ cao 5.000m, với lõi nón mù ở chính giữa, đúng với thông số thực chiến.
 
+- **Nội dung thực hiện**:
+  1. Store Actions: Bổ sung các action quản lý Scenario (`createScenario`, `switchScenario`, `renameScenario`) và Plan (`createEmptyPlan`, `renamePlan`, `proposePlan`, `switchActivePlan`, `createPlanAlternative`).
+  2. Invariants & Isolation:
+     - Cô lập lựa chọn (`selectedInstanceId: null`) và dọn sạch cache tính toán chuyển tiếp (`coverageVolumes`, `spxResults`, `samVolumes`) khi chuyển Plan / Scenario.
+     - Bảo toàn cấu hình tác chiến người dùng (`samEngagementModes`) khi chuyển qua lại giữa các Plan.
+     - Cơ chế `workspaceContextGeneration`: token thế hệ số nguyên tăng đơn điệu chặn triệt để kết quả async stale từ các tác vụ nền (SPx, 3D radar/SAM volume, AI Advisor) kể cả trong kịch bản chuyển nhanh A → B → A.
+     - Monotonic versioning cho Plan trong phạm vi Scenario: `max(existing_versions) + 1`.
+     - Read-only guard đa tầng: Scenario archived, Plan proposed/approved, hoặc khi không có active Plan. Mọi mutation bị từ chối đều bảo đảm tính nguyên tử (atomic rejection: không thay đổi registry, audit hay revision).
+  3. UI / Presentation:
+     - Tạo `WorkspaceModal.tsx` 2 tab (Kịch bản & Phương án), hỗ trợ tạo mới, đổi tên, nhân bản biến thể, đề xuất phê duyệt, và chọn kịch bản/phương án.
+     - Tích hợp badges và Quick Plan Switcher dropdown trên `TopBar.tsx`.
+     - Read-only banner và vô hiệu hóa nút triển khai/xóa khí tài tại `LeftSidebar.tsx` và `RightInspector.tsx`.
+     - Vô hiệu hóa nút "Đặt tại đây" của `AiPlacementAdvisorPanel.tsx` khi ở trạng thái chỉ đọc.
+  4. Integration Test:
+     - Tạo đúng 1 test suite với 1 test case chính trong `src/store/workspaceIntegration.test.ts` kiểm thử toàn bộ 10 phase của vertical slice (từ tạo Scenario, baseline Plan, nhân bản Alternative, cô lập ngữ cảnh, đề xuất Plan, chặn mutation nguyên tử, kịch bản lưu trữ, async stale token, đến xuất nhập Canonical Package V1 11 trường).
+- **Xác minh**:
+  - `src/store/workspaceIntegration.test.ts`: PASS (1 test, 100%).
+  - Full Vitest suite: PASS 5/5 test files, 113/113 tests pass (112 tests cũ được giữ nguyên vẹn không suy giảm + 1 integration test mới).
+  - TypeScript: `npx tsc -b --pretty false`: 0 lỗi (Exit Code 0).
+  - Production build: `npm run build`: Thành công trong 3m 11s, dist bundle sẵn sàng.
+### Checkpoint 2A — Targeted Correction sau Independent Review
+- **Ngày**: 09/10/2026
+- **Mục tiêu**: Xử lý triệt để 4 nhóm phát hiện độc lập từ Independent Review (NO-GO commit):
+  1. **P1 — Archived Mutation Guard**:
+     - Bổ sung guard tại `renamePlan` và `proposePlan` trong `src/store/useTacticalStore.ts`: kiểm tra `scenario?.status === 'archived'` ngay tại Store trước khi khởi tạo `nextState` hoặc ghi `auditEvents`.
+     - `WorkspaceModal.tsx`: Ẩn/disable các nút đổi tên và đề xuất phương án khi kịch bản hiện hành ở trạng thái `archived`.
+     - Xác minh rejection giữ nguyên 100% tính nguyên tử (zero mutation to canonical placements, definitions, plans, audit trail, revisions).
+  2. **P1 — Selector Stability**:
+     - Memoize `selectScenarios` và `selectPlansForActiveScenario` trong `src/store/useTacticalStore.ts` bằng closure-based reference cache (tương đồng với `selectActivePlacements` và `selectActiveEquipment`).
+     - Đảm bảo trả về cùng tham chiếu mảng khi dependency không đổi, loại bỏ triệt để nguy cơ infinite render loop trong Zustand 5.0.15 và React 19.2.8 tại `TopBar` và `WorkspaceModal`.
+  3. **P1 — Async Stale Results**:
+     - Rà soát `src/components/map/CesiumGlobe.tsx`: trước đây `stateNow` được chụp *trước* khi `await computeRadarCoverageVolume` và `await computeSamEngagementVolume`.
+     - Đã sửa: chụp `const stateAfter = useTacticalStore.getState()` ngay *sau* mỗi lệnh `await` và so sánh `activeScenarioId`, `activePlanId`, `workspaceContextGeneration` và cờ hủy `isCancelled` trước khi ghi `setCoverageVolume` / `setSamVolume`.
+     - Invalidate toàn bộ gợi ý AI Advisor (`aiAdvisorSuggestions`, `aiAdvisorRoute`, `aiAdvisorSummary`, `aiAdvisorStatus`, `aiAdvisorError`) khi chuyển Plan / Scenario và khi import canonical package.
+     - Trong `importCanonicalPackage`: xóa sạch các transient cache cũ (`coverageVolumes`, `spxResults`, `samVolumes`, `coverageResults`, `coverageFields`, AI Advisor) nhưng giữ nguyên vẹn cấu hình nghiệp vụ `samEngagementModes` và canonical data.
+  4. **P2 — Read-Only UI**:
+     - `RightInspector.tsx`: Tính cả trường hợp `!activePlan` vào `isReadOnly` (`const isPlanReadOnly = !activePlan || activePlan.status !== 'draft'`).
+     - Disable toàn bộ controls chỉnh sửa thực tế (`disabled={isReadOnly}` cho tên khí tài, nút trạng thái, nút di chuyển, nút xóa, tọa độ DMS/Decimal, chiều cao tháp anten, chọn SCH chỉ huy, các thanh trượt cự ly/trần bắn/chế độ SAM, dải tần số ESM, tốc độ quay quét, và các nút cự ly trong bảng độ cao).
+     - Giữ nguyên 100% khả năng xem, đọc thông số, ghim vị trí camera và chuyển đổi các tab 2D/3D ở chế độ read-only.
+     - `TopBar.tsx`: Bọc `switchActivePlan` trong khối `try / catch` an toàn để không phát sinh unhandled exceptions ra UI.
+  5. **Test Integration & Regression**:
+     - Giữ nguyên duy nhất 1 integration test file `src/store/workspaceIntegration.test.ts` với đúng 1 test case chính.
+     - Bổ sung kiểm chứng selector reference stability.
+     - Bổ sung kiểm chứng từ chối `renamePlan`/`proposePlan` trên kịch bản archived kèm kiểm tra tính nguyên tử (atomicity).
+     - Bổ sung kiểm chứng luồng async thực tế với controlled Promise: chứng minh kết quả async đến muộn sau khi đổi Plan (A → B → A) bị chặn và không ghi vào active context, trong khi task hợp lệ trong ngữ cảnh được ghi thành công.
+     - Giữ nguyên vẹn 112 regression tests cũ.
+- **Xác minh**:
+  - `src/store/workspaceIntegration.test.ts`: PASS (1 test, 28ms).
+  - `npx tsc -b --pretty false`: 0 lỗi (Exit Code 0).
+  - `npx vitest run`: 5 test files, 113/113 tests PASS.
+  - `npm run build`: Production bundle thành công trong 3m 26s (Exit Code 0).
+### Checkpoint 2A — Lifecycle Extension (Xóa Mềm, Lưu Trữ, Khôi Phục & Thu Hồi Đề Xuất Để Sửa)
+- **Ngày**: 10/10/2026
+- **Mục tiêu**: Hoàn thiện toàn bộ vòng đời tác chiến theo hợp đồng `CHECKPOINT_2A_LIFECYCLE_EXTENSION_IMPLEMENTATION_BRIEF.md`:
+  1. **Xóa mềm (Trash), Lưu trữ (Archive) & Khôi phục (Restore)**:
+     - Scenario: hỗ trợ `archiveScenario` (chuyển sang chỉ đọc), `restoreScenario` (quay lại `active`), `trashDraftScenario` (xóa mềm `trashed` có điều kiện kiểm tra hợp lệ: chặn nếu có phương án đã đề xuất/phê duyệt hoặc có simulation runs), và `restoreDraftScenario` (quay lại `draft`).
+     - Plan: hỗ trợ `trashDraftPlan` (xóa mềm phương án nháp) và `restoreDraftPlan` (khôi phục phương án nháp).
+     - Selectors: `selectScenarios` tự động lọc bỏ `trashed`; `selectPlansForActiveScenario` tự động lọc bỏ `trashed` và `withdrawn`; cung cấp `selectAllScenarios` và `selectAllPlansForActiveScenario` phục vụ xem toàn bộ lịch sử và thùng rác trong `WorkspaceModal`.
+  2. **Thu hồi đề xuất để sửa đổi (Withdraw & Revise Proposed Plan)**:
+     - Phân định rạch ròi **Plan Alternative** (ứng viên so sánh khác trong kịch bản: `version + 1`, `alternativeId: newPlanId`, `revisionNumber: 1`) và **Plan Revision** (bản sửa đổi của cùng ứng viên: giữ nguyên `version` và `alternativeId`, tăng đơn điệu `revisionNumber = (current.revisionNumber || 1) + 1`, liên kết xuất xứ `baseRevisionPlanId: current.id`).
+     - Action `withdrawAndReviseProposedPlan(planId, reason)`:
+       - Đóng băng bản đề xuất cũ thành bất biến `status: 'withdrawn'`, ghi nhận thời gian `withdrawnAt`, lý do `withdrawnReason`, và sự kiện audit `WITHDRAW`.
+       - Nhân bản sâu toàn bộ khí tài (Placements, Definitions, trạng thái trực quan Visuals) sang bản dự thảo mới của cùng phương án, khởi tạo trạng thái quan sát tương thích ban đầu. Tuyệt đối không sao chép giả mạo SimulationState hay SimulationRun.
+       - Tự động chuyển active context sang bản dự thảo mới để người dùng bổ sung khí tài bị thiếu (ví dụ: trận địa pháo phòng không) rồi gửi đề xuất lại (`proposePlan`).
+       - Bản ghi đề xuất cũ được giữ nguyên vẹn 100% số lượng khí tài ban đầu, không bị rò rỉ hay ghi đè.
+  3. **Lossless Serialization V2 & Tương thích ngược Polymorphic V1**:
+     - Định nghĩa `CanonicalStatePackageV2` (`schemaVersion: 2`) lưu trữ đầy đủ `revisions`, `revisionHeads`, `auditEvents`, `auditEventOrder`, cùng metadata vòng đời `alternativeId`, `revisionNumber`, `baseRevisionPlanId`, `withdrawnAt`, `withdrawnReason`, `trashedAt`.
+     - Cung cấp `exportCanonicalPackageV2` cho lưu trữ bảo toàn lịch sử; giữ nguyên `exportCanonicalPackage` định dạng V1 nguyên thủy.
+     - Hàm `importCanonicalPackage` hỗ trợ đa hình (polymorphic): tự động nhận dạng schema V1 qua `migrateCanonicalPackageV1ToV2` mà không chèn dữ liệu giả định, đồng thời nạp 100% không mất mát lịch sử đối với gói V2.
+  4. **Workspace UI & Map Parity**:
+     - `WorkspaceModal.tsx`:
+       - Bổ sung menu và nút thao tác Vòng đời: Lưu Trữ, Khôi Phục, Xóa Mềm, Khôi Phục Thùng Rác cho cả Kịch bản và Phương án.
+       - Hộp thoại xác nhận đa tầng (Confirmation Modal) cho Đề Xuất Phương Án (hiển thị ngữ cảnh và số lượng khí tài) và Thu Hồi Để Sửa (bắt buộc nhập lý do).
+       - Nhãn trực quan phân biệt Alternative (`v1`, `v2`), Revision (`r1`, `r2`), và trạng thái vòng đời (`DRAFT`, `PROPOSED`, `WITHDRAWN`, `ARCHIVED`, `TRASHED`).
+       - Tab phân loại danh mục: Đang Hoạt Động, Lưu Trữ, Thùng Rác.
+     - `TopBar.tsx`: Hiển thị thông tin phiên bản và số revision (`v1.r2`) trong Quick Switcher và huy hiệu trạng thái.
+     - `RightInspector.tsx`: Bổ sung kiểm tra `isScenarioTrashed` vào `isReadOnly` và cập nhật thông báo banner tương ứng.
+  5. **Quy tắc Kiểm thử & Không sinh Test**:
+     - Tuân thủ nghiêm ngặt chính sách ONE NEW TEST: chỉ mở rộng đúng 1 test case duy nhất trong `src/store/workspaceIntegration.test.ts` thêm 5 Phase mới (Phase 11 đến Phase 15).
+     - Toàn bộ 112 regression tests tiền thân giữ nguyên vẹn 100% PASS.
+- **Xác minh**:
+  - `src/store/workspaceIntegration.test.ts`: PASS (1 test, 58ms, hoàn thành cả 15 Phase).
+  - `src/domain/serialization/serialization.test.ts`: PASS 35/35 tests.
+  - `npx tsc -b --pretty false`: 0 lỗi (Exit Code 0).
+  - `npx vitest run`: 5 test files, 113/113 tests PASS.
+  - `npm run build`: Production bundle thành công trong 3m 15s (Exit Code 0).
+  - `git diff --check`: 0 lỗi whitespace (Exit Code 0).
+### Checkpoint 2A — Final Targeted Lifecycle Fix (FIX 1 đến FIX 6)
+- **Ngày**: 10/10/2026
+- **Mục tiêu**: Khắc phục triệt để 6 vấn đề vòng đời thực tế được chỉ ra sau đợt rà soát:
+  1. **FIX 1 — Zustand Selector Stability (P1)**:
+     - Memoize `selectAllScenarios` (dựa trên tham chiếu `state.scenarios`).
+     - Memoize `selectAllPlansForActiveScenario` (dựa trên tham chiếu `state.plans` và `state.activeScenarioId`).
+     - Bảo đảm khi modal đóng hoặc khi các state UI/bản đồ không liên quan thay đổi, selector luôn trả về cùng array reference, loại bỏ hoàn toàn hiện tượng re-render thừa trong `WorkspaceModal`.
+  2. **FIX 2 — Withdrawn History Isolation (P1)**:
+     - `trashDraftScenario` và `isScenarioEligibleForTrash` chặn xóa mềm kịch bản chứa phương án `withdrawn` (hoặc `proposed`, `approved`, `archived`), bảo vệ tuyệt đối các snapshot lịch sử.
+     - `switchActivePlan` tung ngoại lệ nếu chọn phương án có trạng thái `withdrawn` hoặc `archived`, ngăn không cho bản thu hồi trở thành `activePlanId` hiệu dụng.
+     - Trong `WorkspaceModal`, ẩn nút "Kích Hoạt" đối với phương án `withdrawn` và `archived`; cung cấp ngăn kéo "Xem Khí Tài Lịch Sử (Chỉ Đọc)" để tra cứu bố trí khí tài mà không đánh đồng với phương án hiện hành.
+  3. **FIX 3 — Plan Archive Contract**:
+     - Bổ sung trạng thái `'archived'` vào `PlanStatus` cùng các trường `archivedAt` và `archivedFromStatus`.
+     - Triển khai `archivePlan(planId)` và `restorePlan(planId)`: bảo toàn 100% snapshot khí tài, quan sát, mô phỏng, audit trail và lineage; không xóa vật lý; không tự cấp quyền `approved`.
+     - Bộ lọc `selectPlansForActiveScenario` tự động ẩn các phương án đã lưu trữ khỏi Quick Switcher.
+  4. **FIX 4 — Canonical V2 UI Persistence (P1)**:
+     - Cung cấp tính năng "Sao Lưu Toàn Bộ Không Gian Làm Việc (Gói V2)" và "Nạp Gói Không Gian Làm Việc (V1/V2)" trực tiếp trên giao diện `WorkspaceModal`.
+     - Hiển thị banner phân định rõ ràng giữa Gói Canonical Workspace (sao lưu toàn bộ kịch bản, phương án, lịch sử sửa đổi, audit trail) và Bố Cục Khí Tài JSON (`LayoutModal.tsx`, chỉ xuất/nạp vị trí bố trí khí tài).
+  5. **FIX 5 — V2 Import History Integrity (P1)**:
+     - Khi import gói V2, hàm `importCanonicalPackage` ghi nhận đúng một sự kiện audit `IMPORT` mới nối tiếp (`appendAuditToState`), bảo tồn nguyên vẹn 100% ID các sự kiện audit, revision metadata và revision heads đã nạp mà không ghi đè hoặc thay thế lịch sử.
+     - Khi import gói V1, không tự bịa đặt hay suy đoán lịch sử phương án quá khứ.
+  6. **FIX 6 — Context Hygiene**:
+     - Khi Lưu trữ (`archiveScenario`, `archivePlan`) hoặc Xóa mềm (`trashDraftScenario`, `trashDraftPlan`) một Kịch bản hoặc Phương án đang hoạt động (active), tự động dọn dẹp ngữ cảnh: đặt lại `activeTool: 'select'`, `pendingTemplate: null`, `selectedInstanceId: null`, xóa sạch cache tính toán LOS và SPx để tránh map interaction còn treo.
+     - Cập nhật banner thông báo chỉ đọc trên `LeftSidebar.tsx` và `RightInspector.tsx` bao gồm cả Kịch bản bị xóa mềm (`trashed`) và Phương án được lưu trữ (`archived`).
+- **Kiểm thử & Xác minh**:
+  - `src/store/workspaceIntegration.test.ts`: Giữ đúng 1 test case duy nhất, mở rộng Phase 16 kiểm chứng trọn vẹn selector stability, Withdrawn History isolation, Plan Archive contract, context hygiene, và V1/V2 import integrity.
+  - Toàn bộ 112 regression tests trước đó giữ nguyên vẹn 100% PASS.
+  - `npx vitest run`: 5 test files, 113/113 tests PASS.
+  - `npx tsc -b --pretty false`: 0 lỗi (Exit Code 0).
+  - `npm run build`: Production bundle thành công trong 3m 6s (Exit Code 0).
+  - `git diff --check`: 0 lỗi whitespace (Exit Code 0).
+### Checkpoint 2A — Final Lifecycle Invariant Correction (P1-A, P1-B, P1-C & P2)
+- **Ngày**: 10/10/2026
+- **Mục tiêu**: Chuẩn hóa các bất biến vòng đời cuối cùng theo kết quả Independent Code Review:
+  1. **P1-A — SWITCH SCENARIO**:
+     - Trong `switchScenario`, loại bỏ các phương án có `status: 'archived'` (cùng với `withdrawn` và `trashed`) khỏi tập ứng viên tự động chọn `targetPlanId`.
+     - Nếu kịch bản không còn phương án hợp lệ nào (ví dụ: toàn bộ phương án đã lưu trữ), gán `activePlanId = null`.
+     - Duy trì thứ tự lựa chọn tất định: ưu tiên theo `version` tăng dần rồi đến `id` (`localeCompare`).
+  2. **P1-B — RESTORE PLAN**:
+     - Trong store `restorePlan(planId)`, bổ sung kiểm tra `if (scenario?.status === 'archived') throw new Error('restorePlan: Scenario is archived');` bảo đảm từ chối nguyên tử khi kịch bản chủ quản đang ở trạng thái lưu trữ.
+     - Trong giao diện `WorkspaceModal.tsx`, bổ sung điều kiện `activeScenario?.status !== 'archived'` để ẩn nút "Khôi Phục" phương án khi kịch bản đang lưu trữ, buộc người dùng phải khôi phục kịch bản trước.
+  3. **P1-C — SIMULATION CONTEXT**:
+     - Khi `archivePlan`, `trashDraftPlan`, `trashDraftScenario`, hoặc `archiveScenario` làm thay đổi ngữ cảnh `activePlanId` hoặc `activeScenarioId`, tự động đặt lại `activeSimulationRunId = null` cùng các thuộc tính tạm thời (transient context).
+     - Tuyệt đối bảo tồn nguyên vẹn danh mục kết quả mô phỏng `simulationRuns` (registry/history) phục vụ kiểm toán và phân tích sau này.
+  4. **P2 — IMPORT CONFIRMATION**:
+     - Trước khi nạp gói dữ liệu Workspace V1/V2 và ghi đè trạng thái toàn bộ Store, `WorkspaceModal.tsx` mở hộp thoại xác nhận chuyên biệt (`type: 'import_workspace'`) cảnh báo rõ hậu quả (thay thế mọi kịch bản, phương án, bố trí khí tài và lịch sử).
+     - Nếu người dùng chọn "Hủy Bỏ", Store được giữ nguyên vẹn 100%.
+     - Giữ riêng biệt định dạng và tính năng Bố Cục Khí Tài JSON (`LayoutModal.tsx`).
+- **Kiểm thử & Xác minh**:
+  - `src/store/workspaceIntegration.test.ts`: Giữ đúng **1 it test case duy nhất**, mở rộng Phase 16 với các tiểu mục:
+    - 16.4: Xác minh `switchScenario` bỏ qua phương án archived và trả về `null` khi không còn phương án hợp lệ.
+    - 16.5: Xác minh `restorePlan` bị từ chối nguyên tử khi kịch bản lưu trữ.
+    - 16.6: Xác minh chuyển đổi ngữ cảnh vòng đời đặt lại `activeSimulationRunId = null` và bảo toàn `simulationRuns` registry.
+  - Bảo toàn trọn vẹn 100% 112 regression tests trước đó.
+  - `npx vitest run`: 5 test files, 113/113 tests PASS.
+  - `npx tsc -b --pretty false`: 0 lỗi (Exit Code 0).
+  - `npm run build`: Production bundle thành công trong 3m 23s (Exit Code 0).
+  - `git diff --check`: 0 lỗi whitespace (Exit Code 0).
+
+### Checkpoint 2A — UI Polish & Safe Trash Cleanup (Dọn Thùng Rác & Xóa Vĩnh Viễn)
+- **Ngày**: 10/10/2026
+- **Mục tiêu**: Hoàn thiện toàn diện giao diện tiếng Việt và cơ chế dọn thùng rác an toàn theo tài liệu `CHECKPOINT_2A_UI_POLISH_PURGE_IMPLEMENTATION.md`:
+  1. **UI Polish & Việt Hóa 100%**:
+     - Xóa dòng mô tả sao lưu toàn diện dưới tiêu đề modal `WorkspaceModal`.
+     - Xuất bản `SCENARIO_STATUS_LABELS` trong `src/domain/types/scenario.ts` và `PLAN_STATUS_LABELS` trong `src/domain/types/plan.ts`.
+     - Việt hóa toàn bộ nhãn trạng thái (Bản nháp, Đang hoạt động, Đã đề xuất, Đã phê duyệt, Đã từ chối, Đã thu hồi, Đã lưu trữ, Trong thùng rác), thanh công cụ `TopBar`, thanh bên `LeftSidebar`, và hộp thoại `WorkspaceModal`.
+     - Tinh giản nút "Xuất V2" / "Nhập V1/V2" thành "Xuất" / "Nhập" trong khi vẫn bảo tồn toàn vẹn tính năng xuất gói Canonical V2 và nhập tương thích V1/V2.
+     - Chuẩn hóa thuật ngữ: "Phương án mới", "Phương án thay thế", "Phương án gốc", "Bản sửa đổi", "Chỉ xem", "Mã".
+  2. **Safe Trash Cleanup & Permanent Purge (Xóa Vĩnh Viễn An Toàn)**:
+     - Thêm các hàm nghiệp vụ: `isPlanEligibleForPurge`, `isScenarioEligibleForPurge`, `purgeTrashedPlan`, `purgeTrashedScenario`, `emptyTrash`, `getTrashSummary`.
+     - Điều kiện bảo vệ bất biến (Invariant Protection):
+       - Chỉ cho phép xóa khi đối tượng đang ở trạng thái thùng rác (`status === 'trashed'`).
+       - Từ chối nguyên tử nếu Phương án từng được đề xuất, phê duyệt, từ chối, thu hồi; hoặc nằm trong chuỗi sửa đổi (revisions); hoặc có liên kết kết quả mô phỏng (`simulationRuns`).
+       - Từ chối nguyên tử nếu Kịch bản chứa phương án không thể xóa hoặc có liên kết mô phỏng.
+     - Dọn dẹp triệt để payload thực thể (`placements`, `definitions`, `visuals`, `observations`, `coverageVolumes`, `spxResults`, `samVolumes`, `samEngagementModes`) mà không để lại dangling reference.
+     - Ghi nhận sự kiện audit `'REMOVE'` trong phạm vi `WORKSPACE`, ghi rõ ID, tên và loại đối tượng bị xóa vĩnh viễn.
+     - Vệ sinh ngữ cảnh tự động (`activePlanId`, `activeScenarioId`, `selectedInstanceId`, `activeSimulationRunId`, `activeTool`, `pendingTemplate`).
+     - Hỗ trợ thao tác xóa từng mục và dọn toàn bộ thùng rác (`emptyTrash`) có hộp thoại xác nhận và bản xem trước số lượng mục xóa/bảo vệ.
+  3. **Kiểm thử & Xác minh**:
+     - `src/store/workspaceIntegration.test.ts`: Mở rộng Phase 17 bên trong đúng **1 it test case duy nhất**, bao phủ 6 tình huống kiểm thử (xóa nháp đủ điều kiện, từ chối nguyên tử mục có liên kết lịch sử, dọn hàng loạt hỗn hợp, xóa kịch bản và bảo vệ ràng buộc, vòng lặp xuất/nạp không hồi sinh mục đã xóa, dự phòng ngữ cảnh an toàn).
+     - Bảo toàn trọn vẹn 112 regression tests trước đó (tổng 113 tests).
+     - `npx vitest run`: 5 test files, 113/113 tests PASS.
+     - `npx tsc -b --pretty false`: 0 lỗi (Exit Code 0).
+     - `npm run build`: Production bundle thành công trong 3m 21s (Exit Code 0).
+     - `git diff HEAD --check`: 0 lỗi whitespace/EOF (Exit Code 0).
+
