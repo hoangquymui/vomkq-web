@@ -64,12 +64,13 @@ export function destinationPoint(
  */
 export function generateSpxCacheKey(
   instance: EquipmentInstance,
-  config: SpxRadarCoverageConfig
+  config: SpxRadarCoverageConfig,
+  terrainKey?: string
 ): string {
   const heightsKey = config.targetHeights
     .map((t) => `${t.id}:${t.heightMeters}`)
     .join('|');
-  return [
+  const base = [
     instance.instanceId,
     instance.latitude.toFixed(5),
     instance.longitude.toFixed(5),
@@ -84,7 +85,72 @@ export function generateSpxCacheKey(
     config.kFactor.toFixed(3),
     config.altitudeReference,
     heightsKey,
-  ].join('__');
+  ];
+  if (terrainKey) {
+    base.push(terrainKey);
+  }
+  return base.join('__');
+}
+
+const unknownProviderIdMap = new WeakMap<object, string>();
+let unknownProviderCounter = 0;
+
+function getUnknownProviderUid(obj: object): string {
+  let uid = unknownProviderIdMap.get(obj);
+  if (!uid) {
+    unknownProviderCounter += 1;
+    const explicitId =
+      (obj as any).datasetId ||
+      (obj as any).id ||
+      (obj as any)._id ||
+      (obj as any).key;
+    uid = explicitId ? `id:${explicitId}` : `inst_${unknownProviderCounter}_${Math.random().toString(36).substring(2, 7)}`;
+    unknownProviderIdMap.set(obj, uid);
+  }
+  return uid;
+}
+
+export function getTerrainProviderKey(
+  terrainProvider: Cesium.TerrainProvider | null,
+  terrainVersion?: string
+): string {
+  const ver = terrainVersion || 'v1';
+  if (!terrainProvider) return `flat_${ver}`;
+  const anyProv = terrainProvider as any;
+  const url =
+    anyProv._resource?.url ||
+    anyProv._url ||
+    anyProv.url ||
+    anyProv._resource?._url ||
+    '';
+  const explicitId =
+    anyProv.datasetId ||
+    anyProv.id ||
+    anyProv._id ||
+    anyProv.key ||
+    anyProv.name ||
+    anyProv._name ||
+    '';
+  const typeName = anyProv.constructor?.name || 'unknown_provider';
+  const hasNormals = anyProv.hasVertexNormals ? '1' : '0';
+  const hasWater = anyProv.hasWaterMask ? '1' : '0';
+  const ready = anyProv.ready !== undefined ? (anyProv.ready ? '1' : '0') : '';
+  const availability = anyProv.availability ? 'has_avail' : '';
+
+  let providerIdentity: string;
+  if (url) {
+    providerIdentity = `url:${url}`;
+  } else if (explicitId) {
+    providerIdentity = `id:${explicitId}`;
+  } else {
+    // Trường hợp provider không có URL hoặc explicit dataset ID:
+    // Không dùng credit chung làm danh tính duy nhất.
+    // Dùng UID ổn định theo provider instance trong phiên; vẫn giữ terrainVersion.
+    const instUid = typeof terrainProvider === 'object' ? getUnknownProviderUid(terrainProvider) : 'primitive';
+    providerIdentity = `type:${typeName}_uid:${instUid}_n${hasNormals}_w${hasWater}_r${ready}_${availability}`;
+  }
+
+  return `provider:${providerIdentity}__ver:${ver}`;
 }
 
 /**
@@ -99,8 +165,13 @@ const terrainSampleCache = new Map<
     sampleDistances: number[];
     // Ma trận độ cao địa hình: heights[azimuthIdx][distIdx]
     heightsMatrix: Float32Array[];
+    terrainStatus: 'dem_loaded' | 'flat_fallback' | 'error';
   }
 >();
+
+export function clearTerrainSampleCache(): void {
+  terrainSampleCache.clear();
+}
 
 /**
  * Tính toán danh sách cự ly các vòng cự ly thông minh và nội suy cho cự ly bất kỳ (ví dụ 165000m, 50000m)
@@ -182,7 +253,8 @@ async function sampleTerrainInBatches(
 export async function computeSpxRadarCoverage(
   instance: EquipmentInstance,
   terrainProvider: Cesium.TerrainProvider | null,
-  config: SpxRadarCoverageConfig
+  config: SpxRadarCoverageConfig,
+  terrainVersion?: string
 ): Promise<SpxCoverageResult> {
   const radarLat = typeof instance.latitude === 'number' && !isNaN(instance.latitude) && isFinite(instance.latitude)
     ? instance.latitude
@@ -197,12 +269,6 @@ export async function computeSpxRadarCoverage(
   const rawStart = config?.startRangeM ?? 0;
   const startRangeM = typeof rawStart === 'number' && !isNaN(rawStart) && isFinite(rawStart) ? Math.max(0, rawStart) : 0;
 
-  // 1. Kiểm tra hoặc lấy mẫu lưới địa hình DEM quanh vị trí đài
-  const posKey = `${radarLat.toFixed(5)}_${radarLon.toFixed(5)}_${endRangeM}`;
-  let cachedGrid = terrainSampleCache.get(posKey);
-
-  let terrainStatus: 'dem_loaded' | 'flat_fallback' | 'error' = 'dem_loaded';
-
   // Độ phân giải phương vị và cự ly
   // 360 tia (bước 1.0°) tạo biên dạng răng cưa cực kỳ chân thực
   const azStepDeg = 1.0;
@@ -212,6 +278,13 @@ export async function computeSpxRadarCoverage(
   for (let az = startAz; az < endAz; az += azStepDeg) {
     azimuths.push(az);
   }
+
+  // 1. Kiểm tra hoặc lấy mẫu lưới địa hình DEM quanh vị trí đài (phụ thuộc cả dải phương vị)
+  const terrainKey = getTerrainProviderKey(terrainProvider, terrainVersion);
+  const posKey = `${radarLat.toFixed(5)}_${radarLon.toFixed(5)}_${endRangeM}_az${startAz.toFixed(1)}_${endAz.toFixed(1)}_${terrainKey}`;
+  let cachedGrid = terrainSampleCache.get(posKey);
+
+  let terrainStatus: 'dem_loaded' | 'flat_fallback' | 'error' = cachedGrid?.terrainStatus ?? 'dem_loaded';
 
   // Bước cự ly lấy mẫu dọc theo tia tối ưu hoá hiệu năng (khoảng 70-80 bước cho cự ly 50km, giảm 40% tải mạng)
   const distStepM = Math.max(350, Math.round(endRangeM / 75));
@@ -271,6 +344,7 @@ export async function computeSpxRadarCoverage(
       azimuths,
       sampleDistances,
       heightsMatrix,
+      terrainStatus,
     };
 
     terrainSampleCache.set(posKey, cachedGrid);
@@ -470,7 +544,7 @@ export async function computeSpxRadarCoverage(
   return {
     instanceId: instance.instanceId,
     calculatedAt: Date.now(),
-    cacheKey: generateSpxCacheKey(instance, config),
+    cacheKey: generateSpxCacheKey(instance, config, terrainKey),
     radarLat,
     radarLon,
     groundElevationM,

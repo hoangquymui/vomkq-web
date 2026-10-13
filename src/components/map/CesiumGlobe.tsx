@@ -2,7 +2,13 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { Pin, PinOff, ArrowUp, ArrowDown } from 'lucide-react';
-import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
+import {
+  useTacticalStore,
+  selectActiveEquipment,
+  selectAnalysisFreshness,
+  selectInstanceAnalysisResult,
+} from '../../store/useTacticalStore';
+import { buildSpxInputSnapshot, computeAnalysisFingerprint, resolveEffectiveSpxConfig } from '../../domain/analysis/analysisFingerprint';
 import {
   computeRadarCoverageField,
   convertFieldToCoverageResult,
@@ -15,6 +21,7 @@ import {
 import {
   computeSpxRadarCoverage,
   generateSpxCacheKey,
+  getTerrainProviderKey,
 } from '../../utils/spxCoverageEngine';
 import {
   buildSpxCoverageEntities,
@@ -275,6 +282,7 @@ export const CesiumGlobe: React.FC = () => {
     spxConfig,
     spxResults,
     setSpxResult,
+    spxRecalculateToken,
     isCalculatingSpx,
     setIsCalculatingSpx,
     showCoverageLayer,
@@ -406,6 +414,9 @@ export const CesiumGlobe: React.FC = () => {
         });
         if (viewerRef.current && !viewerRef.current.isDestroyed()) {
           viewerRef.current.scene.terrainProvider = provider;
+          const currentStore = useTacticalStore.getState();
+          const tVer = currentStore.activeScenarioId ? currentStore.scenarios[currentStore.activeScenarioId]?.terrainVersion || 'v1' : 'v1';
+          currentStore.setActiveTerrainProviderKey(getTerrainProviderKey(provider, tVer));
         }
       })
       .catch((err) => {
@@ -890,35 +901,80 @@ export const CesiumGlobe: React.FC = () => {
       const reqScenarioId = state.activeScenarioId;
       const reqPlanId = state.activePlanId;
       const reqGen = state.workspaceContextGeneration;
+      const terrainVer = reqScenarioId ? state.scenarios[reqScenarioId]?.terrainVersion || 'v1' : 'v1';
+      const terrainKey = getTerrainProviderKey(viewer.scene.terrainProvider, terrainVer);
+      if (state.activeTerrainProviderKey !== terrainKey) {
+        state.setActiveTerrainProviderKey(terrainKey);
+      }
+
+      const requestedTarget = state.spxRequestedRecalculateInstanceId;
 
       for (const inst of candidateRadars) {
         if (isCancelled) break;
-        const instConfig = {
-          ...spxConfig,
-          radarHeightAGL: inst.antennaHeightAGL || spxConfig.radarHeightAGL,
-          endRangeM: inst.rangeKm ? inst.rangeKm * 1000 : spxConfig.endRangeM,
-          minElevationDeg: inst.minElevationDeg !== undefined ? inst.minElevationDeg : spxConfig.minElevationDeg,
-          maxElevationDeg: inst.maxElevationDeg !== undefined ? inst.maxElevationDeg : spxConfig.maxElevationDeg,
-          ...(inst.spxConfig || {}),
-        };
-        const cacheKey = generateSpxCacheKey(inst, instConfig);
-        if (currentResults[inst.instanceId]?.cacheKey === cacheKey) {
+        const instConfig = resolveEffectiveSpxConfig(spxConfig, {
+          antennaHeightAGL: inst.antennaHeightAGL,
+          rangeKm: inst.rangeKm,
+          minElevationDeg: inst.minElevationDeg,
+          maxElevationDeg: inst.maxElevationDeg,
+          customSpxConfig: inst.spxConfig,
+        });
+        const cacheKey = generateSpxCacheKey(inst, instConfig, terrainKey);
+
+        const storeBefore = useTacticalStore.getState();
+        const existingRecord = selectInstanceAnalysisResult(storeBefore, inst.instanceId);
+        const hasExistingResult = Boolean(currentResults[inst.instanceId] || existingRecord);
+        const isExplicit = Boolean(
+          requestedTarget && (requestedTarget === 'all' || requestedTarget === inst.instanceId)
+        );
+
+        // Phân biệt 3 trigger:
+        // - INITIAL: radar mới chưa có kết quả -> được phép chạy auto-analysis.
+        // - EXPLICIT: Human bấm "Phân tích SPx / Chạy lại phân tích" -> được phép chạy.
+        // - INPUT_MUTATION: thay vị trí, anten, range, sector hoặc nguồn DEM -> CHỈ đánh dấu stale; không tự chạy lại.
+        // Cache key mismatch là tín hiệu kết quả cũ, không phải lệnh chạy lại.
+        if (hasExistingResult && !isExplicit) {
           continue;
         }
+
+        if (!isExplicit && currentResults[inst.instanceId]?.cacheKey === cacheKey) {
+          continue;
+        }
+
+        const plan = reqPlanId ? storeBefore.plans[reqPlanId] : null;
+        const placement = storeBefore.placements[inst.instanceId];
+        const def = placement ? storeBefore.definitions[placement.definitionId] : null;
+
+        const snapshot =
+          reqScenarioId && plan && placement && def
+            ? buildSpxInputSnapshot(reqScenarioId, plan, placement, def, instConfig, terrainVer, terrainKey)
+            : null;
+        const inputFingerprint = snapshot ? computeAnalysisFingerprint(snapshot) : '';
+        const requestId = reqPlanId
+          ? storeBefore.registerSpxAnalysisRequest(reqPlanId, inst.instanceId)
+          : `req_spx_plan_${inst.instanceId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
         setIsCalculatingSpx(true);
         try {
           const res = await computeSpxRadarCoverage(
             inst,
             viewer.scene.terrainProvider,
-            instConfig
+            instConfig,
+            terrainVer
           );
-          const stateNow = useTacticalStore.getState();
-          const isStale = isCancelled ||
-            stateNow.activeScenarioId !== reqScenarioId ||
-            stateNow.activePlanId !== reqPlanId ||
-            stateNow.workspaceContextGeneration !== reqGen;
-          if (!isStale) {
+          if (isCancelled) break;
+          const storeNow = useTacticalStore.getState();
+          if (snapshot && reqScenarioId && reqPlanId) {
+            storeNow.commitSpxAnalysisResult({
+              requestId,
+              scenarioId: reqScenarioId,
+              planId: reqPlanId,
+              gen: reqGen,
+              instanceId: inst.instanceId,
+              result: res,
+              snapshot,
+              inputFingerprint,
+            });
+          } else {
             setSpxResult(inst.instanceId, res);
           }
         } catch (err) {
@@ -927,8 +983,13 @@ export const CesiumGlobe: React.FC = () => {
       }
 
       const stateEnd = useTacticalStore.getState();
-      if (!isCancelled && stateEnd.workspaceContextGeneration === reqGen) {
-        setIsCalculatingSpx(false);
+      if (!isCancelled) {
+        if (requestedTarget) {
+          stateEnd.clearSpxRecalculateRequest();
+        }
+        if (stateEnd.workspaceContextGeneration === reqGen) {
+          setIsCalculatingSpx(false);
+        }
       }
     };
 
@@ -943,6 +1004,7 @@ export const CesiumGlobe: React.FC = () => {
     selectedInstanceId,
     instances,
     spxConfig,
+    spxRecalculateToken,
     setSpxResult,
     setIsCalculatingSpx,
   ]);
@@ -1211,12 +1273,26 @@ export const CesiumGlobe: React.FC = () => {
           const parentInst = inst.commandedByInstanceId ? instanceMap.get(inst.commandedByInstanceId) : null;
           const commandedByName = parentInst ? `${parentInst.shortId ? `[${parentInst.shortId}] ` : ''}${parentInst.name}` : undefined;
 
+          const freshnessInfo = caps.hasRadarCoverage
+            ? selectAnalysisFreshness(useTacticalStore.getState(), inst.instanceId)
+            : null;
+          let spxStatusTag = '';
+          if (isPendingCalc) {
+            spxStatusTag = ' [Đang phân tích]';
+          } else if (freshnessInfo?.hasResult) {
+            if (freshnessInfo.freshness === 'stale') {
+              spxStatusTag = ' [Đã cũ — Cần chạy lại]';
+            } else if (freshnessInfo.freshness === 'current') {
+              spxStatusTag = ' [SPx: Hiện tại]';
+            }
+          }
+
           const infoCardText = isPendingCalc
-            ? `▶ ${displayName} [Đang tính SPx...]\n  Tọa độ : ${latDms}, ${lonDms}\n  Cao độ : ${groundMslText} (MSL)  |  Anten: ${antennaAglText} (AGL)`
+            ? `▶ ${displayName} [Đang phân tích]\n  Tọa độ : ${latDms}, ${lonDms}\n  Cao độ : ${groundMslText} (MSL)  |  Anten: ${antennaAglText} (AGL)`
             : formatTacticalAssetInfoCard({
               category: inst.category,
               shortId: inst.shortId,
-              name: inst.name,
+              name: `${inst.name}${spxStatusTag}`,
               latDms,
               lonDms,
               groundMsl: groundMslText,
@@ -1964,6 +2040,8 @@ export const CesiumGlobe: React.FC = () => {
           maxElevationDeg: inst.maxElevationDeg !== undefined ? inst.maxElevationDeg : spxConfig.maxElevationDeg,
           ...(inst.spxConfig || {}),
         };
+        const freshnessInfo = selectAnalysisFreshness(useTacticalStore.getState(), inst.instanceId);
+        const isStale = freshnessInfo.freshness === 'stale';
         // Render vùng phủ đa tầng màu SPx + vòng cự ly đồng tâm + cờ cắm tác chiến & nhãn thông số với Focus/Dimming
         const spxEntities = buildSpxCoverageEntities(spxRes, instConfig, {
           isSelected,
@@ -1980,6 +2058,7 @@ export const CesiumGlobe: React.FC = () => {
           color: inst.color,
           realPhotoUrl: inst.realPhotoUrl || TEMPLATE_BY_ID.get(inst.templateId)?.realPhotoUrl || '',
           instanceId: inst.instanceId,
+          isStale,
         });
         spxEntities.forEach((e) => {
           e.properties = new Cesium.PropertyBag({ instanceId: inst.instanceId });

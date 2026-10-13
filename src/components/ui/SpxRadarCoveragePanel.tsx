@@ -7,12 +7,25 @@ import {
   Maximize2,
   Minimize2,
   HelpCircle,
+  RefreshCw,
 } from 'lucide-react';
-import { useTacticalStore, selectActiveEquipment } from '../../store/useTacticalStore';
+import {
+  useTacticalStore,
+  selectActiveEquipment,
+  selectAnalysisFreshness,
+  selectActiveScenario,
+  selectActivePlan,
+} from '../../store/useTacticalStore';
+import { SESSION_ONLY_DISCLAIMER } from '../../domain/types/analysis';
 import type { SpxTargetHeightTier } from '../../types/spxRadarCoverage';
 
 export const SpxRadarCoveragePanel: React.FC = () => {
   const instances = useTacticalStore(selectActiveEquipment);
+  const activeScenario = useTacticalStore(selectActiveScenario);
+  const activePlan = useTacticalStore(selectActivePlan);
+  const analysisResults = useTacticalStore((s) => s.analysisResults);
+  const spxActiveResultIds = useTacticalStore((s) => s.spxActiveResultIds);
+  const activeTerrainProviderKey = useTacticalStore((s) => s.activeTerrainProviderKey);
   const {
     showSpxPanel,
     setShowSpxPanel,
@@ -25,6 +38,7 @@ export const SpxRadarCoveragePanel: React.FC = () => {
     addEquipment,
     selectEquipment,
     triggerFlyTo,
+    triggerSpxRecalculate,
   } = useTacticalStore();
 
   const [posFormat, setPosFormat] = useState<'dms' | 'decimal'>('dms');
@@ -41,6 +55,19 @@ export const SpxRadarCoveragePanel: React.FC = () => {
   }, [instances, selectedInstanceId]);
 
   const activeResult = currentRadar ? spxResults[currentRadar.instanceId] : null;
+  const freshnessInfo = useMemo(() => {
+    if (!currentRadar) return null;
+    return selectAnalysisFreshness(useTacticalStore.getState(), currentRadar.instanceId);
+  }, [
+    currentRadar,
+    spxConfig,
+    spxResults,
+    activePlan,
+    activeScenario,
+    analysisResults,
+    spxActiveResultIds,
+    activeTerrainProviderKey,
+  ]);
 
   // Đặt nhanh vị trí đài mẫu Sơn Trà - Đà Nẵng (Ảnh SPx)
   const handleSetPresetDaNang = () => {
@@ -201,18 +228,36 @@ export const SpxRadarCoveragePanel: React.FC = () => {
       {/* Body Controls */}
       {!isMinimized && (
         <div className="p-3.5 space-y-3 overflow-y-auto font-sans text-xs">
-          {/* Thông tin đài radar đang chọn */}
-          <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[11px] font-mono text-cyan-400 font-bold">
+          {/* Thông tin đài radar đang chọn & Trạng thái phân tích có phiên bản */}
+          <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-mono text-cyan-400 font-bold truncate max-w-[200px]" title={currentRadar?.name}>
                 {currentRadar ? currentRadar.name : 'Chưa chọn đài radar'}
               </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-500/40 text-cyan-300 font-mono">
-                {activeResult?.terrainStatus === 'dem_loaded'
-                  ? 'DEM 3D Chuẩn'
-                  : 'Đang kết nối DEM'}
-              </span>
+              {/* Huy hiệu Freshness */}
+              {isCalculatingSpx ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-500/60 text-cyan-300 font-mono animate-pulse">
+                  Đang phân tích
+                </span>
+              ) : !freshnessInfo || !freshnessInfo.hasResult ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 font-mono">
+                  Chưa phân tích
+                </span>
+              ) : freshnessInfo.freshness === 'current' ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-500/60 text-emerald-300 font-mono font-semibold">
+                  Hiện tại
+                </span>
+              ) : freshnessInfo.freshness === 'stale' ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950 border border-amber-500/60 text-amber-300 font-mono font-semibold animate-pulse">
+                  Đã cũ — Cần chạy lại
+                </span>
+              ) : (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 font-mono">
+                  Chưa rõ nguồn gốc
+                </span>
+              )}
             </div>
+
             {currentRadar && (
               <p className="text-[11px] text-slate-400 font-mono">
                 Cao độ mặt đất: <strong>{activeResult ? activeResult.groundElevationM : 0}m</strong> (MSL) • Anten:{' '}
@@ -220,9 +265,62 @@ export const SpxRadarCoveragePanel: React.FC = () => {
               </p>
             )}
 
+            {/* Nút hành động Chạy lại phân tích */}
+            <button
+              onClick={() => currentRadar && triggerSpxRecalculate(currentRadar.instanceId)}
+              disabled={!currentRadar || isCalculatingSpx}
+              className={`w-full py-1.5 px-2 rounded font-mono text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm ${
+                freshnessInfo?.freshness === 'stale'
+                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold border border-amber-300'
+                  : 'bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-300'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isCalculatingSpx ? 'animate-spin' : ''}`} />
+              <span>{freshnessInfo?.hasResult ? 'Chạy lại phân tích' : 'Phân tích SPx'}</span>
+            </button>
+
+            {/* Thẻ nguồn gốc (Provenance) */}
+            {freshnessInfo?.result && (
+              <div className="p-2 rounded bg-slate-950/90 border border-cyan-900/40 text-[10px] font-mono space-y-1 text-slate-400">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Kịch bản:</span>
+                  <span className="text-slate-200 font-semibold">{activeScenario?.name || freshnessInfo.result.scenarioId}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Phương án:</span>
+                  <span className="text-slate-200 font-semibold">{activePlan?.name || freshnessInfo.result.planId} (v{freshnessInfo.result.planVersion})</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Thời điểm:</span>
+                  <span className="text-cyan-300">
+                    {new Date(freshnessInfo.result.calculatedAt).toLocaleTimeString('vi-VN')} {new Date(freshnessInfo.result.calculatedAt).toLocaleDateString('vi-VN')}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Thuật toán:</span>
+                  <span className="text-slate-300">SPx Radar Coverage v{freshnessInfo.result.algorithmVersion}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Địa hình:</span>
+                  <span className="text-slate-300">
+                    {activeResult?.terrainStatus === 'dem_loaded' ? 'DEM 3D Chuẩn (v1)' : 'Mặt đất quy ước'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[9px] text-slate-500" title={freshnessInfo.result.inputFingerprint}>
+                  <span>Dấu vân tay:</span>
+                  <span className="font-mono text-slate-400 truncate max-w-[170px]">{freshnessInfo.result.inputFingerprint}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Dòng cảnh báo phiên làm việc bắt buộc */}
+            <p className="text-[10px] text-cyan-400/80 italic text-center font-mono">
+              ℹ️ {SESSION_ONLY_DISCLAIMER}
+            </p>
+
             <button
               onClick={handleSetPresetDaNang}
-              className="w-full mt-2 py-1 px-2 rounded bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 font-mono text-[10px] flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+              className="w-full mt-1 py-1 px-2 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[10px] flex items-center justify-center gap-1.5 transition-colors shadow-sm"
               title="Đặt đài radar tại Sơn Trà - Đà Nẵng với toạ độ và thông số giống hệt ảnh mẫu SPx"
             >
               <span>🎯 Đặt đài mẫu Đà Nẵng (16°02'34.8"N, 108°07'14.9"E)</span>

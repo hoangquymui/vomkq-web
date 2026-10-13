@@ -42,6 +42,19 @@ import {
 } from '../domain/serialization/canonicalStatePackage';
 import type { AuditActor } from '../domain/types/audit';
 import { createAuditAppend, revisionScopeKey } from '../domain/audit/auditEngine';
+import type {
+  AnalysisResult,
+  ExecutionStatus,
+  FreshnessStatus,
+  SpxAnalysisInputSnapshot,
+} from '../domain/types/analysis';
+import {
+  buildSpxInputSnapshot,
+  computeAnalysisFingerprint,
+  evaluateAnalysisFreshness,
+  resolveEffectiveSpxConfigFromCanonical,
+} from '../domain/analysis/analysisFingerprint';
+export type { AnalysisResult, ExecutionStatus, FreshnessStatus, SpxAnalysisInputSnapshot };
 
 /**
  * Trạng thái cố vấn vị trí đặt khí tài (VECTOR AI local).
@@ -161,6 +174,7 @@ interface TacticalState {
 
   // Workspace Context Generation Token & UI Modal State
   workspaceContextGeneration: number;
+  lastImportGen?: number;
   showWorkspaceModal: boolean;
   setShowWorkspaceModal: (show: boolean) => void;
   workspaceModalTab: 'scenarios' | 'plans';
@@ -284,6 +298,33 @@ interface TacticalState {
   updateSpxConfig: (updates: Partial<import('../types/spxRadarCoverage').SpxRadarCoverageConfig>) => void;
   setSpxResult: (instanceId: string, result: import('../types/spxRadarCoverage').SpxCoverageResult) => void;
   setIsCalculatingSpx: (calculating: boolean) => void;
+
+  // Versioned Analysis Results & Freshness Lifecycle (Checkpoint 2B)
+  analysisResults: Record<string, AnalysisResult<any>>;
+  spxRecalculateToken: number;
+  spxRequestedRecalculateInstanceId: string | 'all' | null;
+  clearSpxRecalculateRequest: () => void;
+  recordAnalysisResult: (result: AnalysisResult<any>) => void;
+  commitSpxAnalysisResult: (payload: {
+    requestId: string;
+    scenarioId: string;
+    planId: string;
+    gen: number;
+    instanceId: string;
+    result: import('../types/spxRadarCoverage').SpxCoverageResult;
+    snapshot: SpxAnalysisInputSnapshot;
+    inputFingerprint: string;
+  }) => boolean;
+  clearAnalysisResult: (resultId: string) => void;
+  clearPlanAnalysisResults: (planId: string) => void;
+  triggerSpxRecalculate: (instanceId?: string) => void;
+  spxRequestRegistry: Record<string, { planId: string; instanceId: string; sequenceNumber: number; registeredAt: number }>;
+  spxSequenceCounters: Record<string, number>;
+  spxAcceptedSequences: Record<string, number>;
+  spxActiveResultIds: Record<string, string>;
+  activeTerrainProviderKey?: string;
+  setActiveTerrainProviderKey: (key: string) => void;
+  registerSpxAnalysisRequest: (planId: string, instanceId: string, customRequestId?: string) => string;
 
   // Quản lý Bố Cục (Save/Load Layout Modal)
   showLayoutModal: boolean;
@@ -928,7 +969,43 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 
     validatePlanGraph(state, planId);
 
-    // Calculate new projection and purge transient calculation caches
+    // Calculate new projection and restore active plan's SPx results from versioned analysisResults
+    const planSpxResults: Record<string, import('../types/spxRadarCoverage').SpxCoverageResult> = {};
+    const nextActiveResultIds = { ...(state.spxActiveResultIds || {}) };
+    const instanceIds = new Set<string>();
+    Object.values(state.analysisResults).forEach((res) => {
+      if (res.planId === planId && res.analysisId === 'spx_radar_coverage' && res.appliedToOverlay) {
+        instanceIds.add(res.instanceId);
+      }
+    });
+    for (const instId of instanceIds) {
+      const key = `${planId}:${instId}`;
+      const activeResId = state.spxActiveResultIds?.[key];
+      let selectedRecord: AnalysisResult | undefined;
+      if (activeResId && state.analysisResults[activeResId]?.appliedToOverlay) {
+        selectedRecord = state.analysisResults[activeResId];
+      } else {
+        const matches = Object.values(state.analysisResults).filter(
+          (r) => r.planId === planId && r.instanceId === instId && r.analysisId === 'spx_radar_coverage' && r.appliedToOverlay
+        );
+        if (matches.length > 0) {
+          matches.sort((a, b) => {
+            const seqA = a.sequenceNumber ?? 0;
+            const seqB = b.sequenceNumber ?? 0;
+            if (seqA !== seqB) {
+              return seqB - seqA;
+            }
+            return b.calculatedAt - a.calculatedAt;
+          });
+          selectedRecord = matches[0];
+        }
+      }
+      if (selectedRecord?.data) {
+        planSpxResults[instId] = selectedRecord.data;
+        nextActiveResultIds[key] = selectedRecord.id;
+      }
+    }
+
     return {
       activePlanId: planId,
       selectedInstanceId: null,
@@ -937,7 +1014,8 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       measurePoints: [],
       activeSimulationRunId: null,
       coverageVolumes: {},
-      spxResults: {},
+      spxResults: planSpxResults,
+      spxActiveResultIds: nextActiveResultIds,
       samVolumes: {},
       aiAdvisorSuggestions: [],
       aiAdvisorRoute: [],
@@ -1050,6 +1128,44 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       validatePlanGraph(state, targetPlanId);
     }
 
+    const planSpxResults: Record<string, import('../types/spxRadarCoverage').SpxCoverageResult> = {};
+    const nextActiveResultIds = { ...(state.spxActiveResultIds || {}) };
+    if (targetPlanId) {
+      const instanceIds = new Set<string>();
+      Object.values(state.analysisResults).forEach((res) => {
+        if (res.planId === targetPlanId && res.analysisId === 'spx_radar_coverage' && res.appliedToOverlay) {
+          instanceIds.add(res.instanceId);
+        }
+      });
+      for (const instId of instanceIds) {
+        const targetKey: string = `${targetPlanId}:${instId}`;
+        const activeResId = state.spxActiveResultIds?.[targetKey];
+        let selectedRecord: AnalysisResult | undefined;
+        if (activeResId && state.analysisResults[activeResId]?.appliedToOverlay) {
+          selectedRecord = state.analysisResults[activeResId];
+        } else {
+          const matches = Object.values(state.analysisResults).filter(
+            (r) => r.planId === targetPlanId && r.instanceId === instId && r.analysisId === 'spx_radar_coverage' && r.appliedToOverlay
+          );
+          if (matches.length > 0) {
+            matches.sort((a, b) => {
+              const seqA = a.sequenceNumber ?? 0;
+              const seqB = b.sequenceNumber ?? 0;
+              if (seqA !== seqB) {
+                return seqB - seqA;
+              }
+              return b.calculatedAt - a.calculatedAt;
+            });
+            selectedRecord = matches[0];
+          }
+        }
+        if (selectedRecord?.data) {
+          planSpxResults[instId] = selectedRecord.data;
+          nextActiveResultIds[targetKey] = selectedRecord.id;
+        }
+      }
+    }
+
     return {
       activeScenarioId: scenarioId,
       activePlanId: targetPlanId,
@@ -1059,7 +1175,8 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       measurePoints: [],
       activeSimulationRunId: null,
       coverageVolumes: {},
-      spxResults: {},
+      spxResults: planSpxResults,
+      spxActiveResultIds: nextActiveResultIds,
       samVolumes: {},
       aiAdvisorSuggestions: [],
       aiAdvisorRoute: [],
@@ -1107,20 +1224,20 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     const isTargetActive = state.activeScenarioId === scenarioId;
     const contextHygiene = isTargetActive
       ? {
-          activeSimulationRunId: null,
-          selectedInstanceId: null,
-          activeTool: 'select' as const,
-          pendingTemplate: null,
-          measurePoints: [],
-          coverageVolumes: {},
-          spxResults: {},
-          samVolumes: {},
-          aiAdvisorSuggestions: [],
-          aiAdvisorRoute: [],
-          aiAdvisorSummary: '',
-          aiAdvisorError: null,
-          aiAdvisorStatus: 'idle' as const,
-        }
+        activeSimulationRunId: null,
+        selectedInstanceId: null,
+        activeTool: 'select' as const,
+        pendingTemplate: null,
+        measurePoints: [],
+        coverageVolumes: {},
+        spxResults: {},
+        samVolumes: {},
+        aiAdvisorSuggestions: [],
+        aiAdvisorRoute: [],
+        aiAdvisorSummary: '',
+        aiAdvisorError: null,
+        aiAdvisorStatus: 'idle' as const,
+      }
       : {};
 
     const nextState = {
@@ -1343,6 +1460,13 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       delete nextCoverageFields[pId];
     }
 
+    const nextAnalysisResults = { ...state.analysisResults };
+    for (const resId in nextAnalysisResults) {
+      if (nextAnalysisResults[resId].scenarioId === scenarioId) {
+        delete nextAnalysisResults[resId];
+      }
+    }
+
     const nextSamEngagementModes = { ...state.samEngagementModes };
     for (const pId of scenarioPlacementIds) {
       delete nextSamEngagementModes[pId];
@@ -1394,10 +1518,23 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       visuals: nextVisuals,
       coverageVolumes: nextCoverageVolumes,
       spxResults: nextSpxResults,
+      analysisResults: nextAnalysisResults,
       samVolumes: nextSamVolumes,
       coverageResults: nextCoverageResults,
       coverageFields: nextCoverageFields,
       samEngagementModes: nextSamEngagementModes,
+      spxRequestRegistry: Object.fromEntries(
+        Object.entries(state.spxRequestRegistry || {}).filter(([_, r]) => !childPlanIds.has(r.planId))
+      ),
+      spxSequenceCounters: Object.fromEntries(
+        Object.entries(state.spxSequenceCounters || {}).filter(([k]) => !childPlanIds.has(k.split(':')[0]))
+      ),
+      spxAcceptedSequences: Object.fromEntries(
+        Object.entries(state.spxAcceptedSequences || {}).filter(([k]) => !childPlanIds.has(k.split(':')[0]))
+      ),
+      spxActiveResultIds: Object.fromEntries(
+        Object.entries(state.spxActiveResultIds || {}).filter(([k]) => !childPlanIds.has(k.split(':')[0]))
+      ),
       activeScenarioId: nextActiveScenarioId,
       activePlanId: nextActivePlanId,
       ...contextHygiene,
@@ -1865,6 +2002,13 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       delete nextCoverageFields[pId];
     }
 
+    const nextAnalysisResults = { ...state.analysisResults };
+    for (const resId in nextAnalysisResults) {
+      if (nextAnalysisResults[resId].planId === planId) {
+        delete nextAnalysisResults[resId];
+      }
+    }
+
     const nextSamEngagementModes = { ...state.samEngagementModes };
     for (const pId of planPlacementIds) {
       delete nextSamEngagementModes[pId];
@@ -1904,10 +2048,23 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       visuals: nextVisuals,
       coverageVolumes: nextCoverageVolumes,
       spxResults: nextSpxResults,
+      analysisResults: nextAnalysisResults,
       samVolumes: nextSamVolumes,
       coverageResults: nextCoverageResults,
       coverageFields: nextCoverageFields,
       samEngagementModes: nextSamEngagementModes,
+      spxRequestRegistry: Object.fromEntries(
+        Object.entries(state.spxRequestRegistry || {}).filter(([_, r]) => r.planId !== planId)
+      ),
+      spxSequenceCounters: Object.fromEntries(
+        Object.entries(state.spxSequenceCounters || {}).filter(([k]) => !k.startsWith(`${planId}:`))
+      ),
+      spxAcceptedSequences: Object.fromEntries(
+        Object.entries(state.spxAcceptedSequences || {}).filter(([k]) => !k.startsWith(`${planId}:`))
+      ),
+      spxActiveResultIds: Object.fromEntries(
+        Object.entries(state.spxActiveResultIds || {}).filter(([k]) => !k.startsWith(`${planId}:`))
+      ),
       activePlanId: nextActivePlanId,
       ...contextHygiene,
       workspaceContextGeneration: (state.workspaceContextGeneration || 0) + 1,
@@ -2120,6 +2277,8 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 
   terrainEnabled: true,
   terrainExaggeration: 1.8,
+  activeTerrainProviderKey: 'flat_v1',
+  spxActiveResultIds: {},
   basemap: 'google-terrain',
   vietnamOnly: true,
   showMapDownloadModal: false,
@@ -2379,6 +2538,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 
   setTerrainEnabled: (enabled) => set({ terrainEnabled: enabled }),
   setTerrainExaggeration: (exaggeration) => set({ terrainExaggeration: exaggeration }),
+  setActiveTerrainProviderKey: (activeTerrainProviderKey) => set({ activeTerrainProviderKey }),
   setBasemap: (basemap) => set({ basemap }),
   setShowMapDownloadModal: (showMapDownloadModal) => set({ showMapDownloadModal }),
   setVietnamOnly: (vietnamOnly) => set({ vietnamOnly }),
@@ -2605,16 +2765,350 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   showSpxPanel: false,
   spxConfig: DEFAULT_SPX_CONFIG,
   spxResults: {},
+  analysisResults: {},
+  spxRecalculateToken: 0,
+  spxRequestedRecalculateInstanceId: null,
   isCalculatingSpx: false,
+  spxRequestRegistry: {},
+  spxSequenceCounters: {},
+  spxAcceptedSequences: {},
+  registerSpxAnalysisRequest: (planId, instanceId, customRequestId) => {
+    const state = get();
+    const key = `${planId}:${instanceId}`;
+    const nextSeq = (state.spxSequenceCounters[key] || 0) + 1;
+    const reqId = customRequestId || `req_spx_${planId}_${instanceId}_${Date.now()}_${nextSeq}`;
+    set((s) => ({
+      spxSequenceCounters: { ...s.spxSequenceCounters, [key]: nextSeq },
+      spxRequestRegistry: {
+        ...s.spxRequestRegistry,
+        [reqId]: {
+          planId,
+          instanceId,
+          sequenceNumber: nextSeq,
+          registeredAt: Date.now(),
+        },
+      },
+    }));
+    return reqId;
+  },
 
   setShowSpxPanel: (show) => set({ showSpxPanel: show }),
   toggleSpxPanel: () => set((state) => ({ showSpxPanel: !state.showSpxPanel })),
   updateSpxConfig: (updates) =>
     set((state) => ({ spxConfig: { ...state.spxConfig, ...updates } })),
+
   setSpxResult: (instanceId, result) =>
+    set((state) => {
+      const placement = state.placements[instanceId];
+      const plan = state.activePlanId ? state.plans[state.activePlanId] : null;
+      const def = placement ? state.definitions[placement.definitionId] : null;
+      const scenId = state.activeScenarioId || 'unknown_scenario';
+      let nextAnalysis = state.analysisResults;
+      if (placement && plan && def) {
+        const visual = state.visuals[placement.id];
+        const effectiveConfig = resolveEffectiveSpxConfigFromCanonical(
+          state.spxConfig,
+          placement,
+          def,
+          visual?.spxConfig
+        );
+        const snapshot = buildSpxInputSnapshot(
+          scenId,
+          plan,
+          placement,
+          def,
+          effectiveConfig,
+          state.scenarios[scenId]?.terrainVersion || 'v1',
+          state.activeTerrainProviderKey
+        );
+        const fp = computeAnalysisFingerprint(snapshot);
+        const resId = `ar_spx_${plan.id}_${instanceId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const analysisRecord: AnalysisResult = Object.freeze({
+          id: resId,
+          analysisId: 'spx_radar_coverage',
+          scenarioId: scenId,
+          planId: plan.id,
+          planVersion: plan.version,
+          instanceId,
+          calculatedAt: Date.now(),
+          algorithmVersion: snapshot.algorithmVersion,
+          terrainVersion: snapshot.terrainVersion,
+          inputSnapshot: snapshot,
+          inputFingerprint: fp,
+          appliedToOverlay: true,
+          executionStatus: 'completed',
+          data: result,
+        });
+        nextAnalysis = { ...state.analysisResults, [resId]: analysisRecord };
+        const key = `${plan.id}:${instanceId}`;
+        return {
+          spxResults: { ...state.spxResults, [instanceId]: result },
+          analysisResults: nextAnalysis,
+          spxActiveResultIds: { ...(state.spxActiveResultIds || {}), [key]: resId },
+        };
+      }
+      return {
+        spxResults: { ...state.spxResults, [instanceId]: result },
+        analysisResults: nextAnalysis,
+      };
+    }),
+
+  recordAnalysisResult: (result) =>
     set((state) => ({
-      spxResults: { ...state.spxResults, [instanceId]: result },
+      analysisResults: {
+        ...state.analysisResults,
+        [result.id]: Object.freeze({ ...result }),
+      },
     })),
+
+  commitSpxAnalysisResult: ({
+    requestId,
+    scenarioId,
+    planId,
+    gen,
+    instanceId,
+    result,
+    snapshot,
+    inputFingerprint,
+  }) => {
+    let appliedToOverlay = false;
+    set((state) => {
+      // P1-A: Validate target Scenario, Plan, Placement, Definition, and ownership
+      const scenario = state.scenarios[scenarioId];
+      if (!scenario || scenario.status === 'trashed') {
+        return state;
+      }
+
+      const plan = state.plans[planId];
+      if (!plan || plan.scenarioId !== scenarioId || plan.status === 'trashed') {
+        return state;
+      }
+
+      const placement = state.placements[instanceId];
+      if (!placement || placement.planId !== planId) {
+        return state;
+      }
+
+      const def = state.definitions[placement.definitionId];
+      if (!def || def.planId !== planId) {
+        return state;
+      }
+
+      // Reject async job if started before package import (P1-A)
+      if (state.lastImportGen && gen < state.lastImportGen) {
+        return state;
+      }
+
+      // Request sequence tracking (P1-C)
+      const key = `${planId}:${instanceId}`;
+      let requestSeq: number;
+      let nextRequestRegistry = state.spxRequestRegistry;
+      let nextSequenceCounters = state.spxSequenceCounters;
+
+      if (state.spxRequestRegistry && state.spxRequestRegistry[requestId]) {
+        requestSeq = state.spxRequestRegistry[requestId].sequenceNumber;
+      } else {
+        const nextSeq = ((state.spxSequenceCounters && state.spxSequenceCounters[key]) || 0) + 1;
+        requestSeq = nextSeq;
+        nextSequenceCounters = { ...(state.spxSequenceCounters || {}), [key]: nextSeq };
+        nextRequestRegistry = {
+          ...(state.spxRequestRegistry || {}),
+          [requestId]: {
+            planId,
+            instanceId,
+            sequenceNumber: nextSeq,
+            registeredAt: Date.now(),
+          },
+        };
+      }
+
+      const currentAcceptedSeq = (state.spxAcceptedSequences && state.spxAcceptedSequences[key]) || 0;
+      const isOlderThanAccepted = currentAcceptedSeq > 0 && requestSeq < currentAcceptedSeq;
+
+      const recordCalculatedAt = Date.now();
+      const resId = `ar_spx_${planId}_${instanceId}_${recordCalculatedAt}_${Math.random().toString(36).substring(2, 7)}`;
+
+      const isContextStale =
+        state.activeScenarioId !== scenarioId ||
+        state.activePlanId !== planId ||
+        state.workspaceContextGeneration !== gen;
+
+      if (isContextStale || isOlderThanAccepted) {
+        const rejectedRecord: AnalysisResult = Object.freeze({
+          id: resId,
+          analysisId: 'spx_radar_coverage',
+          scenarioId,
+          planId,
+          planVersion: snapshot.planVersion,
+          instanceId,
+          calculatedAt: recordCalculatedAt,
+          sequenceNumber: requestSeq,
+          algorithmVersion: snapshot.algorithmVersion,
+          terrainVersion: snapshot.terrainVersion,
+          inputSnapshot: snapshot,
+          inputFingerprint,
+          requestId,
+          appliedToOverlay: false,
+          executionStatus: 'completed',
+          data: result,
+        });
+        return {
+          analysisResults: { ...state.analysisResults, [resId]: rejectedRecord },
+          spxRequestRegistry: nextRequestRegistry,
+          spxSequenceCounters: nextSequenceCounters,
+        };
+      }
+
+      // P1-B: Check if current input in store still matches the fingerprint of this result using effective config
+      const visual = state.visuals[placement.id];
+      const effectiveConfig = resolveEffectiveSpxConfigFromCanonical(
+        state.spxConfig,
+        placement,
+        def,
+        visual?.spxConfig
+      );
+      const currentSnapshot = buildSpxInputSnapshot(
+        scenarioId,
+        plan,
+        placement,
+        def,
+        effectiveConfig,
+        scenario.terrainVersion || 'v1',
+        state.activeTerrainProviderKey
+      );
+      if (computeAnalysisFingerprint(currentSnapshot) !== inputFingerprint) {
+        const mismatchedRecord: AnalysisResult = Object.freeze({
+          id: resId,
+          analysisId: 'spx_radar_coverage',
+          scenarioId,
+          planId,
+          planVersion: snapshot.planVersion,
+          instanceId,
+          calculatedAt: recordCalculatedAt,
+          sequenceNumber: requestSeq,
+          algorithmVersion: snapshot.algorithmVersion,
+          terrainVersion: snapshot.terrainVersion,
+          inputSnapshot: snapshot,
+          inputFingerprint,
+          requestId,
+          appliedToOverlay: false,
+          executionStatus: 'completed',
+          data: result,
+        });
+        return {
+          analysisResults: { ...state.analysisResults, [resId]: mismatchedRecord },
+          spxRequestRegistry: nextRequestRegistry,
+          spxSequenceCounters: nextSequenceCounters,
+        };
+      }
+
+      appliedToOverlay = true;
+      const acceptedRecord: AnalysisResult = Object.freeze({
+        id: resId,
+        analysisId: 'spx_radar_coverage',
+        scenarioId,
+        planId,
+        planVersion: snapshot.planVersion,
+        instanceId,
+        calculatedAt: recordCalculatedAt,
+        sequenceNumber: requestSeq,
+        algorithmVersion: snapshot.algorithmVersion,
+        terrainVersion: snapshot.terrainVersion,
+        inputSnapshot: snapshot,
+        inputFingerprint,
+        requestId,
+        appliedToOverlay: true,
+        executionStatus: 'completed',
+        data: result,
+      });
+
+      return {
+        analysisResults: { ...state.analysisResults, [resId]: acceptedRecord },
+        spxResults: { ...state.spxResults, [instanceId]: result },
+        spxAcceptedSequences: { ...(state.spxAcceptedSequences || {}), [key]: requestSeq },
+        spxActiveResultIds: { ...(state.spxActiveResultIds || {}), [key]: resId },
+        spxRequestRegistry: nextRequestRegistry,
+        spxSequenceCounters: nextSequenceCounters,
+      };
+    });
+    return appliedToOverlay;
+  },
+
+  triggerSpxRecalculate: (instanceId?: string) =>
+    set((state) => ({
+      spxRecalculateToken: (state.spxRecalculateToken || 0) + 1,
+      spxRequestedRecalculateInstanceId: instanceId || 'all',
+    })),
+
+  clearSpxRecalculateRequest: () =>
+    set({
+      spxRequestedRecalculateInstanceId: null,
+    }),
+
+  clearAnalysisResult: (resultId) =>
+    set((state) => {
+      const targetRecord = state.analysisResults[resultId];
+      const nextAnalysis = { ...state.analysisResults };
+      delete nextAnalysis[resultId];
+
+      const nextActiveResultIds = { ...(state.spxActiveResultIds || {}) };
+      const nextSpxResults = { ...state.spxResults };
+
+      for (const [key, id] of Object.entries(nextActiveResultIds)) {
+        if (id === resultId) {
+          delete nextActiveResultIds[key];
+          const [keyPlanId, instanceId] = key.split(':');
+          if (keyPlanId === state.activePlanId) {
+            delete nextSpxResults[instanceId];
+          }
+        }
+      }
+
+      if (targetRecord && targetRecord.planId === state.activePlanId) {
+        const instId = targetRecord.instanceId;
+        if (
+          nextSpxResults[instId] &&
+          (nextSpxResults[instId] === targetRecord.data ||
+            nextSpxResults[instId]?.cacheKey === targetRecord.data?.cacheKey)
+        ) {
+          delete nextSpxResults[instId];
+        }
+      }
+
+      return {
+        analysisResults: nextAnalysis,
+        spxActiveResultIds: nextActiveResultIds,
+        spxResults: nextSpxResults,
+      };
+    }),
+
+  clearPlanAnalysisResults: (planId) =>
+    set((state) => {
+      const nextAnalysis = { ...state.analysisResults };
+      for (const k in nextAnalysis) {
+        if (nextAnalysis[k].planId === planId) delete nextAnalysis[k];
+      }
+
+      const nextActiveResultIds = { ...(state.spxActiveResultIds || {}) };
+      const nextSpxResults = { ...state.spxResults };
+
+      for (const key of Object.keys(nextActiveResultIds)) {
+        if (key.startsWith(`${planId}:`)) {
+          delete nextActiveResultIds[key];
+          if (planId === state.activePlanId) {
+            const instanceId = key.split(':')[1];
+            delete nextSpxResults[instanceId];
+          }
+        }
+      }
+
+      return {
+        analysisResults: nextAnalysis,
+        spxActiveResultIds: nextActiveResultIds,
+        spxResults: nextSpxResults,
+      };
+    }),
+
   setIsCalculatingSpx: (calculating) =>
     set((state) =>
       state.isCalculatingSpx === calculating ? state : { isCalculatingSpx: calculating }
@@ -3467,6 +3961,12 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         selectedInstanceId: null,
         coverageVolumes: {},
         spxResults: {},
+        analysisResults: {},
+        spxRequestedRecalculateInstanceId: null,
+        spxRequestRegistry: {},
+        spxSequenceCounters: {},
+        spxAcceptedSequences: {},
+        spxActiveResultIds: {},
         samVolumes: {},
         coverageResults: {},
         coverageFields: {},
@@ -3476,6 +3976,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         aiAdvisorError: null,
         aiAdvisorStatus: 'idle' as const,
         workspaceContextGeneration: (get().workspaceContextGeneration || 0) + 1,
+        lastImportGen: (get().workspaceContextGeneration || 0) + 1,
         showWorkspaceModal: false,
         workspaceModalTab: 'plans' as const,
       };
@@ -3544,12 +4045,12 @@ export const selectPlansForActiveScenario = (() => {
     lastActiveScenarioId = state.activeScenarioId;
     lastResult = state.activeScenarioId
       ? Object.values(state.plans).filter(
-          (p) =>
-            p.scenarioId === state.activeScenarioId &&
-            p.status !== 'trashed' &&
-            p.status !== 'withdrawn' &&
-            p.status !== 'archived'
-        )
+        (p) =>
+          p.scenarioId === state.activeScenarioId &&
+          p.status !== 'trashed' &&
+          p.status !== 'withdrawn' &&
+          p.status !== 'archived'
+      )
       : [];
     return lastResult;
   };
@@ -3716,4 +4217,104 @@ export const selectVisualForPlacement = (state: TacticalState, placementId: stri
   const p = state.placements[placementId];
   if (!p || p.planId !== activePlan.id) return null;
   return state.visuals[placementId] || null;
+};
+
+// === Analysis Results & Freshness Selectors (Checkpoint 2B) ===
+
+export const selectActivePlanAnalysisResults = (state: TacticalState): AnalysisResult[] => {
+  if (!state.activePlanId) return [];
+  return Object.values(state.analysisResults).filter((r) => r.planId === state.activePlanId);
+};
+
+export const selectInstanceAnalysisResult = (
+  state: TacticalState,
+  instanceId: string,
+  analysisId = 'spx_radar_coverage'
+): AnalysisResult | null => {
+  if (!state.activePlanId) return null;
+
+  // SELECTED RESULT = DISPLAYED OVERLAY
+  // If overlay is not displayed for this instance in active plan, there is no selected result
+  const activeOverlay = state.spxResults[instanceId];
+  if (!activeOverlay) return null;
+
+  const key = `${state.activePlanId}:${instanceId}`;
+  const activeResId = state.spxActiveResultIds?.[key];
+  if (activeResId && state.analysisResults[activeResId]) {
+    const candidate = state.analysisResults[activeResId];
+    if (
+      candidate.planId === state.activePlanId &&
+      candidate.instanceId === instanceId &&
+      (candidate.data === activeOverlay || (activeOverlay.cacheKey && candidate.data?.cacheKey === activeOverlay.cacheKey))
+    ) {
+      return candidate;
+    }
+  }
+
+  // Fallback: strictly match actual active overlay by payload reference or cacheKey
+  const matches = Object.values(state.analysisResults).filter(
+    (r) =>
+      r.planId === state.activePlanId &&
+      r.instanceId === instanceId &&
+      r.analysisId === analysisId &&
+      (r.data === activeOverlay || (activeOverlay.cacheKey && r.data?.cacheKey === activeOverlay.cacheKey))
+  );
+  if (matches.length === 0) return null;
+  matches.sort((a, b) => {
+    const seqA = a.sequenceNumber ?? 0;
+    const seqB = b.sequenceNumber ?? 0;
+    if (seqA !== seqB) {
+      return seqB - seqA;
+    }
+    return b.calculatedAt - a.calculatedAt;
+  });
+  return matches[0];
+};
+
+export const selectAnalysisFreshness = (
+  state: TacticalState,
+  instanceId: string
+): {
+  freshness: FreshnessStatus;
+  currentSnapshot: SpxAnalysisInputSnapshot | null;
+  result: AnalysisResult | null;
+  hasResult: boolean;
+} => {
+  if (!state.activeScenarioId || !state.activePlanId) {
+    return { freshness: 'unknown', currentSnapshot: null, result: null, hasResult: false };
+  }
+  const plan = state.plans[state.activePlanId];
+  const placement = state.placements[instanceId];
+  if (!plan || !placement || placement.planId !== plan.id) {
+    return { freshness: 'unknown', currentSnapshot: null, result: null, hasResult: false };
+  }
+  const definition = state.definitions[placement.definitionId];
+  if (!definition) {
+    return { freshness: 'unknown', currentSnapshot: null, result: null, hasResult: false };
+  }
+  const scenario = state.scenarios[state.activeScenarioId];
+  const terrainVersion = scenario?.terrainVersion || 'v1';
+  const terrainProviderKey = state.activeTerrainProviderKey;
+
+  const visual = state.visuals[placement.id];
+  const effectiveConfig = resolveEffectiveSpxConfigFromCanonical(
+    state.spxConfig,
+    placement,
+    definition,
+    visual?.spxConfig
+  );
+
+  const currentSnapshot = buildSpxInputSnapshot(
+    state.activeScenarioId,
+    plan,
+    placement,
+    definition,
+    effectiveConfig,
+    terrainVersion,
+    terrainProviderKey
+  );
+  const result = selectInstanceAnalysisResult(state, instanceId);
+  const hasResult = result !== null;
+  const freshness = evaluateAnalysisFreshness(currentSnapshot, result);
+  return { freshness, currentSnapshot, result, hasResult };
 };

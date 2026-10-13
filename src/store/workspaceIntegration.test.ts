@@ -10,7 +10,13 @@ import {
   selectActivePlan,
   validateMutationGuard,
   isScenarioEligibleForPurge,
+  selectAnalysisFreshness,
+  selectInstanceAnalysisResult,
+  selectActivePlanAnalysisResults,
 } from './useTacticalStore';
+import {
+  computeAnalysisFingerprint,
+} from '../domain/analysis/analysisFingerprint';
 import { EQUIPMENT_TEMPLATES } from '../data/equipmentTemplates';
 import {
   validateCanonicalStatePackageV1,
@@ -1275,5 +1281,325 @@ describe('Checkpoint 2A — Scenario and Plan Workspace Vertical Slice Integrati
     expect(useTacticalStore.getState().plans[fallbackPlan1Id]).toBeDefined();
     expect(useTacticalStore.getState().selectedInstanceId).toBeNull();
     expect(useTacticalStore.getState().activeSimulationRunId).toBeNull();
+
+    // =========================================================================
+    // 18. CHECKPOINT 2B — VERSIONED ANALYSIS, FINGERPRINT STALENESS & ASYNC ISOLATION
+    // =========================================================================
+    // 18.1 Setup Scenario & baseline Plan A with a radar
+    const analysisScenId = store.createScenario('Checkpoint 2B Scenario');
+    const planAId = useTacticalStore.getState().activePlanId!;
+    const radarIdA = 'eq_radar_2b_a';
+    store.addEquipment({
+      instanceId: radarIdA,
+      templateId: 'radar_36d6',
+      name: 'Đài Radar 36D6 Trận Địa A',
+      category: 'RadarCanhGioi',
+      latitude: 16.043,
+      longitude: 108.1208,
+      altitude: 100,
+      antennaHeightAGL: 40,
+      rangeKm: 50,
+      scanSpeed: 30,
+      minElevationDeg: -10,
+      maxElevationDeg: 40,
+      coverageHeightKm: 20,
+      status: 'Active',
+      commandedByInstanceId: null,
+      color: '#06b6d4',
+      showDome: true,
+      showSweep: false,
+    });
+
+    // 18.2 Initial state: hasResult is false, freshness is 'unknown' ('Chưa phân tích')
+    let freshnessA = selectAnalysisFreshness(useTacticalStore.getState(), radarIdA);
+    expect(freshnessA.hasResult).toBe(false);
+    expect(freshnessA.freshness).toBe('unknown');
+
+    // 18.3 Initial execution: commit analysis result
+    const dummySpxResult1 = {
+      instanceId: radarIdA,
+      cacheKey: 'mock_key_1',
+      groundElevationM: 100,
+      terrainStatus: 'dem_loaded' as const,
+      contours: [],
+      rangeRings: [],
+    } as unknown as import('../types/spxRadarCoverage').SpxCoverageResult;
+    const genBeforeRun = useTacticalStore.getState().workspaceContextGeneration;
+    const initialSnapshot = freshnessA.currentSnapshot!;
+    expect(initialSnapshot).toBeDefined();
+    const fp1 = computeAnalysisFingerprint(initialSnapshot);
+
+    const committed1 = store.commitSpxAnalysisResult({
+      requestId: 'req_1',
+      scenarioId: analysisScenId,
+      planId: planAId,
+      gen: genBeforeRun,
+      instanceId: radarIdA,
+      result: dummySpxResult1,
+      snapshot: initialSnapshot,
+      inputFingerprint: fp1,
+    });
+    expect(committed1).toBe(true);
+
+    freshnessA = selectAnalysisFreshness(useTacticalStore.getState(), radarIdA);
+    expect(freshnessA.hasResult).toBe(true);
+    expect(freshnessA.freshness).toBe('current'); // 'Hiện tại'
+    expect(freshnessA.result?.executionStatus).toBe('completed');
+    const firstResultId = freshnessA.result!.id;
+    expect(firstResultId).toBeDefined();
+
+    // 18.4 Input mutation -> Freshness turns 'stale' ('Đã cũ — Cần chạy lại')
+    // Changing latitude is a meaningful physical input change
+    store.updateEquipment(radarIdA, { latitude: 16.055 });
+    freshnessA = selectAnalysisFreshness(useTacticalStore.getState(), radarIdA);
+    expect(freshnessA.freshness).toBe('stale'); // 'Đã cũ — Cần chạy lại'
+    // Previous result record must remain unchanged (immutable)
+    expect(useTacticalStore.getState().analysisResults[firstResultId].inputSnapshot.latitude).toBe(16.043);
+    // Overlay R1 in spxResults must NOT be deleted upon input mutation
+    expect(useTacticalStore.getState().spxResults[radarIdA]).toBeDefined();
+    // Triggering explicit recalculation preserves R1 overlay until new result is committed
+    store.triggerSpxRecalculate(radarIdA);
+    expect(useTacticalStore.getState().spxResults[radarIdA]).toBeDefined();
+    expect(useTacticalStore.getState().spxRequestedRecalculateInstanceId).toBe(radarIdA);
+    store.clearSpxRecalculateRequest();
+    expect(useTacticalStore.getState().spxRequestedRecalculateInstanceId).toBeNull();
+
+    // Modifying presentation-only fields (e.g. color, showDome) does not affect fingerprint
+    // Reset position back to 16.043
+    store.updateEquipment(radarIdA, { latitude: 16.043 });
+    freshnessA = selectAnalysisFreshness(useTacticalStore.getState(), radarIdA);
+    expect(freshnessA.freshness).toBe('current');
+    // Change color only
+    store.updateEquipment(radarIdA, { color: '#ff0000' });
+    freshnessA = selectAnalysisFreshness(useTacticalStore.getState(), radarIdA);
+    expect(freshnessA.freshness).toBe('current'); // Still current!
+
+    // Per-radar physical input (antenna height) must stale the selected result
+    store.updateEquipment(radarIdA, { antennaHeightAGL: 80 });
+    freshnessA = selectAnalysisFreshness(useTacticalStore.getState(), radarIdA);
+    expect(freshnessA.freshness).toBe('stale');
+    store.updateEquipment(radarIdA, { antennaHeightAGL: 40 });
+    freshnessA = selectAnalysisFreshness(useTacticalStore.getState(), radarIdA);
+    expect(freshnessA.freshness).toBe('current');
+
+    // Changing active terrain provider identity stales freshness even if terrainVersion remains unchanged
+    const originalProviderKey = useTacticalStore.getState().activeTerrainProviderKey;
+    store.setActiveTerrainProviderKey('provider:url:./alternative-dem__ver:v1');
+    freshnessA = selectAnalysisFreshness(useTacticalStore.getState(), radarIdA);
+    expect(freshnessA.freshness).toBe('stale');
+    // Restoring terrain provider restores freshness
+    store.setActiveTerrainProviderKey(originalProviderKey || 'flat_v1');
+    freshnessA = selectAnalysisFreshness(useTacticalStore.getState(), radarIdA);
+    expect(freshnessA.freshness).toBe('current');
+
+    // 18.4.1 Semantic fingerprint invariants:
+    const baseSnap = freshnessA.currentSnapshot!;
+    const baseFp = computeAnalysisFingerprint(baseSnap);
+
+    // a. Tăng planVersion mà numerical inputs không đổi -> fingerprint không đổi
+    const bumpedPlanVersionSnap = { ...baseSnap, planVersion: baseSnap.planVersion + 1 };
+    expect(computeAnalysisFingerprint(bumpedPlanVersionSnap)).toBe(baseFp);
+
+    // b. Đổi target label nhưng giữ dữ liệu tầng tính toán -> fingerprint không đổi
+    const changedLabelSnap = {
+      ...baseSnap,
+      targetHeights: baseSnap.targetHeights.map((th, i) => ({
+        ...th,
+        label: `Tầng tuỳ biến ${i}: ${th.heightMeters}m`,
+      })),
+    };
+    expect(computeAnalysisFingerprint(changedLabelSnap)).toBe(baseFp);
+
+    // c. Custom endRangeM không đổi, chỉ đổi definition.rangeKm bị override -> fingerprint không đổi
+    const customRangeSnap1 = { ...baseSnap, endRangeM: 40000, rangeKm: 50 };
+    const customRangeSnap2 = { ...baseSnap, endRangeM: 40000, rangeKm: 60 };
+    expect(computeAnalysisFingerprint(customRangeSnap1)).toBe(computeAnalysisFingerprint(customRangeSnap2));
+
+    // d. Một thay đổi số học nhỏ mà engine thực sự nhận được -> fingerprint thay đổi
+    const tinyLatChangeSnap = { ...baseSnap, latitude: baseSnap.latitude + 0.000001 };
+    expect(computeAnalysisFingerprint(tinyLatChangeSnap)).not.toBe(baseFp);
+    const tinyAglChangeSnap = { ...baseSnap, antennaHeightAGL: baseSnap.antennaHeightAGL + 0.05 };
+    expect(computeAnalysisFingerprint(tinyAglChangeSnap)).not.toBe(baseFp);
+
+    // e. Đổi effective endRangeM, antenna height, kFactor hoặc terrain provider -> fingerprint thay đổi
+    const changedEndRangeSnap = { ...baseSnap, endRangeM: (baseSnap.endRangeM ?? 50000) + 5000 };
+    expect(computeAnalysisFingerprint(changedEndRangeSnap)).not.toBe(baseFp);
+    const changedAglSnap = { ...baseSnap, antennaHeightAGL: 95 };
+    expect(computeAnalysisFingerprint(changedAglSnap)).not.toBe(baseFp);
+    const changedKFactorSnap = { ...baseSnap, kFactor: 1.5 };
+    expect(computeAnalysisFingerprint(changedKFactorSnap)).not.toBe(baseFp);
+    const changedTerrainSnap = { ...baseSnap, terrainProviderKey: 'provider:dem_alt_v1' };
+    expect(computeAnalysisFingerprint(changedTerrainSnap)).not.toBe(baseFp);
+
+    // f. Kết quả cũ vẫn stale sau input mutation và trở lại current sau khi input được khôi phục chính xác
+    store.updateEquipment(radarIdA, { antennaHeightAGL: 75.5 });
+    expect(selectAnalysisFreshness(useTacticalStore.getState(), radarIdA).freshness).toBe('stale');
+    store.updateEquipment(radarIdA, { antennaHeightAGL: 40 });
+    expect(selectAnalysisFreshness(useTacticalStore.getState(), radarIdA).freshness).toBe('current');
+
+    // 18.5 Re-run analysis creates a distinct new result ID without overwriting completed history
+    const dummySpxResult2 = {
+      ...dummySpxResult1,
+      cacheKey: 'mock_key_2',
+    } as unknown as import('../types/spxRadarCoverage').SpxCoverageResult;
+    const committed2 = store.commitSpxAnalysisResult({
+      requestId: 'req_2',
+      scenarioId: analysisScenId,
+      planId: planAId,
+      gen: useTacticalStore.getState().workspaceContextGeneration,
+      instanceId: radarIdA,
+      result: dummySpxResult2,
+      snapshot: freshnessA.currentSnapshot!,
+      inputFingerprint: computeAnalysisFingerprint(freshnessA.currentSnapshot!),
+    });
+    expect(committed2).toBe(true);
+
+    const planAResults = selectActivePlanAnalysisResults(useTacticalStore.getState());
+    expect(planAResults.length).toBeGreaterThanOrEqual(2);
+    const latestResult = selectInstanceAnalysisResult(useTacticalStore.getState(), radarIdA);
+    expect(latestResult).toBeDefined();
+    expect(latestResult!.id).not.toBe(firstResultId);
+    // Both result IDs exist in the session registry
+    expect(useTacticalStore.getState().analysisResults[firstResultId]).toBeDefined();
+    expect(useTacticalStore.getState().analysisResults[latestResult!.id]).toBeDefined();
+
+    // 18.6 Plan A/B context isolation: switching plans preserves session analysisResults
+    store.createPlanAlternative(planAId, 'Phương Án B Alternative');
+    const planBId = useTacticalStore.getState().activePlanId!;
+    expect(planBId).not.toBe(planAId);
+    // In Plan B, find cloned radar and verify it has no analysis run yet
+    const radarB = selectActiveEquipment(useTacticalStore.getState())[0];
+    expect(radarB).toBeDefined();
+    const freshnessB = selectAnalysisFreshness(useTacticalStore.getState(), radarB.instanceId);
+    expect(freshnessB.hasResult).toBe(false);
+    // Switch back to Plan A: active overlay and analysis freshness are restored
+    store.switchActivePlan(planAId);
+    expect(useTacticalStore.getState().activePlanId).toBe(planAId);
+    const restoredFreshnessA = selectAnalysisFreshness(useTacticalStore.getState(), radarIdA);
+    expect(restoredFreshnessA.hasResult).toBe(true);
+    expect(restoredFreshnessA.freshness).toBe('current');
+    expect(useTacticalStore.getState().spxResults[radarIdA]).toBeDefined();
+
+    // In-flight job ordering: register Alpha before Beta, but Beta completes before Alpha.
+    // Alpha (lower sequenceNumber) must not hijack active overlay or selected result from Beta (higher sequenceNumber).
+    const snapNow = selectAnalysisFreshness(useTacticalStore.getState(), radarIdA).currentSnapshot!;
+    const fpNow = computeAnalysisFingerprint(snapNow);
+    const genNow = useTacticalStore.getState().workspaceContextGeneration;
+
+    const reqIdAlpha = store.registerSpxAnalysisRequest(planAId, radarIdA, 'req_task_alpha');
+    const reqIdBeta = store.registerSpxAnalysisRequest(planAId, radarIdA, 'req_task_beta');
+
+    const dummyResultBeta = { ...dummySpxResult2, cacheKey: 'mock_beta_overlay' } as unknown as import('../types/spxRadarCoverage').SpxCoverageResult;
+    const dummyResultAlpha = { ...dummySpxResult2, cacheKey: 'mock_alpha_overlay' } as unknown as import('../types/spxRadarCoverage').SpxCoverageResult;
+
+    // Beta completes first
+    store.commitSpxAnalysisResult({
+      requestId: reqIdBeta,
+      scenarioId: analysisScenId,
+      planId: planAId,
+      gen: genNow,
+      instanceId: radarIdA,
+      result: dummyResultBeta,
+      snapshot: snapNow,
+      inputFingerprint: fpNow,
+    });
+    // Alpha completes second (out-of-order return)
+    store.commitSpxAnalysisResult({
+      requestId: reqIdAlpha,
+      scenarioId: analysisScenId,
+      planId: planAId,
+      gen: genNow,
+      instanceId: radarIdA,
+      result: dummyResultAlpha,
+      snapshot: snapNow,
+      inputFingerprint: fpNow,
+    });
+    // Beta remains active overlay and selected result
+    expect(useTacticalStore.getState().spxResults[radarIdA]?.cacheKey).toBe('mock_beta_overlay');
+    expect(selectInstanceAnalysisResult(useTacticalStore.getState(), radarIdA)?.data?.cacheKey).toBe('mock_beta_overlay');
+    // But Alpha is preserved in historical session analysisResults
+    const sessionHistory = Object.values(useTacticalStore.getState().analysisResults);
+    expect(sessionHistory.some((r) => r.requestId === reqIdAlpha && r.data?.cacheKey === 'mock_alpha_overlay')).toBe(true);
+
+    // In-flight job returning after store inputs have mutated: rejected from overlay and does NOT become selected
+    const mutatedSnapshot = { ...snapNow };
+    const mutatedFp = computeAnalysisFingerprint(mutatedSnapshot);
+    store.updateEquipment(radarIdA, { antennaHeightAGL: 90 });
+    const dummyResultMismatched = { ...dummySpxResult2, cacheKey: 'mock_mismatched_overlay' } as unknown as import('../types/spxRadarCoverage').SpxCoverageResult;
+    const appliedMismatched = store.commitSpxAnalysisResult({
+      requestId: 'req_task_mismatched',
+      scenarioId: analysisScenId,
+      planId: planAId,
+      gen: genNow,
+      instanceId: radarIdA,
+      result: dummyResultMismatched,
+      snapshot: mutatedSnapshot,
+      inputFingerprint: mutatedFp,
+    });
+    expect(appliedMismatched).toBe(false);
+    expect(useTacticalStore.getState().spxResults[radarIdA]?.cacheKey).toBe('mock_beta_overlay');
+    expect(selectInstanceAnalysisResult(useTacticalStore.getState(), radarIdA)?.data?.cacheKey).toBe('mock_beta_overlay');
+    // Restore antennaHeightAGL back
+    store.updateEquipment(radarIdA, { antennaHeightAGL: 40 });
+
+    // 18.7 Anti async race: in-flight job started in Plan A does NOT hijack active Plan B overlay
+    const genAtStart = useTacticalStore.getState().workspaceContextGeneration;
+    const snapshotA = restoredFreshnessA.currentSnapshot!;
+    const fpA = computeAnalysisFingerprint(snapshotA);
+    const reqIdInFlightA = store.registerSpxAnalysisRequest(planAId, radarIdA, 'req_inflight_plan_a');
+    // User switches to Plan B while async job for Plan A is in flight
+    store.switchActivePlan(planBId);
+    expect(useTacticalStore.getState().activePlanId).toBe(planBId);
+
+    // In-flight async return arrives for Plan A
+    const dummyInFlightResult = {
+      instanceId: radarIdA,
+      cacheKey: 'mock_inflight_key',
+      groundElevationM: 100,
+      terrainStatus: 'dem_loaded' as const,
+      contours: [],
+      rangeRings: [],
+    } as unknown as import('../types/spxRadarCoverage').SpxCoverageResult;
+    const appliedInFlight = store.commitSpxAnalysisResult({
+      requestId: reqIdInFlightA,
+      scenarioId: analysisScenId,
+      planId: planAId,
+      gen: genAtStart,
+      instanceId: radarIdA,
+      result: dummyInFlightResult,
+      snapshot: snapshotA,
+      inputFingerprint: fpA,
+    });
+    // Context changed -> must NOT apply to current Plan B overlay
+    expect(appliedInFlight).toBe(false);
+    expect(useTacticalStore.getState().spxResults[radarIdA]).toBeUndefined();
+    // But record is saved in session analysisResults for Plan A
+    const allResults = Object.values(useTacticalStore.getState().analysisResults);
+    expect(allResults.some((r) => r.planId === planAId && r.data?.cacheKey === 'mock_inflight_key')).toBe(true);
+
+    // 18.8 Purging plan purges its session analysisResults
+    store.trashDraftPlan(planBId);
+    store.purgeTrashedPlan(planBId);
+    // Plan A results still exist
+    expect(Object.values(useTacticalStore.getState().analysisResults).some((r) => r.planId === planAId)).toBe(true);
+    // Purging Scenario purges its session results
+    store.trashDraftPlan(planAId);
+    store.purgeTrashedPlan(planAId);
+    store.trashDraftScenario(analysisScenId);
+    store.purgeTrashedScenario(analysisScenId);
+    expect(Object.values(useTacticalStore.getState().analysisResults).filter((r) => r.scenarioId === analysisScenId).length).toBe(0);
+    const appliedAfterPurge = store.commitSpxAnalysisResult({
+      requestId: 'req_after_purge',
+      scenarioId: analysisScenId,
+      planId: planAId,
+      gen: genAtStart,
+      instanceId: radarIdA,
+      result: dummyInFlightResult,
+      snapshot: snapshotA,
+      inputFingerprint: fpA,
+    });
+    expect(appliedAfterPurge).toBe(false);
+    expect(Object.values(useTacticalStore.getState().analysisResults).filter((r) => r.planId === planAId).length).toBe(0);
+    expect(Object.values(useTacticalStore.getState().analysisResults).filter((r) => r.scenarioId === analysisScenId).length).toBe(0);
   });
 });

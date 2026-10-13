@@ -94,6 +94,7 @@ export interface SpxRenderOptions {
   color?: string;
   realPhotoUrl?: string;
   instanceId?: string;
+  isStale?: boolean;
 }
 
 /**
@@ -296,13 +297,20 @@ export function buildSpxCoverageEntities(
         polylineWidth = isHighestTier ? 3.5 : 2.8;
       }
 
+      const outlineMaterial = options?.isStale
+        ? new Cesium.PolylineDashMaterialProperty({
+            color: strokeColor,
+            dashLength: 16,
+          })
+        : strokeColor;
+
       entities.push(
         new Cesium.Entity({
           name: `SPx Đường Biên ${contour.tier.label}`,
           polyline: {
             positions: closedOutlinePositions,
             width: polylineWidth,
-            material: strokeColor,
+            material: outlineMaterial,
             clampToGround: true,
             zIndex: 50 + zIndex,
           },
