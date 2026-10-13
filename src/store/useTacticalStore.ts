@@ -65,6 +65,47 @@ import {
 } from '../domain/analysis/analysisFingerprint';
 export type { AnalysisResult, ExecutionStatus, FreshnessStatus, SpxAnalysisInputSnapshot };
 
+import { deepFreeze } from '../utils/deepFreeze';
+export { deepFreeze };
+
+import {
+  computePlanInputFingerprint,
+  type PlanFingerprintContext,
+} from '../domain/simulation/simulationFingerprint';
+export { computePlanInputFingerprint };
+export type { PlanFingerprintContext };
+
+import {
+  evaluateSimulationRunFreshness,
+  isSimulationRunFresh,
+  type SimulationFreshnessContext,
+} from '../domain/simulation/simulationFreshness';
+export { evaluateSimulationRunFreshness, isSimulationRunFresh };
+export type { SimulationFreshnessContext };
+
+import {
+  validateMutationGuard,
+  validatePlanGraph,
+  type MutationGuardContext,
+  type PlanGraphValidationContext,
+} from '../domain/plan/planValidation';
+export { validateMutationGuard, validatePlanGraph };
+export type { MutationGuardContext, PlanGraphValidationContext };
+
+import {
+  isPlanEligibleForPurge,
+  type PlanPurgeContext,
+} from '../domain/plan/planPurgeRules';
+export { isPlanEligibleForPurge };
+export type { PlanPurgeContext };
+
+import {
+  isScenarioEligibleForPurge,
+  type ScenarioPurgeContext,
+} from '../domain/scenario/scenarioPurgeRules';
+export { isScenarioEligibleForPurge };
+export type { ScenarioPurgeContext };
+
 /**
  * Trạng thái cố vấn vị trí đặt khí tài (VECTOR AI local).
  * - idle     : chưa chạy
@@ -438,152 +479,6 @@ interface TacticalState {
   importCanonicalPackage: (pkg: CanonicalStatePackage) => void;
 }
 
-/**
- * Recursively freezes an object and all its nested properties.
- * Protects runtime domain models against in-place mutations.
- */
-export function deepFreeze<T>(obj: T): T {
-  if (obj === null || typeof obj !== 'object') {
-    return obj;
-  }
-  Object.freeze(obj);
-  for (const key of Object.getOwnPropertyNames(obj)) {
-    const val = (obj as any)[key];
-    if (val !== null && (typeof val === 'object' || typeof val === 'function') && !Object.isFrozen(val)) {
-      deepFreeze(val);
-    }
-  }
-  return obj;
-}
-
-/**
- * Computes a deterministic semantic fingerprint of all physical and configuration inputs
- * of a Plan, including plan version, placement coordinates, referenced equipment profiles,
- * scenario terrain version, active terrain provider key, and simulation execution config.
- * Pure presentation labels (names, colors, display tags) are strictly excluded to avoid false-stale.
- */
-export function computePlanInputFingerprint(
-  state: TacticalState,
-  planId: string,
-  configSnapshot?: SimulationConfigSnapshot,
-  randomSeed?: number | string
-): string {
-  const plan = state.plans[planId];
-  if (!plan) return '';
-
-  const scenario = state.scenarios[plan.scenarioId];
-  const terrainVersion = scenario?.terrainVersion || 'v1';
-  const terrainProviderKey = state.activeTerrainProviderKey || `flat_${terrainVersion}`;
-
-  const placements = Object.values(state.placements)
-    .filter((p) => p.planId === planId)
-    .sort((a, b) => a.id.localeCompare(b.id));
-
-  const items = placements.map((p) => {
-    const def = state.definitions[p.definitionId];
-    return {
-      id: p.id,
-      defId: p.definitionId,
-      templateId: def?.templateId,
-      category: def?.category,
-      lat: p.position?.lat,
-      lon: p.position?.lon,
-      altM: p.position?.altM,
-      aglM: p.position?.aglM,
-      commandedBy: p.network?.commandedBy ?? null,
-      rangeKm: def?.rangeKm,
-      scanSpeed: def?.scanSpeed,
-      minElev: def?.minElevationDeg,
-      maxElev: def?.maxElevationDeg,
-      covHeight: def?.coverageHeightKm,
-    };
-  });
-
-  const payload = {
-    planVersion: plan.version,
-    terrainVersion,
-    terrainProviderKey,
-    configSnapshot: configSnapshot ?? null,
-    randomSeed: randomSeed ?? null,
-    items,
-  };
-
-  const str = JSON.stringify(payload);
-  let h1 = 0x811c9dc5;
-  let h2 = 0x811c9dc5;
-  for (let i = 0; i < str.length; i++) {
-    const ch = str.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 0x01000193);
-    h2 = Math.imul(h2 ^ (ch >> 8), 0x01000193);
-  }
-  const hex1 = (h1 >>> 0).toString(16).padStart(8, '0');
-  const hex2 = (h2 >>> 0).toString(16).padStart(8, '0');
-  return `pifp_${hex1}${hex2}`;
-}
-
-/**
- * Evaluates the freshness status of a SimulationRun against canonical state:
- * - 'current': has sufficient provenance (planInputFingerprint & planVersion) and fingerprint matches current plan inputs.
- * - 'stale': has sufficient provenance but current plan inputs or planVersion do not match, or context was trashed/replaced.
- * - 'unknown': legacy record lacking planInputFingerprint or planVersion (cannot deterministically verify currency).
- */
-export function evaluateSimulationRunFreshness(
-  state: TacticalState,
-  run: SimulationRun | null | undefined
-): SimulationRunFreshness {
-  if (!run) return 'unknown';
-
-  // 1. Scenario existence and active lifecycle
-  const scenario = state.scenarios[run.scenarioId];
-  if (!scenario || scenario.status === 'trashed') return 'stale';
-
-  // 2. Plan existence and active lifecycle
-  const plan = state.plans[run.planId];
-  if (!plan || plan.status === 'trashed') return 'stale';
-
-  // 3. Essential provenance check:
-  // If run lacks planInputFingerprint or planVersion, we cannot deterministically verify currency.
-  // It is 'unknown', NEVER defaulted to 'current'.
-  if (!run.planInputFingerprint || run.planVersion === undefined) {
-    return 'unknown';
-  }
-
-  // 4. Workspace replacement guard:
-  // If workspace was replaced by import after this run was registered, the run is stale
-  if (
-    run.importGen !== undefined &&
-    state.lastImportGen !== undefined &&
-    run.importGen !== (state.lastImportGen ?? 0)
-  ) {
-    return 'stale';
-  }
-
-  // 5. Plan version guard
-  if (plan.version !== run.planVersion) {
-    return 'stale';
-  }
-
-  // 6. Semantic input fingerprint guard
-  const currentFingerprint = computePlanInputFingerprint(
-    state,
-    run.planId,
-    run.configSnapshot,
-    run.randomSeed
-  );
-  if (run.planInputFingerprint !== currentFingerprint) {
-    return 'stale';
-  }
-
-  return 'current';
-}
-
-/**
- * Returns true strictly if the run is verified as 'current'.
- * Returns false if the run is 'stale' OR 'unknown' (legacy / lacking provenance).
- */
-export function isSimulationRunFresh(state: TacticalState, run: SimulationRun | null | undefined): boolean {
-  return evaluateSimulationRunFreshness(state, run) === 'current';
-}
 
 /**
  * Chọn template khí tài cho cố vấn AI theo thứ tự ưu tiên:
@@ -606,75 +501,6 @@ function resolveAdvisorTemplate(state: TacticalState): EquipmentTemplate {
   return EQUIPMENT_TEMPLATES[0];
 }
 
-export function validateMutationGuard(state: TacticalState): void {
-  if (!state.activeScenarioId) throw new Error('No active scenario');
-  const scenario = state.scenarios[state.activeScenarioId];
-  if (!scenario) throw new Error('Active scenario does not exist');
-  if (scenario.status === 'archived') throw new Error('Scenario is archived');
-  if (scenario.status === 'trashed') throw new Error('Scenario is trashed');
-
-  if (!state.activePlanId) throw new Error('No active plan');
-  const plan = state.plans[state.activePlanId];
-  if (!plan) throw new Error('Active plan does not exist');
-
-  if (plan.scenarioId !== state.activeScenarioId) throw new Error('Plan does not belong to active scenario');
-  if (plan.status !== 'draft') throw new Error('Active plan is not draft');
-}
-
-export function validatePlanGraph(state: TacticalState, planId: string): void {
-  const plan = state.plans[planId];
-  if (!plan) throw new Error(`validatePlanGraph: Target plan does not exist`);
-
-  // A/B: Plan/Scenario context
-  const scenario = state.scenarios[plan.scenarioId];
-  if (!scenario) throw new Error(`validatePlanGraph: Plan references missing scenario ${plan.scenarioId}`);
-
-  // C: Placement ownership — also catch missing/undefined planId fields
-  for (const p of Object.values(state.placements)) {
-    if (p.planId === planId) {
-      if (!p.definitionId) throw new Error(`validatePlanGraph: Placement ${p.id} missing definitionId`);
-      const def = state.definitions[p.definitionId];
-      if (!def) throw new Error(`validatePlanGraph: Placement ${p.id} references missing definition`);
-      // Catch missing planId on definition or cross-plan reference
-      if (!def.planId) throw new Error(`validatePlanGraph: Definition ${def.id} has no planId`);
-      if (def.planId !== planId) throw new Error(`validatePlanGraph: Placement ${p.id} references cross-plan definition (def.planId=${def.planId})`);
-      const obs = state.observations[p.id];
-      if (!obs) throw new Error(`validatePlanGraph: Placement ${p.id} missing current Observation`);
-      const vis = state.visuals[p.id];
-      if (!vis) throw new Error(`validatePlanGraph: Placement ${p.id} references missing visual`);
-
-      // F: Network reference integrity
-      if (p.network?.commandedBy) {
-        const commandedBy = p.network.commandedBy;
-        const refPlacement = state.placements[commandedBy];
-        if (!refPlacement) throw new Error(`validatePlanGraph: Placement ${p.id} commandedBy references missing Placement ${commandedBy}`);
-        if (refPlacement.planId !== planId) throw new Error(`validatePlanGraph: Placement ${p.id} commandedBy cross-plan reference (target planId=${refPlacement.planId})`);
-      }
-    }
-    // C: Also catch Placements with missing/undefined planId that reference definitions of this plan
-    if (!p.planId) {
-      if (p.definitionId && state.definitions[p.definitionId]?.planId === planId) {
-        throw new Error(`validatePlanGraph: Placement ${p.id} has no planId but its Definition belongs to plan ${planId}`);
-      }
-    }
-  }
-
-  // D: Definition ownership — orphan check
-  for (const d of Object.values(state.definitions)) {
-    if (d.planId === planId) {
-      const hasRef = Object.values(state.placements).some(p => p.planId === planId && p.definitionId === d.id);
-      if (!hasRef) throw new Error(`validatePlanGraph: Orphan definition ${d.id} in plan ${planId}`);
-    }
-  }
-
-  // E: Global Visual Orphan Check
-  // We enforce the global invariant: every visuals key must correspond to an existing Placement
-  for (const vId of Object.keys(state.visuals)) {
-    if (!state.placements[vId]) {
-      throw new Error(`validatePlanGraph: Orphan visual ${vId} (no corresponding Placement)`);
-    }
-  }
-}
 
 function appendAuditToState(
   state: any,
@@ -737,138 +563,6 @@ function appendAuditToState(
   };
 }
 
-export function isPlanEligibleForPurge(
-  state: {
-    plans: Record<string, Plan>;
-    scenarios: Record<string, Scenario>;
-    simulationRuns: Record<string, SimulationRun>;
-    placements: Record<string, EquipmentPlacement>;
-  },
-  planId: string
-): { eligible: boolean; reason?: string } {
-  const plan = state.plans[planId];
-  if (!plan) return { eligible: false, reason: 'Phương án không tồn tại' };
-  if (plan.status !== 'trashed') {
-    return { eligible: false, reason: 'Chỉ có thể xóa vĩnh viễn phương án đang trong Thùng rác' };
-  }
-  if (plan.withdrawnAt || plan.withdrawnReason) {
-    return { eligible: false, reason: 'Phương án đã từng được đề xuất hoặc thu hồi trong lịch sử, không thể xóa' };
-  }
-  if (
-    plan.archivedFromStatus === 'proposed' ||
-    plan.archivedFromStatus === 'approved' ||
-    plan.archivedFromStatus === 'withdrawn'
-  ) {
-    return { eligible: false, reason: 'Phương án có nguồn gốc trạng thái đã trình xét duyệt, không thể xóa' };
-  }
-  if (plan.baseRevisionPlanId) {
-    return { eligible: false, reason: 'Phương án là bản sửa đổi phụ thuộc vào phương án khác' };
-  }
-  const hasDependentRevisions = Object.values(state.plans).some((p) => p.baseRevisionPlanId === planId);
-  if (hasDependentRevisions) {
-    return { eligible: false, reason: 'Phương án đang là gốc của các bản sửa đổi khác' };
-  }
-  const hasRuns = Object.values(state.simulationRuns).some((r) => r.planId === planId);
-  if (hasRuns) {
-    return { eligible: false, reason: 'Phương án đang được liên kết với kết quả mô phỏng (SimulationRun)' };
-  }
-  const planPlacementIds = new Set(
-    Object.values(state.placements)
-      .filter((p) => p.planId === planId)
-      .map((p) => p.id)
-  );
-  const referencedByOtherPlan = Object.values(state.placements).some(
-    (p) => p.planId !== planId && p.network?.commandedBy && planPlacementIds.has(p.network.commandedBy)
-  );
-  if (referencedByOtherPlan) {
-    return { eligible: false, reason: 'Khí tài trong phương án đang được liên kết chỉ huy bởi phương án khác' };
-  }
-  return { eligible: true };
-}
-
-export function isScenarioEligibleForPurge(
-  state: {
-    scenarios: Record<string, Scenario>;
-    plans: Record<string, Plan>;
-    simulationRuns: Record<string, SimulationRun>;
-    placements: Record<string, EquipmentPlacement>;
-  },
-  scenarioId: string
-): { eligible: boolean; reason?: string } {
-  const scenario = state.scenarios[scenarioId];
-  if (!scenario) return { eligible: false, reason: 'Kịch bản không tồn tại' };
-  if (scenario.status !== 'trashed') {
-    return { eligible: false, reason: 'Chỉ có thể xóa vĩnh viễn kịch bản đang trong Thùng rác' };
-  }
-  const hasRuns = Object.values(state.simulationRuns).some((r) => r.scenarioId === scenarioId);
-  if (hasRuns) {
-    return {
-      eligible: false,
-      reason: 'Kịch bản đang được liên kết với kết quả mô phỏng (SimulationRun). Vui lòng sử dụng Lưu trữ.',
-    };
-  }
-  const childPlans = Object.values(state.plans).filter((p) => p.scenarioId === scenarioId);
-  const childPlanIds = new Set(childPlans.map((p) => p.id));
-
-  // Kiểm tra khí tài trong kịch bản có bị khí tài thuộc kịch bản khác tham chiếu chỉ huy hay không
-  const scenarioPlacementIds = new Set(
-    Object.values(state.placements)
-      .filter((p) => childPlanIds.has(p.planId))
-      .map((p) => p.id)
-  );
-  const referencedByOtherPlacement = Object.values(state.placements).some(
-    (p) => !childPlanIds.has(p.planId) && p.network?.commandedBy && scenarioPlacementIds.has(p.network.commandedBy)
-  );
-  if (referencedByOtherPlacement) {
-    return {
-      eligible: false,
-      reason: 'Khí tài trong kịch bản đang được liên kết chỉ huy bởi khí tài thuộc kịch bản khác',
-    };
-  }
-
-  for (const childPlan of childPlans) {
-    if (
-      childPlan.status === 'proposed' ||
-      childPlan.status === 'approved' ||
-      childPlan.status === 'withdrawn' ||
-      childPlan.status === 'archived'
-    ) {
-      return {
-        eligible: false,
-        reason: `Kịch bản chứa phương án "${childPlan.name}" ở trạng thái ${childPlan.status}. Vui lòng sử dụng Lưu trữ.`,
-      };
-    }
-    if (childPlan.withdrawnAt || childPlan.withdrawnReason) {
-      return {
-        eligible: false,
-        reason: `Kịch bản chứa phương án "${childPlan.name}" đã từng thu hồi trong lịch sử.`,
-      };
-    }
-    if (childPlan.baseRevisionPlanId) {
-      return {
-        eligible: false,
-        reason: `Kịch bản chứa phương án "${childPlan.name}" có liên kết bản sửa đổi.`,
-      };
-    }
-    const hasExternalDependent = Object.values(state.plans).some(
-      (p) => p.scenarioId !== scenarioId && p.baseRevisionPlanId === childPlan.id
-    );
-    if (hasExternalDependent) {
-      return {
-        eligible: false,
-        reason: `Kịch bản chứa phương án "${childPlan.name}" là gốc của phương án thuộc kịch bản khác.`,
-      };
-    }
-    const hasPlanRuns = Object.values(state.simulationRuns).some((r) => r.planId === childPlan.id);
-    if (hasPlanRuns) {
-      return {
-        eligible: false,
-        reason: `Kịch bản chứa phương án "${childPlan.name}" có kết quả mô phỏng.`,
-      };
-    }
-  }
-  return { eligible: true };
-}
 
 export const useTacticalStore = create<TacticalState>((set, get) => ({
   // Canonical State Initialization
