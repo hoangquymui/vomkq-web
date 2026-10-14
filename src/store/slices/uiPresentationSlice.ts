@@ -7,6 +7,8 @@ export interface UiPresentationSlice {
   setWorkspaceModalTab: (tab: 'scenarios' | 'plans') => void;
   setShowLayoutModal: (show: boolean) => void;
   toggleLayoutModal: () => void;
+  setShowSimulationPanel: (show: boolean) => void;
+  toggleSimulationPanel: () => void;
 
   setActiveTool: (tool: 'select' | 'place' | 'move' | 'measure') => void;
   setPendingTemplate: (template: EquipmentTemplate | null) => void;
@@ -66,6 +68,8 @@ export const createUiPresentationSlice = (
   setWorkspaceModalTab: (tab: 'scenarios' | 'plans') => set({ workspaceModalTab: tab }),
   setShowLayoutModal: (show) => set({ showLayoutModal: show }),
   toggleLayoutModal: () => set((state) => ({ showLayoutModal: !state.showLayoutModal })),
+  setShowSimulationPanel: (show: boolean) => set({ showSimulationPanel: show }),
+  toggleSimulationPanel: () => set((state) => ({ showSimulationPanel: !state.showSimulationPanel })),
 
   setActiveTool: (tool) =>
     set(() => {

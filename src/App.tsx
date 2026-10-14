@@ -14,6 +14,7 @@ import { TacticalLayerControls } from "./components/ui/TacticalLayerControls";
 import { TacticalMapLegend } from "./components/ui/TacticalMapLegend";
 import { AiPlacementAdvisorPanel } from "./components/ui/AiPlacementAdvisorPanel";
 import { WorkspaceModal } from "./components/ui/WorkspaceModal";
+import { SimulationRunnerPanel } from "./components/ui/SimulationRunnerPanel";
 
 export function App() {
 
@@ -69,6 +70,9 @@ export function App() {
 
       {/* Bảng điều khiển mô phỏng vùng phủ radar SPx (Cambridge Pixel) */}
       <SpxRadarCoveragePanel />
+
+      {/* Bảng điều khiển mô phỏng & Đánh giá chân trời radar tiền định (Checkpoint 2C.5) */}
+      <SimulationRunnerPanel />
     </div>
   );
 }

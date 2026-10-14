@@ -288,6 +288,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   lastImportGen: 0,
   showWorkspaceModal: false,
   workspaceModalTab: 'plans',
+  showSimulationPanel: false,
 
   // === Battlefield Entities ===
   selectedInstanceId: null,

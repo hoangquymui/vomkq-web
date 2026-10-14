@@ -19,6 +19,7 @@ import type {
 } from '../../domain/types/simulationRunner';
 import { executeSimulationStep } from '../../domain/simulation/simulationRunner';
 import { isSimulationRunFresh } from '../../domain/simulation/simulationFreshness';
+import { evaluateRadarSurveillanceForPlan } from '../../domain/simulation/radarSurveillanceEvaluation';
 import { deepFreeze } from '../../utils/deepFreeze';
 
 const TERMINAL_STATUSES: Set<SimulationRunStatus> = new Set([
@@ -31,6 +32,14 @@ export interface SimulationRunnerSlice {
   stepSimulation: (
     runIdOrHandle: string | SimulationRunHandle,
     input: SimulationStepInput,
+    options?: SimulationStepOptions
+  ) => SimulationStepResult;
+  stepSimulationWithRadarEvaluation: (
+    runIdOrHandle: string | SimulationRunHandle,
+    input: {
+      elapsedRealMs: number;
+      targetAltitudeM?: number;
+    },
     options?: SimulationStepOptions
   ) => SimulationStepResult;
 }
@@ -284,5 +293,106 @@ export const createSimulationRunnerSlice = (
       events: recordedEvents,
       timeline: nextTimeline,
     });
+  },
+
+  stepSimulationWithRadarEvaluation: (runIdOrHandle, input, options) => {
+    const stateAtEntry = get();
+
+    if (!input || typeof input !== 'object') {
+      throw new TypeError(
+        'Cannot step simulation with radar evaluation: input must be a valid object'
+      );
+    }
+
+    // 1. Materialize all caller input values and handles first to execute any synchronous getters
+    const elapsedRealMs = input.elapsedRealMs;
+    const targetAltitudeM = input.targetAltitudeM;
+
+    let runId: string;
+    let safeRunIdOrHandle: string | SimulationRunHandle;
+    if (typeof runIdOrHandle === 'object' && runIdOrHandle !== null) {
+      // Materialize each property from the execution handle exactly ONCE (Blocker B4)
+      const capturedRunId = runIdOrHandle.runId;
+      const capturedRunToken = runIdOrHandle.runToken;
+      const capturedImportGen = runIdOrHandle.importGen;
+
+      runId = capturedRunId;
+      safeRunIdOrHandle = {
+        runId: capturedRunId,
+        runToken: capturedRunToken,
+        importGen: capturedImportGen,
+      };
+    } else {
+      runId = runIdOrHandle;
+      safeRunIdOrHandle = runIdOrHandle;
+    }
+
+    let safeOptions = options;
+    if (options && typeof options === 'object') {
+      const capturedOptToken = options.runToken;
+      const capturedOptGen = options.importGen;
+      safeOptions = {
+        runToken: capturedOptToken,
+        importGen: capturedOptGen,
+      };
+    }
+
+    // 2. Authoritative source context check: verify state was not modified during input preparation
+    const stateAtStart = get();
+    if (
+      stateAtStart !== stateAtEntry ||
+      stateAtStart.lastImportGen !== stateAtEntry.lastImportGen
+    ) {
+      throw new Error(
+        `Cannot step simulation with radar evaluation: Store state or workspace generation was modified during input preparation`
+      );
+    }
+
+    if (!runId || typeof runId !== 'string') {
+      throw new TypeError(
+        'Cannot step simulation with radar evaluation: runId must be a valid non-empty string'
+      );
+    }
+
+    const run = stateAtStart.simulationRuns?.[runId];
+    if (!run) {
+      throw new Error(
+        `Cannot step simulation with radar evaluation: SimulationRun ${runId} not found`
+      );
+    }
+
+    // 3. Evaluate radar surveillance purely against authoritative canonical state
+    const evaluationEvent = evaluateRadarSurveillanceForPlan(
+      run.planId,
+      run.scenarioId,
+      stateAtStart.placements,
+      stateAtStart.definitions,
+      { targetAltitudeM }
+    );
+
+    // 4. Concurrency check: verify store state was not modified during evaluation
+    const stateAfterEval = get();
+    if (
+      stateAfterEval !== stateAtStart ||
+      stateAfterEval.lastImportGen !== stateAtStart.lastImportGen ||
+      stateAfterEval.simulationRuns?.[runId] !== run ||
+      stateAfterEval.placements !== stateAtStart.placements ||
+      stateAfterEval.definitions !== stateAtStart.definitions
+    ) {
+      throw new Error(
+        `Cannot step simulation with radar evaluation: Store state or workspace generation was modified during domain evaluation`
+      );
+    }
+
+    // 5. Delegate to existing atomic runner action stepSimulation
+    // Ensures all 13 guards, atomicity rollback, and anti-stale/reentrant checks execute
+    return get().stepSimulation(
+      safeRunIdOrHandle,
+      {
+        elapsedRealMs,
+        events: [evaluationEvent],
+      },
+      safeOptions
+    );
   },
 });

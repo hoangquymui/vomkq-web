@@ -166,6 +166,9 @@ export interface TacticalState {
   setShowWorkspaceModal: (show: boolean) => void;
   workspaceModalTab: 'scenarios' | 'plans';
   setWorkspaceModalTab: (tab: 'scenarios' | 'plans') => void;
+  showSimulationPanel: boolean;
+  setShowSimulationPanel: (show: boolean) => void;
+  toggleSimulationPanel: () => void;
 
   // Battlefield Entities
   selectedInstanceId: string | null;
@@ -395,6 +398,16 @@ export interface TacticalState {
   stepSimulation: (
     runIdOrHandle: string | SimulationRunHandle,
     input: SimulationStepInput,
+    options?: SimulationStepOptions
+  ) => SimulationStepResult;
+
+  // === Functional Simulation Vertical Slice (Checkpoint 2C.5) ===
+  stepSimulationWithRadarEvaluation: (
+    runIdOrHandle: string | SimulationRunHandle,
+    input: {
+      elapsedRealMs: number;
+      targetAltitudeM?: number;
+    },
     options?: SimulationStepOptions
   ) => SimulationStepResult;
 

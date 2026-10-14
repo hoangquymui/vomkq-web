@@ -9,6 +9,7 @@ import {
   HardDriveDownload,
   Sparkles,
   FolderKanban,
+  Radio,
 } from 'lucide-react';
 import {
   useTacticalStore,
@@ -47,6 +48,8 @@ export const TopBar: React.FC = () => {
     setShowLayoutModal,
     setShowWorkspaceModal,
     switchActivePlan,
+    showSimulationPanel,
+    toggleSimulationPanel,
   } = useTacticalStore();
 
   return (
@@ -329,6 +332,20 @@ export const TopBar: React.FC = () => {
 
       {/* 3. Tác vụ Quản Lý Bố Cục & Xóa */}
       <div className="flex items-center gap-2">
+        {/* Nút Mở Bảng Điều Khiển Mô Phỏng (Checkpoint 2C.5) */}
+        <button
+          onClick={toggleSimulationPanel}
+          title="Bật/Tắt: Bảng điều khiển mô phỏng thủ công & Đánh giá chân trời radar"
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+            showSimulationPanel
+              ? 'bg-cyan-950 text-cyan-300 border-cyan-500 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+              : 'border-cyan-500/40 bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.2)]'
+          }`}
+        >
+          <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+          <span>Mô Phỏng</span>
+        </button>
+
         {/* Nút mở Quản Lý Bố Cục (Tải & Lưu) */}
         <button
           onClick={() => setShowLayoutModal(true)}
