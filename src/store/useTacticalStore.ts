@@ -23,6 +23,28 @@ export type {
   SimulationRunHandle,
 };
 
+import {
+  MIN_SIMULATION_TIME_SCALE,
+  MAX_SIMULATION_TIME_SCALE,
+  DEFAULT_SIMULATION_TIME_SCALE,
+  MIN_SIMULATION_RESOLUTION_MS,
+  MIN_FRACTIONAL_RESOLUTION_MS,
+  MAX_SUPPORTED_SIM_TIME_MS,
+  MAX_SUPPORTED_SIM_TIME_NS,
+  type SimulationClockPhase,
+  type SimulationClockState,
+} from '../domain/types/simulationClock';
+export {
+  MIN_SIMULATION_TIME_SCALE,
+  MAX_SIMULATION_TIME_SCALE,
+  DEFAULT_SIMULATION_TIME_SCALE,
+  MIN_SIMULATION_RESOLUTION_MS,
+  MIN_FRACTIONAL_RESOLUTION_MS,
+  MAX_SUPPORTED_SIM_TIME_MS,
+  MAX_SUPPORTED_SIM_TIME_NS,
+};
+export type { SimulationClockPhase, SimulationClockState };
+
 import type {
   AnalysisResult,
   ExecutionStatus,
@@ -106,6 +128,14 @@ import {
   selectSimulationRunsByScenario,
   selectActiveSimulationRun,
 } from './selectors/simulationSelectors';
+import {
+  selectSimulationClockByRunId,
+  selectActiveSimulationClock,
+  selectSimulationClockPhase,
+  selectSimulationClockTimeMs,
+  selectSimulationClockTimeNs,
+  selectSimulationClockTimeScale,
+} from './selectors/simulationClockSelectors';
 
 export {
   selectScenarios,
@@ -127,12 +157,22 @@ export {
   selectSimulationRunsByPlan,
   selectSimulationRunsByScenario,
   selectActiveSimulationRun,
+  selectSimulationClockByRunId,
+  selectActiveSimulationClock,
+  selectSimulationClockPhase,
+  selectSimulationClockTimeMs,
+  selectSimulationClockTimeNs,
+  selectSimulationClockTimeScale,
 };
 
 import {
   createSimulationRunSlice,
   type SimulationRunSlice,
 } from './slices/simulationRunSlice';
+import {
+  createSimulationClockSlice,
+  type SimulationClockSlice,
+} from './slices/simulationClockSlice';
 import {
   createSpxAnalysisSlice,
   type SpxAnalysisSlice,
@@ -178,11 +218,13 @@ export {
   createScenarioSlice,
   createPlanSlice,
   createWorkspaceSlice,
+  createSimulationClockSlice,
   DOME_STYLE_DEFAULTS,
   resolveAdvisorTemplate,
 };
 export type {
   SimulationRunSlice,
+  SimulationClockSlice,
   SpxAnalysisSlice,
   UiPresentationSlice,
   DerivedVisualizationSlice,
@@ -198,6 +240,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   scenarios: {},
   plans: {},
   simulationRuns: {},
+  simulationClocks: {},
   definitions: {},
   placements: {},
   observations: {},
@@ -317,6 +360,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   ...createDerivedVisualizationSlice(set, get),
   ...createAiAdvisorSlice(set, get),
   ...createSimulationRunSlice(set, get),
+  ...createSimulationClockSlice(set, get),
   ...createSpxAnalysisSlice(set, get),
   ...createEquipmentSlice(set, get),
   ...createScenarioSlice(set, get),

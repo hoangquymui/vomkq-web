@@ -25,6 +25,9 @@ import type {
   SimulationRunDiagnostics,
   SimulationRunHandle,
 } from '../domain/types/simulation';
+import type {
+  SimulationClockState,
+} from '../domain/types/simulationClock';
 import type { LegacyPresentationState } from '../domain/adapters/legacyEquipmentAdapter';
 import type {
   CanonicalStatePackage,
@@ -88,6 +91,7 @@ export interface TacticalState {
   scenarios: Record<string, Scenario>;
   plans: Record<string, Plan>;
   simulationRuns: Record<string, SimulationRun>;
+  simulationClocks: Record<string, SimulationClockState>;
   definitions: Record<string, EquipmentDefinition>;
   placements: Record<string, EquipmentPlacement>;
   observations: Record<string, ObservationState>;
@@ -320,6 +324,42 @@ export interface TacticalState {
     }
   ) => void;
   setActiveSimulationRunId: (runId: string | null) => void;
+
+  // === Simulation Clock Foundation (Checkpoint 2C.2) ===
+  initSimulationClock: (
+    runIdOrHandle: string | SimulationRunHandle,
+    options?: {
+      runToken?: string;
+      importGen?: number;
+      timeScale?: number;
+    }
+  ) => SimulationClockState;
+  startSimulationClock: (
+    runIdOrHandle: string | SimulationRunHandle,
+    options?: { runToken?: string; importGen?: number }
+  ) => void;
+  pauseSimulationClock: (
+    runIdOrHandle: string | SimulationRunHandle,
+    options?: { runToken?: string; importGen?: number }
+  ) => void;
+  resumeSimulationClock: (
+    runIdOrHandle: string | SimulationRunHandle,
+    options?: { runToken?: string; importGen?: number }
+  ) => void;
+  stepSimulationClock: (
+    runIdOrHandle: string | SimulationRunHandle,
+    elapsedRealMs: number,
+    options?: { runToken?: string; importGen?: number }
+  ) => SimulationClockState;
+  setSimulationClockScale: (
+    runIdOrHandle: string | SimulationRunHandle,
+    timeScale: number,
+    options?: { runToken?: string; importGen?: number }
+  ) => void;
+  resetSimulationClockSession: (
+    runIdOrHandle: string | SimulationRunHandle,
+    options?: { runToken?: string; importGen?: number; preserveTimeScale?: boolean }
+  ) => SimulationClockState;
 
   // Quản lý Bố Cục (Save/Load Layout Modal)
   showLayoutModal: boolean;
