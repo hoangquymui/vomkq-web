@@ -190,6 +190,10 @@ import {
   type SimulationTimelineSlice,
 } from './slices/simulationTimelineSlice';
 import {
+  createSimulationRunnerSlice,
+  type SimulationRunnerSlice,
+} from './slices/simulationRunnerSlice';
+import {
   createSpxAnalysisSlice,
   type SpxAnalysisSlice,
 } from './slices/spxAnalysisSlice';
@@ -236,6 +240,7 @@ export {
   createWorkspaceSlice,
   createSimulationClockSlice,
   createSimulationTimelineSlice,
+  createSimulationRunnerSlice,
   DOME_STYLE_DEFAULTS,
   resolveAdvisorTemplate,
 };
@@ -251,6 +256,7 @@ export type {
   PlanSlice,
   WorkspaceSlice,
   SimulationTimelineSlice,
+  SimulationRunnerSlice,
 };
 
 export const useTacticalStore = create<TacticalState>((set, get) => ({
@@ -381,6 +387,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   ...createSimulationRunSlice(set, get),
   ...createSimulationClockSlice(set, get),
   ...createSimulationTimelineSlice(set, get),
+  ...createSimulationRunnerSlice(set, get),
   ...createSpxAnalysisSlice(set, get),
   ...createEquipmentSlice(set, get),
   ...createScenarioSlice(set, get),

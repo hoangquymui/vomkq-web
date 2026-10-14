@@ -32,6 +32,11 @@ import type {
   SimulationTimelineState,
   SimulationEvent,
 } from '../domain/types/simulationTimeline';
+import type {
+  SimulationStepInput,
+  SimulationStepOptions,
+  SimulationStepResult,
+} from '../domain/types/simulationRunner';
 import type { LegacyPresentationState } from '../domain/adapters/legacyEquipmentAdapter';
 import type {
   CanonicalStatePackage,
@@ -385,6 +390,13 @@ export interface TacticalState {
       importGen?: number;
     }
   ) => SimulationEvent;
+
+  // === Deterministic Simulation Runner MVP (Checkpoint 2C.4) ===
+  stepSimulation: (
+    runIdOrHandle: string | SimulationRunHandle,
+    input: SimulationStepInput,
+    options?: SimulationStepOptions
+  ) => SimulationStepResult;
 
   // Quản lý Bố Cục (Save/Load Layout Modal)
   showLayoutModal: boolean;
