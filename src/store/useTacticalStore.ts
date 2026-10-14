@@ -136,6 +136,13 @@ import {
   selectSimulationClockTimeNs,
   selectSimulationClockTimeScale,
 } from './selectors/simulationClockSelectors';
+import {
+  selectSimulationTimelineByRunId,
+  selectActiveSimulationTimeline,
+  selectSimulationEventsByRunId,
+  selectActiveSimulationEvents,
+  selectSimulationEventCount,
+} from './selectors/simulationTimelineSelectors';
 
 export {
   selectScenarios,
@@ -163,6 +170,11 @@ export {
   selectSimulationClockTimeMs,
   selectSimulationClockTimeNs,
   selectSimulationClockTimeScale,
+  selectSimulationTimelineByRunId,
+  selectActiveSimulationTimeline,
+  selectSimulationEventsByRunId,
+  selectActiveSimulationEvents,
+  selectSimulationEventCount,
 };
 
 import {
@@ -173,6 +185,10 @@ import {
   createSimulationClockSlice,
   type SimulationClockSlice,
 } from './slices/simulationClockSlice';
+import {
+  createSimulationTimelineSlice,
+  type SimulationTimelineSlice,
+} from './slices/simulationTimelineSlice';
 import {
   createSpxAnalysisSlice,
   type SpxAnalysisSlice,
@@ -219,6 +235,7 @@ export {
   createPlanSlice,
   createWorkspaceSlice,
   createSimulationClockSlice,
+  createSimulationTimelineSlice,
   DOME_STYLE_DEFAULTS,
   resolveAdvisorTemplate,
 };
@@ -233,6 +250,7 @@ export type {
   ScenarioSlice,
   PlanSlice,
   WorkspaceSlice,
+  SimulationTimelineSlice,
 };
 
 export const useTacticalStore = create<TacticalState>((set, get) => ({
@@ -241,6 +259,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   plans: {},
   simulationRuns: {},
   simulationClocks: {},
+  simulationTimelines: {},
   definitions: {},
   placements: {},
   observations: {},
@@ -361,6 +380,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   ...createAiAdvisorSlice(set, get),
   ...createSimulationRunSlice(set, get),
   ...createSimulationClockSlice(set, get),
+  ...createSimulationTimelineSlice(set, get),
   ...createSpxAnalysisSlice(set, get),
   ...createEquipmentSlice(set, get),
   ...createScenarioSlice(set, get),

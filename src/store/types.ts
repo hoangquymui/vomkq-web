@@ -28,6 +28,10 @@ import type {
 import type {
   SimulationClockState,
 } from '../domain/types/simulationClock';
+import type {
+  SimulationTimelineState,
+  SimulationEvent,
+} from '../domain/types/simulationTimeline';
 import type { LegacyPresentationState } from '../domain/adapters/legacyEquipmentAdapter';
 import type {
   CanonicalStatePackage,
@@ -92,6 +96,7 @@ export interface TacticalState {
   plans: Record<string, Plan>;
   simulationRuns: Record<string, SimulationRun>;
   simulationClocks: Record<string, SimulationClockState>;
+  simulationTimelines: Record<string, SimulationTimelineState>;
   definitions: Record<string, EquipmentDefinition>;
   placements: Record<string, EquipmentPlacement>;
   observations: Record<string, ObservationState>;
@@ -360,6 +365,26 @@ export interface TacticalState {
     runIdOrHandle: string | SimulationRunHandle,
     options?: { runToken?: string; importGen?: number; preserveTimeScale?: boolean }
   ) => SimulationClockState;
+
+  // === Simulation Event Timeline Foundation (Checkpoint 2C.3) ===
+  initSimulationTimeline: (
+    runIdOrHandle: string | SimulationRunHandle,
+    options?: {
+      runToken?: string;
+      importGen?: number;
+    }
+  ) => SimulationTimelineState;
+  appendSimulationEvent: (
+    runIdOrHandle: string | SimulationRunHandle,
+    eventInput: {
+      eventType: string;
+      payload?: unknown;
+    },
+    options?: {
+      runToken?: string;
+      importGen?: number;
+    }
+  ) => SimulationEvent;
 
   // Quản lý Bố Cục (Save/Load Layout Modal)
   showLayoutModal: boolean;

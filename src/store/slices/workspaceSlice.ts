@@ -574,6 +574,7 @@ export const createWorkspaceSlice = (
         auditEventOrder: clone.auditEventOrder || [],
         selectedInstanceId: null,
         simulationClocks: {},
+        simulationTimelines: {},
         coverageVolumes: {},
         spxResults: {},
         analysisResults: {},
