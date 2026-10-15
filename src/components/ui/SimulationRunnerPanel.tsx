@@ -6,7 +6,7 @@
  * Scenario / Plan -> SimulationRun -> Deterministic Clock -> Radar Surveillance Horizon Evaluation -> Atomic Runner -> Event Timeline -> Minimal UI.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   X,
   Play,
@@ -23,6 +23,7 @@ import {
   selectActiveScenario,
   selectActivePlan,
   selectPlansForActiveScenario,
+  isSimulationRunFresh,
 } from '../../store/useTacticalStore';
 import type { SimulationRun, SimulationRunHandle } from '../../domain/types/simulation';
 import type { RadarSurveillanceEvaluationPayload } from '../../domain/simulation/radarSurveillanceEvaluation';
@@ -65,6 +66,18 @@ export function resolveActiveSimulationRun(
   return planRuns.length > 0 ? planRuns[planRuns.length - 1] : null;
 }
 
+/**
+ * Pure selector/derivation helper for UI freshness of the active SimulationRun.
+ * Reactive to canonical state changes (placements, definitions, terrain, importGen).
+ */
+export function deriveSimulationRunFreshness(
+  state: Parameters<typeof isSimulationRunFresh>[0],
+  currentRun: SimulationRun | null | undefined
+): boolean {
+  if (!currentRun) return false;
+  return isSimulationRunFresh(state, currentRun);
+}
+
 export const SimulationRunnerPanel: React.FC = () => {
   const {
     showSimulationPanel,
@@ -80,7 +93,7 @@ export const SimulationRunnerPanel: React.FC = () => {
     initSimulationTimeline,
     stepSimulationWithRadarEvaluation,
     switchActivePlan,
-    activePlanId,
+    lastImportGen,
   } = useTacticalStore();
 
   const activeScenario = useTacticalStore(selectActiveScenario);
@@ -94,10 +107,10 @@ export const SimulationRunnerPanel: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedEventSeq, setSelectedEventSeq] = useState<number | null>(null);
 
-  // Available valid runs for the active plan and scenario (Blocker B2)
+  // Available valid runs for the active plan and scenario (Blocker B2 & G5)
   const planRuns = useMemo(() => {
-    return resolvePlanRuns(simulationRuns, activePlanId, activeScenario?.id);
-  }, [simulationRuns, activePlanId, activeScenario?.id]);
+    return resolvePlanRuns(simulationRuns, activePlan?.id, activeScenario?.id);
+  }, [simulationRuns, activePlan?.id, activeScenario?.id]);
 
   // Authoritative current run strictly bound to the active Plan and Scenario (Blocker B2)
   const currentRun = useMemo(() => {
@@ -106,6 +119,43 @@ export const SimulationRunnerPanel: React.FC = () => {
 
   const clock = currentRun ? simulationClocks[currentRun.id] : undefined;
   const timeline = currentRun ? simulationTimelines[currentRun.id] : undefined;
+
+  // Operational Lifecycle Invariant Guards (Gates G7, G8, G12)
+  const currentGen = lastImportGen ?? 0;
+  const isInvalidatedByImport = Boolean(
+    currentRun && currentRun.importGen !== undefined && currentRun.importGen !== currentGen
+  );
+
+  // Authoritative canonical source freshness subscription (reacts immediately to placement, definition, or import changes)
+  const isFresh = useTacticalStore(
+    useCallback(
+      (state) => deriveSimulationRunFreshness(state, currentRun),
+      [currentRun]
+    )
+  );
+
+  const hasClockSession = Boolean(clock);
+  const hasTimelineSession = Boolean(timeline);
+  const isClockAdvancing = clock?.phase === 'advancing';
+  const isClockPaused = clock?.phase === 'paused';
+
+  const canStartOrResume = Boolean(
+    currentRun &&
+      currentRun.status === 'running' &&
+      hasClockSession &&
+      !isInvalidatedByImport &&
+      isFresh
+  );
+
+  const canStep = Boolean(
+    currentRun &&
+      currentRun.status === 'running' &&
+      isClockAdvancing &&
+      hasClockSession &&
+      hasTimelineSession &&
+      !isInvalidatedByImport &&
+      isFresh
+  );
 
   // Selected or latest event on timeline
   const selectedEvent = useMemo(() => {
@@ -203,10 +253,6 @@ export const SimulationRunnerPanel: React.FC = () => {
       setErrorMessage(err.message || String(err));
     }
   };
-
-  const isAdvancing = clock?.phase === 'advancing';
-  const canStep = Boolean(currentRun && currentRun.status === 'running' && isAdvancing);
-
   return (
     <div
       role="dialog"
@@ -303,11 +349,14 @@ export const SimulationRunnerPanel: React.FC = () => {
                     }}
                     className="bg-slate-900 text-slate-200 font-mono border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none"
                   >
-                    {planRuns.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.id} ({r.status || 'running'})
-                      </option>
-                    ))}
+                    {planRuns.map((r) => {
+                      const isRInvalidated = r.importGen !== undefined && r.importGen !== currentGen;
+                      return (
+                        <option key={r.id} value={r.id}>
+                          {r.id} ({isRInvalidated ? 'vô hiệu (import)' : r.status || 'running'})
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               ) : (
@@ -328,89 +377,125 @@ export const SimulationRunnerPanel: React.FC = () => {
 
           {/* Section 2: Canonical Simulation Status & Lifecycle Controls */}
           {currentRun ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Status & Clock metrics */}
-              <div className="md:col-span-2 bg-slate-950/60 p-3 rounded-lg border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono uppercase text-slate-400">Trạng thái:</span>
-                    <span
-                      className={`text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded border ${
-                        currentRun.status === 'running'
-                          ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
-                          : 'bg-slate-800 text-slate-300 border-slate-700'
-                      }`}
-                    >
-                      {currentRun.status}
-                    </span>
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Status & Clock metrics */}
+                <div className="md:col-span-2 bg-slate-950/60 p-3 rounded-lg border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono uppercase text-slate-400">Trạng thái:</span>
+                      <span
+                        className={`text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded border ${
+                          isInvalidatedByImport
+                            ? 'bg-rose-950 text-rose-300 border-rose-500/40'
+                            : !isFresh
+                            ? 'bg-amber-950 text-amber-300 border-amber-500/40'
+                            : currentRun.status === 'running'
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        {isInvalidatedByImport
+                          ? 'VÔ HIỆU (IMPORT)'
+                          : !isFresh
+                          ? 'LỖI THỜI (STALE)'
+                          : currentRun.status}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono uppercase text-slate-400">Pha đồng hồ:</span>
+                      <span
+                        className={`text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded border ${
+                          clock?.phase === 'advancing'
+                            ? 'bg-cyan-950 text-cyan-300 border-cyan-500/40'
+                            : clock?.phase === 'paused'
+                            ? 'bg-amber-950 text-amber-300 border-amber-500/40'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        {clock?.phase || 'Chưa khởi tạo'}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono uppercase text-slate-400">Pha đồng hồ:</span>
-                    <span
-                      className={`text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded border ${
-                        clock?.phase === 'advancing'
-                          ? 'bg-cyan-950 text-cyan-300 border-cyan-500/40'
-                          : clock?.phase === 'paused'
-                          ? 'bg-amber-950 text-amber-300 border-amber-500/40'
-                          : 'bg-slate-800 text-slate-300 border-slate-700'
-                      }`}
-                    >
-                      {clock?.phase || 'Chưa khởi tạo'}
-                    </span>
+                  <div className="grid grid-cols-2 gap-2 text-slate-300 font-mono text-[11px]">
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">Thời gian mô phỏng (Canonical simTimeNs):</span>
+                      <span className="text-cyan-300 font-bold text-xs">
+                        {clock ? (clock.simTimeNs / 1_000_000_000).toFixed(3) : '0.000'} s
+                      </span>
+                      <span className="text-[10px] text-slate-500 ml-1">
+                        ({clock ? clock.simTimeNs.toLocaleString() : 0} ns)
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">Số bước thực thi (Tick count):</span>
+                      <span className="text-slate-200 font-bold text-xs">
+                        {clock?.tickCount ?? 0} bước
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-slate-300 font-mono text-[11px]">
-                  <div>
-                    <span className="text-slate-500 block text-[10px]">Thời gian mô phỏng (Canonical simTimeNs):</span>
-                    <span className="text-cyan-300 font-bold text-xs">
-                      {clock ? (clock.simTimeNs / 1_000_000_000).toFixed(3) : '0.000'} s
-                    </span>
-                    <span className="text-[10px] text-slate-500 ml-1">
-                      ({clock ? clock.simTimeNs.toLocaleString() : 0} ns)
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px]">Số bước thực thi (Tick count):</span>
-                    <span className="text-slate-200 font-bold text-xs">
-                      {clock?.tickCount ?? 0} bước
-                    </span>
+                {/* Lifecycle Actions */}
+                <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800 flex flex-col justify-between space-y-2">
+                  <span className="text-[10px] font-mono uppercase text-slate-400">
+                    Điều khiển Vòng đời:
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {!isClockAdvancing ? (
+                      <button
+                        onClick={isClockPaused ? handleResume : handleStartAdvancing}
+                        disabled={!canStartOrResume}
+                        className="flex items-center justify-center gap-1 px-2 py-1.5 rounded font-mono font-bold text-xs bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow transition-all cursor-pointer"
+                        title={
+                          isInvalidatedByImport
+                            ? 'Phiên đã bị vô hiệu hóa do import workspace'
+                            : !isFresh
+                            ? 'Phiên đã lỗi thời do dữ liệu thay đổi'
+                            : !hasClockSession
+                            ? 'Chưa có phiên đồng hồ hợp lệ'
+                            : isClockPaused
+                            ? 'Tiếp tục mô phỏng'
+                            : 'Bắt đầu mô phỏng'
+                        }
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                        <span>{isClockPaused ? 'Tiếp tục' : 'Bắt đầu'}</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handlePause}
+                        disabled={currentRun.status !== 'running'}
+                        className="flex items-center justify-center gap-1 px-2 py-1.5 rounded font-mono font-bold text-xs bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow transition-all cursor-pointer"
+                      >
+                        <Pause className="w-3.5 h-3.5" />
+                        <span>Tạm dừng</span>
+                      </button>
+                    )}
+
+                    <div className="text-[10px] font-mono text-slate-400 flex flex-col justify-center">
+                      <span>Token: {currentRun.runToken?.substring(0, 8)}...</span>
+                      <span>Gen: {currentRun.importGen ?? 0}</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Lifecycle Actions */}
-              <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800 flex flex-col justify-between space-y-2">
-                <span className="text-[10px] font-mono uppercase text-slate-400">
-                  Điều khiển Vòng đời:
-                </span>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {clock?.phase !== 'advancing' ? (
-                    <button
-                      onClick={clock?.phase === 'paused' ? handleResume : handleStartAdvancing}
-                      disabled={currentRun.status !== 'running'}
-                      className="flex items-center justify-center gap-1 px-2 py-1.5 rounded font-mono font-bold text-xs bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow transition-all cursor-pointer"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>{clock?.phase === 'paused' ? 'Tiếp tục' : 'Bắt đầu'}</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handlePause}
-                      className="flex items-center justify-center gap-1 px-2 py-1.5 rounded font-mono font-bold text-xs bg-amber-700 hover:bg-amber-600 text-white shadow transition-all cursor-pointer"
-                    >
-                      <Pause className="w-3.5 h-3.5" />
-                      <span>Tạm dừng</span>
-                    </button>
-                  )}
-
-                  <div className="text-[10px] font-mono text-slate-400 flex flex-col justify-center">
-                    <span>Token: {currentRun.runToken?.substring(0, 8)}...</span>
-                    <span>Gen: {currentRun.importGen ?? 0}</span>
-                  </div>
+              {/* Informative Lifecycle Alerts */}
+              {isInvalidatedByImport && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/80 border border-rose-700/60 rounded text-rose-200 text-[11px] font-mono">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
+                  <span>Phiên mô phỏng này đã bị vô hiệu hóa do gói dữ liệu workspace vừa được import. Bấm &quot;+ Khởi tạo Phiên Mới&quot; để tiếp tục.</span>
                 </div>
-              </div>
+              )}
+              {!isFresh && !isInvalidatedByImport && currentRun && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-950/80 border border-amber-700/60 rounded text-amber-200 text-[11px] font-mono">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                  <span>Dữ liệu phương án đã thay đổi so với khi khởi tạo phiên (trạng thái: lỗi thời / stale). Vui lòng khởi tạo phiên mới.</span>
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-6 text-center bg-slate-950/40 rounded-lg border border-dashed border-slate-800 text-slate-500 font-mono">
@@ -429,7 +514,15 @@ export const SimulationRunnerPanel: React.FC = () => {
                 {!canStep && (
                   <span className="text-[10px] font-mono text-amber-400 flex items-center gap-1">
                     <Info className="w-3 h-3" />
-                    Đồng hồ cần ở trạng thái &quot;advancing&quot; để thực hiện bước
+                    {isInvalidatedByImport
+                      ? 'Phiên đã bị vô hiệu do import workspace'
+                      : !isFresh
+                      ? 'Phiên đã lỗi thời do thay đổi dữ liệu phương án'
+                      : !hasClockSession
+                      ? 'Chưa khởi tạo phiên đồng hồ'
+                      : clock?.phase !== 'advancing'
+                      ? 'Đồng hồ cần ở trạng thái "advancing" để thực hiện bước'
+                      : 'Phiên mô phỏng không khả dụng để bước'}
                   </span>
                 )}
               </div>

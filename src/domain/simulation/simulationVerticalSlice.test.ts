@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import type { EquipmentPlacement, EquipmentDefinition } from '../types/equipment';
 import { RADAR_SURVEILLANCE_EVENT_TYPE, type RadarSurveillanceEvaluationPayload } from './radarSurveillanceEvaluation';
-import { resolvePlanRuns, resolveActiveSimulationRun } from '../../components/ui/SimulationRunnerPanel';
+import { resolvePlanRuns, resolveActiveSimulationRun, deriveSimulationRunFreshness } from '../../components/ui/SimulationRunnerPanel';
 
 describe('Checkpoint 2C.5: Functional Simulation Vertical Slice Integration', () => {
   const SCENARIO_ID = 'scen_vs_01';
@@ -743,5 +743,190 @@ describe('Checkpoint 2C.5: Functional Simulation Vertical Slice Integration', ()
     const pB = stateFinal.simulationTimelines[handleB.runId].events[0].payload as unknown as RadarSurveillanceEvaluationPayload;
     expect(pB.radarCount).toBe(1);
     expect(pB.planId).toBe(PLAN_B_ID);
+  });
+
+  it('Gate G7 & G12: Workspace import invalidation and fresh execution re-initialization', () => {
+    const store = useTacticalStore.getState();
+
+    // 1. Create and start a pre-import execution
+    const preImportHandle = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(preImportHandle);
+    store.initSimulationTimeline(preImportHandle);
+    store.startSimulationClock(preImportHandle);
+
+    const initialGen = store.lastImportGen ?? 0;
+    expect(preImportHandle.importGen ?? 0).toBe(initialGen);
+
+    // 2. Perform workspace import while execution is active
+    const pkg = store.exportCanonicalPackageV2('Backup for Import Invalidation');
+    store.importCanonicalPackage(pkg);
+
+    const statePostImport = useTacticalStore.getState();
+    const newGen = statePostImport.lastImportGen ?? 0;
+    expect(newGen).toBeGreaterThan(initialGen);
+
+    // Clocks and timelines are invalidated/cleared from runtime state
+    expect(statePostImport.simulationClocks[preImportHandle.runId]).toBeUndefined();
+    expect(statePostImport.simulationTimelines[preImportHandle.runId]).toBeUndefined();
+
+    // Stale pre-import handle MUST be rejected
+    expect(() =>
+      statePostImport.stepSimulationWithRadarEvaluation(preImportHandle, { elapsedRealMs: 1000 })
+    ).toThrow(/Workspace was replaced by import after registration/);
+
+    // 3. User can cleanly initialize a fresh, valid execution for the active Plan
+    const freshHandle = statePostImport.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    expect(freshHandle.importGen).toBe(newGen);
+
+    statePostImport.initSimulationClock(freshHandle);
+    statePostImport.initSimulationTimeline(freshHandle);
+    statePostImport.startSimulationClock(freshHandle);
+
+    // Fresh execution steps and records domain evaluation cleanly
+    const stepResult = statePostImport.stepSimulationWithRadarEvaluation(freshHandle, { elapsedRealMs: 1000 });
+    expect(stepResult.clock.simTimeNs).toBe(1_000_000_000);
+    expect(stepResult.events.length).toBe(1);
+    expect(stepResult.events[0].eventType).toBe(RADAR_SURVEILLANCE_EVENT_TYPE);
+  });
+
+  it('Gate G8: Source changes invalidate Run freshness and prevent step with zero partial commit', () => {
+    const store = useTacticalStore.getState();
+
+    // 1. Register and start an initial fresh execution
+    const handle = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handle);
+    store.initSimulationTimeline(handle);
+    store.startSimulationClock(handle);
+
+    // Initial state: run is fresh
+    expect(useTacticalStore.getState().simulationRuns[handle.runId].status).toBe('running');
+    expect(useTacticalStore.getState().simulationClocks[handle.runId].simTimeNs).toBe(0);
+    expect(useTacticalStore.getState().simulationTimelines[handle.runId].events.length).toBe(0);
+
+    // 2. Modify canonical source placement (change mast height from 15m to 40m)
+    useTacticalStore.setState((s) => ({
+      ...s,
+      placements: {
+        ...s.placements,
+        [mockPlacement1.id]: {
+          ...s.placements[mockPlacement1.id],
+          position: {
+            ...s.placements[mockPlacement1.id].position,
+            aglM: 40,
+          },
+        },
+      },
+    }));
+
+    // 3. Step execution MUST be rejected because plan input fingerprint no longer matches
+    expect(() =>
+      store.stepSimulationWithRadarEvaluation(handle, { elapsedRealMs: 1000 })
+    ).toThrow(/Run is not fresh \(stale or unverified provenance\)/);
+
+    // 4. Verify zero partial commit: clock unchanged at 0 ns, timeline has 0 events
+    const stateAfterStaleStep = useTacticalStore.getState();
+    expect(stateAfterStaleStep.simulationClocks[handle.runId].simTimeNs).toBe(0);
+    expect(stateAfterStaleStep.simulationTimelines[handle.runId].events.length).toBe(0);
+  });
+
+  it('Checkpoint 2C.6 Fix Round 1: UI freshness derivation reacts immediately to canonical placement changes', () => {
+    const store = useTacticalStore.getState();
+
+    // 1. Register an initial SimulationRun for active Plan
+    const handleA = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handleA);
+    store.initSimulationTimeline(handleA);
+    store.startSimulationClock(handleA);
+
+    const runA = useTacticalStore.getState().simulationRuns[handleA.runId];
+    expect(runA).toBeDefined();
+
+    // 2. Initial derivation is fresh (true)
+    const initialFreshness = deriveSimulationRunFreshness(useTacticalStore.getState(), runA);
+    expect(initialFreshness).toBe(true);
+
+    // 3. Set up a Zustand subscription mimicking the reactive UI selector
+    let reportedFreshness: boolean = initialFreshness;
+    let subscriptionCallCount = 0;
+    const unsubscribe = useTacticalStore.subscribe((state) => {
+      subscriptionCallCount++;
+      reportedFreshness = deriveSimulationRunFreshness(state, runA);
+    });
+
+    // Capture references to prove memo dependency failure mode
+    const preMutationPlan = useTacticalStore.getState().plans[PLAN_ID];
+    const preMutationRun = useTacticalStore.getState().simulationRuns[handleA.runId];
+    const preMutationGen = useTacticalStore.getState().lastImportGen ?? 0;
+
+    // 4. Update canonical placement coordinates (lat moved)
+    useTacticalStore.setState((s) => ({
+      ...s,
+      placements: {
+        ...s.placements,
+        [mockPlacement1.id]: {
+          ...s.placements[mockPlacement1.id],
+          position: {
+            ...s.placements[mockPlacement1.id].position,
+            lat: 21.0500,
+          },
+        },
+      },
+    }));
+
+    // 5. Verify the subscription immediately reacted and derived stale (false)
+    expect(subscriptionCallCount).toBeGreaterThan(0);
+    expect(reportedFreshness).toBe(false);
+    expect(deriveSimulationRunFreshness(useTacticalStore.getState(), runA)).toBe(false);
+
+    // 6. Demonstrate that prior useMemo dependencies ([currentRun, currentGen, activePlan]) were blind to placement updates:
+    // Notice that runA, plan, and importGen object references were NOT changed by placement mutation!
+    expect(useTacticalStore.getState().simulationRuns[handleA.runId]).toBe(preMutationRun);
+    expect(useTacticalStore.getState().plans[PLAN_ID]).toBe(preMutationPlan);
+    expect((useTacticalStore.getState().lastImportGen ?? 0)).toBe(preMutationGen);
+
+    // 7. Verify step execution is rejected on stale run
+    expect(() =>
+      store.stepSimulationWithRadarEvaluation(handleA, { elapsedRealMs: 1000 })
+    ).toThrow(/Run is not fresh \(stale or unverified provenance\)/);
+
+    // 8. User can cleanly initialize a new valid Run B for the updated state
+    const handleB = useTacticalStore.getState().registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    useTacticalStore.getState().initSimulationClock(handleB);
+    useTacticalStore.getState().initSimulationTimeline(handleB);
+    useTacticalStore.getState().startSimulationClock(handleB);
+
+    const runB = useTacticalStore.getState().simulationRuns[handleB.runId];
+    expect(runB).toBeDefined();
+
+    // 9. Run B is fresh; Run A remains stale (Run A/B selectivity preserved)
+    expect(deriveSimulationRunFreshness(useTacticalStore.getState(), runB)).toBe(true);
+    expect(deriveSimulationRunFreshness(useTacticalStore.getState(), runA)).toBe(false);
+
+    // 10. Fresh Run B steps successfully with zero errors
+    const stepB = useTacticalStore.getState().stepSimulationWithRadarEvaluation(handleB, { elapsedRealMs: 1000 });
+    expect(stepB.clock.simTimeNs).toBe(1_000_000_000);
+    expect(stepB.events.length).toBe(1);
+
+    unsubscribe();
   });
 });
