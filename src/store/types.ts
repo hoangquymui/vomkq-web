@@ -337,6 +337,20 @@ export interface TacticalState {
     }
   ) => void;
   setActiveSimulationRunId: (runId: string | null) => void;
+  cancelSimulationRun: (
+    runIdOrHandle: string | SimulationRunHandle,
+    options?: {
+      runToken?: string;
+      importGen?: number;
+      reason?: string;
+    }
+  ) => void;
+  deleteSimulationRun: (runId: string) => void;
+  cleanupSimulationRuns: (options?: {
+    planId?: string;
+    scenarioId?: string;
+    preserveActive?: boolean;
+  }) => number;
 
   // === Simulation Clock Foundation (Checkpoint 2C.2) ===
   initSimulationClock: (

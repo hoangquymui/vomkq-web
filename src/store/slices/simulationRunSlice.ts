@@ -37,6 +37,63 @@ export interface SimulationRunSlice {
     }
   ) => void;
   setActiveSimulationRunId: (runId: string | null) => void;
+  cancelSimulationRun: (
+    runIdOrHandle: string | SimulationRunHandle,
+    options?: {
+      runToken?: string;
+      importGen?: number;
+      reason?: string;
+    }
+  ) => void;
+  deleteSimulationRun: (runId: string) => void;
+  cleanupSimulationRuns: (options?: {
+    planId?: string;
+    scenarioId?: string;
+    preserveActive?: boolean;
+  }) => number;
+}
+
+/**
+ * Pure helper to compute eligible terminal/cancelled run IDs for cleanup.
+ * Guarantees exact agreement between UI preview and store cleanup action.
+ */
+export function getEligibleCleanupRunIds(
+  simulationRuns: Record<string, SimulationRun>,
+  options?: {
+    planId?: string;
+    scenarioId?: string;
+    activeRunId?: string | null;
+    preserveActive?: boolean;
+  }
+): string[] {
+  const TERMINAL_STATUSES: Set<SimulationRunStatus> = new Set([
+    'completed',
+    'failed',
+    'cancelled',
+  ]);
+  const preserveActive = options?.preserveActive ?? true;
+  const activeRunId = options?.activeRunId;
+  const targetPlanId = options?.planId;
+  const targetScenarioId = options?.scenarioId;
+
+  const eligible: string[] = [];
+  for (const [id, run] of Object.entries(simulationRuns || {})) {
+    if (!run) continue;
+    if (!run.status || !TERMINAL_STATUSES.has(run.status)) {
+      continue;
+    }
+    if (targetPlanId && run.planId !== targetPlanId) {
+      continue;
+    }
+    if (targetScenarioId && run.scenarioId !== targetScenarioId) {
+      continue;
+    }
+    if (preserveActive && id === activeRunId) {
+      continue;
+    }
+    eligible.push(id);
+  }
+  return eligible;
 }
 
 export const createSimulationRunSlice = (
@@ -388,5 +445,230 @@ export const createSimulationRunSlice = (
       );
     }
     set({ activeSimulationRunId: runId });
+  },
+
+  cancelSimulationRun: (runIdOrHandle, options) => {
+    let runId: string;
+    let providedToken: string | undefined = options?.runToken;
+    let providedImportGen: number | undefined = options?.importGen;
+
+    if (typeof runIdOrHandle === 'object' && runIdOrHandle !== null) {
+      runId = runIdOrHandle.runId;
+      if (options?.runToken !== undefined) {
+        providedToken = options.runToken;
+      } else if (runIdOrHandle.runToken !== undefined) {
+        providedToken = runIdOrHandle.runToken;
+      }
+      if (options?.importGen !== undefined) {
+        providedImportGen = options.importGen;
+      } else if (runIdOrHandle.importGen !== undefined) {
+        providedImportGen = runIdOrHandle.importGen;
+      }
+    } else {
+      runId = runIdOrHandle;
+    }
+
+    const state = get();
+    const currentRun = state.simulationRuns[runId];
+    if (!currentRun) {
+      throw new Error(`Cannot cancel SimulationRun: Run ${runId} not found`);
+    }
+
+    // 1. Caller generation check: reject if handle was issued in an obsolete workspace generation replaced by import
+    if (
+      providedImportGen !== undefined &&
+      state.lastImportGen !== undefined &&
+      providedImportGen !== state.lastImportGen
+    ) {
+      throw new Error(
+        `Cannot cancel SimulationRun ${runId}: Workspace was replaced by import after registration (caller generation: ${providedImportGen}, current: ${state.lastImportGen})`
+      );
+    }
+
+    // 2. Incarnation enforcement (B1):
+    // If run has runToken (newly created run), caller MUST present matching token.
+    // Stale callers cannot cancel without presenting matching token.
+    // Never substitute currentRun.runToken if providedToken is missing or mismatched!
+    if (currentRun.runToken !== undefined) {
+      if (!providedToken || providedToken !== currentRun.runToken) {
+        throw new Error(
+          `Cannot cancel SimulationRun ${runId}: Invalid or missing execution incarnation token (expected ${currentRun.runToken}, got ${providedToken ?? 'none'})`
+        );
+      }
+    } else if (providedToken !== undefined) {
+      throw new Error(
+        `Cannot cancel SimulationRun ${runId}: Record is an imported historical run without an active execution incarnation token`
+      );
+    }
+
+    // 3. Workspace replacement guard on run record
+    if (
+      currentRun.importGen !== undefined &&
+      state.lastImportGen !== undefined &&
+      currentRun.importGen !== (state.lastImportGen ?? 0)
+    ) {
+      throw new Error(
+        `Cannot cancel SimulationRun ${runId}: Workspace was replaced by import after registration (run import generation: ${currentRun.importGen}, current: ${state.lastImportGen ?? 0})`
+      );
+    }
+
+    // 4. Source ownership validation: plan and scenario must exist and not be trashed
+    const plan = state.plans[currentRun.planId];
+    if (!plan || plan.status === 'trashed') {
+      throw new Error(
+        `Cannot cancel SimulationRun ${runId}: Plan ${currentRun.planId} does not exist or is trashed`
+      );
+    }
+    const scenario = state.scenarios[currentRun.scenarioId];
+    if (!scenario || scenario.status === 'trashed') {
+      throw new Error(
+        `Cannot cancel SimulationRun ${runId}: Scenario ${currentRun.scenarioId} does not exist or is trashed`
+      );
+    }
+
+    // 5. Lifecycle status validation
+    if (!currentRun.status) {
+      throw new Error(
+        `Cannot transition SimulationRun ${runId}: Historical legacy run without execution lifecycle status is read-only`
+      );
+    }
+
+    // Idempotent return if already cancelled
+    if (currentRun.status === 'cancelled') {
+      return;
+    }
+
+    const TERMINAL_STATUSES: Set<SimulationRunStatus> = new Set(['completed', 'failed', 'cancelled']);
+    if (TERMINAL_STATUSES.has(currentRun.status)) {
+      throw new Error(
+        `Cannot cancel SimulationRun ${runId}: Session is already ${currentRun.status}`
+      );
+    }
+
+    if (currentRun.status !== 'pending' && currentRun.status !== 'running') {
+      throw new Error(
+        `Invalid transition for SimulationRun ${runId}: ${currentRun.status} cannot transition to cancelled`
+      );
+    }
+
+    // All validations passed! Zero mutation has occurred prior to this point.
+    const now = Date.now();
+    const completedAt = currentRun.completedAt ?? now;
+    if (currentRun.startedAt && completedAt < currentRun.startedAt) {
+      throw new Error(
+        `SimulationRun completedAt (${completedAt}) cannot be earlier than startedAt (${currentRun.startedAt})`
+      );
+    }
+
+    const diagnostics = options?.reason
+      ? {
+          durationMs: currentRun.diagnostics?.durationMs ?? 0,
+          warnings: currentRun.diagnostics?.warnings ?? [],
+          errors: [...(currentRun.diagnostics?.errors ?? []), options.reason],
+        }
+      : currentRun.diagnostics;
+
+    const updatedRun: SimulationRun = {
+      ...currentRun,
+      status: 'cancelled',
+      completedAt,
+      diagnostics,
+    };
+    deepFreeze(updatedRun);
+
+    // Commit cancellation status AND clock pause coherently in ONE atomic Zustand update
+    set((s) => {
+      if (!s.simulationRuns[runId]) {
+        throw new Error(`SimulationRun not found during atomic update: ${runId}`);
+      }
+
+      const nextClocks = { ...s.simulationClocks };
+      const currentClock = nextClocks[runId];
+      if (currentClock && currentClock.phase === 'advancing') {
+        nextClocks[runId] = {
+          ...currentClock,
+          phase: 'paused',
+        };
+      }
+
+      return {
+        simulationRuns: {
+          ...s.simulationRuns,
+          [runId]: updatedRun,
+        },
+        simulationClocks: nextClocks,
+      };
+    });
+  },
+
+  deleteSimulationRun: (runId) => {
+    const state = get();
+    const run = state.simulationRuns[runId];
+    if (!run) {
+      throw new Error(`SimulationRun not found: ${runId}`);
+    }
+
+    // Require cancellation before deleting a running session (Invariant C)
+    if (run.status === 'running') {
+      throw new Error(
+        `Cannot delete running SimulationRun ${runId}: Session must be cancelled or terminal before deletion`
+      );
+    }
+
+    // Coherent atomic removal of Run, Clock, Timeline, and safe active reference resolution (Invariant C)
+    set((s) => {
+      const { [runId]: _r, ...remainingRuns } = s.simulationRuns;
+      const { [runId]: _c, ...remainingClocks } = s.simulationClocks;
+      const { [runId]: _t, ...remainingTimelines } = s.simulationTimelines;
+      const nextActiveRunId =
+        s.activeSimulationRunId === runId ? null : s.activeSimulationRunId;
+
+      return {
+        simulationRuns: remainingRuns,
+        simulationClocks: remainingClocks,
+        simulationTimelines: remainingTimelines,
+        activeSimulationRunId: nextActiveRunId,
+      };
+    });
+  },
+
+  cleanupSimulationRuns: (options) => {
+    const state = get();
+    const runsToDelete = getEligibleCleanupRunIds(state.simulationRuns, {
+      planId: options?.planId,
+      scenarioId: options?.scenarioId,
+      activeRunId: state.activeSimulationRunId,
+      preserveActive: options?.preserveActive ?? true,
+    });
+
+    if (runsToDelete.length === 0) {
+      return 0;
+    }
+
+    set((s) => {
+      const nextRuns = { ...s.simulationRuns };
+      const nextClocks = { ...s.simulationClocks };
+      const nextTimelines = { ...s.simulationTimelines };
+
+      for (const id of runsToDelete) {
+        delete nextRuns[id];
+        delete nextClocks[id];
+        delete nextTimelines[id];
+      }
+
+      const nextActiveRunId =
+        s.activeSimulationRunId && runsToDelete.includes(s.activeSimulationRunId)
+          ? null
+          : s.activeSimulationRunId;
+
+      return {
+        simulationRuns: nextRuns,
+        simulationClocks: nextClocks,
+        simulationTimelines: nextTimelines,
+        activeSimulationRunId: nextActiveRunId,
+      };
+    });
+
+    return runsToDelete.length;
   },
 });

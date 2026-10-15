@@ -17,6 +17,8 @@ import {
   Globe2,
   AlertTriangle,
   Info,
+  Trash2,
+  Ban,
 } from 'lucide-react';
 import {
   useTacticalStore,
@@ -28,10 +30,12 @@ import {
 import type { SimulationRun, SimulationRunHandle } from '../../domain/types/simulation';
 import type { RadarSurveillanceEvaluationPayload } from '../../domain/simulation/radarSurveillanceEvaluation';
 import { RADAR_SURVEILLANCE_EVENT_TYPE } from '../../domain/simulation/radarSurveillanceEvaluation';
+import { getEligibleCleanupRunIds } from '../../store/slices/simulationRunSlice';
+export { getEligibleCleanupRunIds };
 
 /**
  * Pure helper to resolve all eligible runs belonging to the currently active Plan and Scenario.
- * Excludes cancelled and failed runs. (Blocker B2)
+ * Retains all runs (including terminal/cancelled) for session management and review.
  */
 export function resolvePlanRuns(
   simulationRuns: Record<string, SimulationRun>,
@@ -43,9 +47,7 @@ export function resolvePlanRuns(
     (r) =>
       r &&
       r.planId === activePlanId &&
-      r.scenarioId === activeScenarioId &&
-      r.status !== 'cancelled' &&
-      r.status !== 'failed'
+      r.scenarioId === activeScenarioId
   );
 }
 
@@ -94,6 +96,10 @@ export const SimulationRunnerPanel: React.FC = () => {
     stepSimulationWithRadarEvaluation,
     switchActivePlan,
     lastImportGen,
+    activeSimulationRunId,
+    cancelSimulationRun,
+    deleteSimulationRun,
+    cleanupSimulationRuns,
   } = useTacticalStore();
 
   const activeScenario = useTacticalStore(selectActiveScenario);
@@ -105,7 +111,11 @@ export const SimulationRunnerPanel: React.FC = () => {
   const [elapsedRealMs, setElapsedRealMs] = useState<number>(1000);
   const [targetAltitudeM, setTargetAltitudeM] = useState<number>(1000);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [selectedEventSeq, setSelectedEventSeq] = useState<number | null>(null);
+  // Scoped to runId and sequence number to prevent cross-run leak (Blocker B2)
+  const [selectedEventScope, setSelectedEventScope] = useState<{
+    runId: string;
+    sequence: number;
+  } | null>(null);
 
   // Available valid runs for the active plan and scenario (Blocker B2 & G5)
   const planRuns = useMemo(() => {
@@ -116,6 +126,35 @@ export const SimulationRunnerPanel: React.FC = () => {
   const currentRun = useMemo(() => {
     return resolveActiveSimulationRun(selectedRunId, planRuns);
   }, [selectedRunId, planRuns]);
+
+  // Lightweight session and event counters derived from runtime state (Checkpoint 2C.7)
+  const sessionCounters = useMemo(() => {
+    let totalRuns = planRuns.length;
+    let runningCount = 0;
+    let terminalCount = 0;
+    let totalEvents = 0;
+
+    for (const r of planRuns) {
+      if (r.status === 'running') runningCount++;
+      else if (r.status === 'completed' || r.status === 'cancelled' || r.status === 'failed') {
+        terminalCount++;
+      }
+      const tl = simulationTimelines[r.id];
+      totalEvents += tl?.events?.length ?? r.eventCount ?? 0;
+    }
+
+    return { totalRuns, runningCount, terminalCount, totalEvents };
+  }, [planRuns, simulationTimelines]);
+
+  // Derived cleanup preview strictly aligned with cleanup action and preserveActive=true (Blocker B2)
+  const eligibleCleanupRunIds = useMemo(() => {
+    return getEligibleCleanupRunIds(simulationRuns, {
+      planId: activePlan?.id,
+      scenarioId: activeScenario?.id,
+      activeRunId: activeSimulationRunId,
+      preserveActive: true,
+    });
+  }, [simulationRuns, activePlan?.id, activeScenario?.id, activeSimulationRunId]);
 
   const clock = currentRun ? simulationClocks[currentRun.id] : undefined;
   const timeline = currentRun ? simulationTimelines[currentRun.id] : undefined;
@@ -157,15 +196,15 @@ export const SimulationRunnerPanel: React.FC = () => {
       isFresh
   );
 
-  // Selected or latest event on timeline
+  // Selected or latest event on timeline (strictly scoped to currentRun.id to prevent cross-run leak - Blocker B2)
   const selectedEvent = useMemo(() => {
-    if (!timeline?.events || timeline.events.length === 0) return null;
-    if (selectedEventSeq !== null) {
-      const match = timeline.events.find((e) => e.sequence === selectedEventSeq);
+    if (!currentRun || !timeline?.events || timeline.events.length === 0) return null;
+    if (selectedEventScope && selectedEventScope.runId === currentRun.id) {
+      const match = timeline.events.find((e) => e.sequence === selectedEventScope.sequence);
       if (match) return match;
     }
     return timeline.events[timeline.events.length - 1] || null;
-  }, [timeline, selectedEventSeq]);
+  }, [currentRun?.id, timeline, selectedEventScope]);
 
   if (!showSimulationPanel) return null;
 
@@ -195,7 +234,7 @@ export const SimulationRunnerPanel: React.FC = () => {
       initSimulationClock(handle);
       initSimulationTimeline(handle);
       setSelectedRunId(handle.runId);
-      setSelectedEventSeq(null);
+      setSelectedEventScope(null);
     } catch (err: any) {
       setErrorMessage(err.message || String(err));
     }
@@ -247,7 +286,73 @@ export const SimulationRunnerPanel: React.FC = () => {
         targetAltitudeM,
       });
       if (result.events && result.events.length > 0) {
-        setSelectedEventSeq(result.events[result.events.length - 1].sequence);
+        setSelectedEventScope({
+          runId: currentHandle.runId,
+          sequence: result.events[result.events.length - 1].sequence,
+        });
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || String(err));
+    }
+  };
+
+  // Handler: Cancel active or selected simulation run (stops further execution, preserves timeline)
+  const handleCancelRun = (run: SimulationRun) => {
+    setErrorMessage(null);
+    if (!window.confirm('Xác nhận dừng/hủy phiên mô phỏng này? Quá trình chạy sẽ dừng lại, kết quả và nhật ký sự kiện đã ghi nhận sẽ được lưu giữ.')) {
+      return;
+    }
+    try {
+      cancelSimulationRun(run.id, {
+        runToken: run.runToken,
+        importGen: run.importGen,
+      });
+    } catch (err: any) {
+      setErrorMessage(err.message || String(err));
+    }
+  };
+
+  // Handler: Delete individual terminal simulation run (requires prior cancellation if running)
+  const handleDeleteRun = (runId: string) => {
+    setErrorMessage(null);
+    if (!window.confirm(`Xác nhận xóa hoàn toàn phiên mô phỏng ${runId}? Dữ liệu đồng hồ và nhật ký sự kiện liên quan sẽ bị xóa khỏi bộ nhớ.`)) {
+      return;
+    }
+    try {
+      deleteSimulationRun(runId);
+      const postState = useTacticalStore.getState();
+      if (selectedRunId === runId || (selectedRunId && !postState.simulationRuns[selectedRunId])) {
+        setSelectedRunId(null);
+      }
+      if (selectedEventScope?.runId === runId || (selectedEventScope && !postState.simulationRuns[selectedEventScope.runId])) {
+        setSelectedEventScope(null);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || String(err));
+    }
+  };
+
+  // Handler: Bulk cleanup of terminal/cancelled runs for this plan
+  const handleBulkCleanup = () => {
+    setErrorMessage(null);
+    const affectedCount = eligibleCleanupRunIds.length;
+    if (affectedCount === 0) return;
+    if (!window.confirm(`Xác nhận dọn dẹp ${affectedCount} phiên kết thúc/đã hủy của phương án này? Các phiên đang chạy và phiên hoạt động sẽ được bảo toàn.`)) {
+      return;
+    }
+    try {
+      cleanupSimulationRuns({
+        planId: activePlan?.id,
+        scenarioId: activeScenario?.id,
+        preserveActive: true,
+      });
+      // Authoritative post-cleanup state check (NOT stale render closure - Blocker B2)
+      const postState = useTacticalStore.getState();
+      if (selectedRunId && !postState.simulationRuns[selectedRunId]) {
+        setSelectedRunId(null);
+      }
+      if (selectedEventScope && !postState.simulationRuns[selectedEventScope.runId]) {
+        setSelectedEventScope(null);
       }
     } catch (err: any) {
       setErrorMessage(err.message || String(err));
@@ -319,7 +424,7 @@ export const SimulationRunnerPanel: React.FC = () => {
                     onChange={(e) => {
                       switchActivePlan(e.target.value);
                       setSelectedRunId(null);
-                      setSelectedEventSeq(null);
+                      setSelectedEventScope(null);
                       setErrorMessage(null);
                     }}
                     className="bg-slate-900 text-cyan-300 font-bold border border-slate-700 rounded px-1.5 py-0.5 text-xs focus:outline-none"
@@ -345,7 +450,7 @@ export const SimulationRunnerPanel: React.FC = () => {
                     value={currentRun?.id || ''}
                     onChange={(e) => {
                       setSelectedRunId(e.target.value);
-                      setSelectedEventSeq(null);
+                      setSelectedEventScope(null);
                     }}
                     className="bg-slate-900 text-slate-200 font-mono border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none"
                   >
@@ -373,6 +478,146 @@ export const SimulationRunnerPanel: React.FC = () => {
                 + Khởi tạo Phiên Mới
               </button>
             </div>
+          </div>
+
+          {/* Section 1.5: Session Management & Overview (Checkpoint 2C.7) */}
+          <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wide">
+                  Danh Sách Phiên Mô Phỏng ({sessionCounters.totalRuns})
+                </span>
+                <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/40">
+                    Chạy: {sessionCounters.runningCount}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                    Kết thúc: {sessionCounters.terminalCount}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800/40">
+                    Sự kiện: {sessionCounters.totalEvents}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleBulkCleanup}
+                disabled={eligibleCleanupRunIds.length === 0}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] font-mono font-bold rounded bg-slate-800 hover:bg-rose-950/70 hover:text-rose-300 hover:border-rose-700/50 border border-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                title="Dọn dẹp tất cả các phiên đã kết thúc/hủy của phương án này (bảo toàn phiên đang chạy và phiên hoạt động)"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Dọn dẹp kết thúc ({eligibleCleanupRunIds.length})</span>
+              </button>
+            </div>
+
+            {planRuns.length > 0 ? (
+              <div className="max-h-40 overflow-y-auto border border-slate-800/80 rounded bg-slate-900/40">
+                <table className="w-full text-left font-mono text-[11px] border-collapse">
+                  <thead>
+                    <tr className="bg-slate-950/90 text-slate-400 border-b border-slate-800 text-[10px] uppercase">
+                      <th className="py-1 px-2">Mã Phiên</th>
+                      <th className="py-1 px-2">Trạng thái</th>
+                      <th className="py-1 px-2">Thời gian sim</th>
+                      <th className="py-1 px-2">Số bước</th>
+                      <th className="py-1 px-2">Sự kiện</th>
+                      <th className="py-1 px-2 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {planRuns.map((r) => {
+                      const isSelected = currentRun?.id === r.id;
+                      const rClock = simulationClocks[r.id];
+                      const rTimeline = simulationTimelines[r.id];
+                      const isRInvalidated = r.importGen !== undefined && r.importGen !== currentGen;
+                      const evtCount = rTimeline?.events?.length ?? r.eventCount ?? 0;
+                      const simTimeSec = rClock ? (rClock.simTimeNs / 1e9).toFixed(3) : '0.000';
+                      const tickCount = rClock?.tickCount ?? 0;
+                      const isRunning = r.status === 'running';
+
+                      return (
+                        <tr
+                          key={r.id}
+                          className={`border-b border-slate-800/40 transition-colors ${
+                            isSelected
+                              ? 'bg-cyan-950/40 text-cyan-200'
+                              : 'hover:bg-slate-800/40 text-slate-300'
+                          }`}
+                        >
+                          <td className="py-1 px-2 font-bold" title={r.id}>
+                            <span className="truncate max-w-[130px] inline-block align-bottom">
+                              {r.id.length > 18 ? `${r.id.substring(0, 16)}...` : r.id}
+                            </span>
+                            {isSelected && (
+                              <span className="ml-1 text-[9px] text-cyan-400 font-normal">
+                                [active]
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-1 px-2">
+                            <span
+                              className={`text-[9px] uppercase font-bold px-1 py-0.5 rounded border ${
+                                isRInvalidated
+                                  ? 'bg-rose-950 text-rose-300 border-rose-500/40'
+                                  : isRunning
+                                  ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                                  : r.status === 'cancelled'
+                                  ? 'bg-amber-950 text-amber-300 border-amber-500/40'
+                                  : r.status === 'completed'
+                                  ? 'bg-blue-950 text-blue-300 border-blue-500/40'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700'
+                              }`}
+                            >
+                              {isRInvalidated ? 'vô hiệu' : r.status || 'unknown'}
+                            </span>
+                          </td>
+                          <td className="py-1 px-2 text-slate-300">{simTimeSec}s</td>
+                          <td className="py-1 px-2 text-slate-400">{tickCount}</td>
+                          <td className="py-1 px-2 text-slate-400">{evtCount}</td>
+                          <td className="py-1 px-2 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {!isSelected && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedRunId(r.id);
+                                    setSelectedEventScope(null);
+                                  }}
+                                  className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-cyan-900 text-slate-200 hover:text-cyan-200 border border-slate-700 cursor-pointer"
+                                  title="Chọn phiên này để theo dõi/điều khiển"
+                                >
+                                  Chọn
+                                </button>
+                              )}
+                              {isRunning && (
+                                <button
+                                  onClick={() => handleCancelRun(r)}
+                                  className="px-1.5 py-0.5 rounded text-[10px] bg-amber-950/60 hover:bg-amber-900 text-amber-300 border border-amber-700/50 cursor-pointer"
+                                  title="Dừng và hủy phiên này"
+                                >
+                                  Hủy
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeleteRun(r.id)}
+                                disabled={isRunning}
+                                className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-700/50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                title={isRunning ? 'Cần hủy phiên trước khi xóa' : 'Xóa vĩnh viễn phiên này'}
+                              >
+                                Xóa
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-2 text-slate-500 font-mono text-[11px] italic">
+                Chưa có phiên mô phỏng nào cho phương án này. Bấm &quot;+ Khởi tạo Phiên Mới&quot; để tạo phiên.
+              </div>
+            )}
           </div>
 
           {/* Section 2: Canonical Simulation Status & Lifecycle Controls */}
@@ -479,6 +724,17 @@ export const SimulationRunnerPanel: React.FC = () => {
                       <span>Token: {currentRun.runToken?.substring(0, 8)}...</span>
                       <span>Gen: {currentRun.importGen ?? 0}</span>
                     </div>
+
+                    {currentRun.status === 'running' && (
+                      <button
+                        onClick={() => handleCancelRun(currentRun)}
+                        className="col-span-2 flex items-center justify-center gap-1 px-2 py-1 rounded font-mono font-bold text-[11px] bg-rose-950/80 hover:bg-rose-900 border border-rose-700/60 text-rose-200 transition-all cursor-pointer"
+                        title="Dừng và hủy phiên mô phỏng hiện tại (giữ lại nhật ký sự kiện)"
+                      >
+                        <Ban className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Hủy phiên (Cancel)</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -578,11 +834,18 @@ export const SimulationRunnerPanel: React.FC = () => {
                 </span>
                 <div className="space-y-1">
                   {timeline.events.map((evt) => {
-                    const isSelected = selectedEvent?.sequence === evt.sequence;
+                    const isSelected = selectedEvent?.eventId === evt.eventId;
                     return (
                       <button
                         key={evt.eventId}
-                        onClick={() => setSelectedEventSeq(evt.sequence)}
+                        onClick={() => {
+                          if (currentRun) {
+                            setSelectedEventScope({
+                              runId: currentRun.id,
+                              sequence: evt.sequence,
+                            });
+                          }
+                        }}
                         className={`w-full text-left p-1.5 rounded font-mono text-[10px] flex items-center justify-between transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-cyan-950/90 text-cyan-200 border border-cyan-500/50'

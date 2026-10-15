@@ -9,7 +9,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import type { EquipmentPlacement, EquipmentDefinition } from '../types/equipment';
 import { RADAR_SURVEILLANCE_EVENT_TYPE, type RadarSurveillanceEvaluationPayload } from './radarSurveillanceEvaluation';
-import { resolvePlanRuns, resolveActiveSimulationRun, deriveSimulationRunFreshness } from '../../components/ui/SimulationRunnerPanel';
+import {
+  resolvePlanRuns,
+  resolveActiveSimulationRun,
+  deriveSimulationRunFreshness,
+  getEligibleCleanupRunIds,
+} from '../../components/ui/SimulationRunnerPanel';
 
 describe('Checkpoint 2C.5: Functional Simulation Vertical Slice Integration', () => {
   const SCENARIO_ID = 'scen_vs_01';
@@ -928,5 +933,629 @@ describe('Checkpoint 2C.5: Functional Simulation Vertical Slice Integration', ()
     expect(stepB.events.length).toBe(1);
 
     unsubscribe();
+  });
+});
+
+describe('Checkpoint 2C.7: Simulation Session Management', () => {
+  const SCENARIO_ID = 'scen_2c7_01';
+  const PLAN_ID = 'plan_2c7_01';
+
+  beforeEach(() => {
+    // Reset store to known state
+    const reset = (useTacticalStore.getState() as any).resetStore;
+    if (typeof reset === 'function') {
+      reset();
+    } else {
+      useTacticalStore.setState((s) => ({
+        ...s,
+        scenarios: {},
+        plans: {},
+        definitions: {},
+        placements: {},
+        simulationRuns: {},
+        simulationClocks: {},
+        simulationTimelines: {},
+        activeScenarioId: null,
+        activePlanId: null,
+        activeSimulationRunId: null,
+      }));
+    }
+
+    // Set up standard scenario & plan
+    useTacticalStore.setState((s) => ({
+      ...s,
+      scenarios: {
+        [SCENARIO_ID]: {
+          id: SCENARIO_ID,
+          name: 'Kịch bản 2C.7 Session Test',
+          status: 'active',
+          terrainVersion: 'v1',
+          createdAt: 1000,
+        },
+      },
+      plans: {
+        [PLAN_ID]: {
+          id: PLAN_ID,
+          scenarioId: SCENARIO_ID,
+          name: 'Phương án 2C.7 Session Test',
+          status: 'approved',
+          version: 1,
+        },
+      },
+      definitions: {
+        def_2c7_radar: {
+          id: 'def_2c7_radar',
+          planId: PLAN_ID,
+          templateId: 'tmpl_36d6',
+          category: 'RadarCanhGioi',
+          name: 'Radar 2C.7 Station',
+          rangeKm: 150,
+          scanSpeed: 6,
+          minElevationDeg: 0.5,
+          maxElevationDeg: 45,
+          coverageHeightKm: 20,
+          capabilities: {},
+        },
+      },
+      placements: {
+        plc_2c7_01: {
+          id: 'plc_2c7_01',
+          planId: PLAN_ID,
+          definitionId: 'def_2c7_radar',
+          position: { lat: 21.0, lon: 105.8, altM: 10, aglM: 15 },
+          network: {},
+        },
+      },
+      observations: {
+        plc_2c7_01: { placementId: 'plc_2c7_01', status: 'Active' },
+      },
+      visuals: {
+        plc_2c7_01: { placementId: 'plc_2c7_01', color: '#06b6d4', showDome: true, showSweep: false },
+      },
+      activeScenarioId: SCENARIO_ID,
+      activePlanId: PLAN_ID,
+    }));
+  });
+
+  it('1. Cancel Run A: execution stops, existing Timeline remains available', () => {
+    const store = useTacticalStore.getState();
+
+    // Register and start Run A
+    const handleA = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handleA);
+    store.initSimulationTimeline(handleA);
+    store.startSimulationClock(handleA);
+
+    // Step once to produce an event
+    store.stepSimulationWithRadarEvaluation(handleA, { elapsedRealMs: 1000 });
+    const stateBeforeCancel = useTacticalStore.getState();
+    expect(stateBeforeCancel.simulationClocks[handleA.runId].simTimeNs).toBe(1_000_000_000);
+    expect(stateBeforeCancel.simulationTimelines[handleA.runId].events.length).toBe(1);
+
+    // Cancel Run A
+    store.cancelSimulationRun(handleA);
+
+    const stateAfterCancel = useTacticalStore.getState();
+    const runA = stateAfterCancel.simulationRuns[handleA.runId];
+    expect(runA.status).toBe('cancelled');
+    expect(runA.completedAt).toBeDefined();
+
+    // Clock stopped/paused, simTime preserved
+    expect(stateAfterCancel.simulationClocks[handleA.runId].simTimeNs).toBe(1_000_000_000);
+    expect(stateAfterCancel.simulationClocks[handleA.runId].phase).toBe('paused');
+
+    // Existing Timeline and evaluation payload remain available and intact
+    expect(stateAfterCancel.simulationTimelines[handleA.runId].events.length).toBe(1);
+    expect(stateAfterCancel.simulationTimelines[handleA.runId].events[0].eventType).toBe(RADAR_SURVEILLANCE_EVENT_TYPE);
+
+    // Further stepping MUST be rejected
+    expect(() =>
+      store.stepSimulationWithRadarEvaluation(handleA, { elapsedRealMs: 1000 })
+    ).toThrow(/terminal SimulationRun.*status: cancelled/);
+
+    // State remains unchanged after rejected step
+    const stateFinal = useTacticalStore.getState();
+    expect(stateFinal.simulationClocks[handleA.runId].simTimeNs).toBe(1_000_000_000);
+    expect(stateFinal.simulationTimelines[handleA.runId].events.length).toBe(1);
+  });
+
+  it('2. Delete Run A: Run/Clock/Timeline removed coherently; Run B remains unchanged', () => {
+    const store = useTacticalStore.getState();
+
+    // Register Run A and Run B
+    const handleA = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handleA);
+    store.initSimulationTimeline(handleA);
+    store.startSimulationClock(handleA);
+
+    const handleB = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handleB);
+    store.initSimulationTimeline(handleB);
+    store.startSimulationClock(handleB);
+
+    // Step both
+    store.stepSimulationWithRadarEvaluation(handleA, { elapsedRealMs: 1000 });
+    store.stepSimulationWithRadarEvaluation(handleB, { elapsedRealMs: 1000 });
+
+    // Invariant C check: deleting running Run A must throw
+    expect(() => store.deleteSimulationRun(handleA.runId)).toThrow(
+      /Cannot delete running SimulationRun.*Session must be cancelled or terminal before deletion/
+    );
+
+    // Cancel Run A first
+    store.cancelSimulationRun(handleA);
+
+    // Coherently delete Run A
+    store.deleteSimulationRun(handleA.runId);
+
+    const statePostDelete = useTacticalStore.getState();
+    // Run A, its clock, and its timeline are completely removed
+    expect(statePostDelete.simulationRuns[handleA.runId]).toBeUndefined();
+    expect(statePostDelete.simulationClocks[handleA.runId]).toBeUndefined();
+    expect(statePostDelete.simulationTimelines[handleA.runId]).toBeUndefined();
+
+    // Run B remains completely unchanged and valid
+    expect(statePostDelete.simulationRuns[handleB.runId]).toBeDefined();
+    expect(statePostDelete.simulationRuns[handleB.runId].status).toBe('running');
+    expect(statePostDelete.simulationClocks[handleB.runId].simTimeNs).toBe(1_000_000_000);
+    expect(statePostDelete.simulationTimelines[handleB.runId].events.length).toBe(1);
+
+    // Run B can continue stepping without issue
+    store.stepSimulationWithRadarEvaluation(handleB, { elapsedRealMs: 1000 });
+    const stateFinal = useTacticalStore.getState();
+    expect(stateFinal.simulationClocks[handleB.runId].simTimeNs).toBe(2_000_000_000);
+    expect(stateFinal.simulationTimelines[handleB.runId].events.length).toBe(2);
+  });
+
+  it('3. Old handle after deletion: rejected without partial commit', () => {
+    const store = useTacticalStore.getState();
+
+    const handle = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handle);
+    store.initSimulationTimeline(handle);
+
+    store.cancelSimulationRun(handle);
+    store.deleteSimulationRun(handle.runId);
+
+    // Stepping with old handle MUST be rejected
+    expect(() =>
+      store.stepSimulationWithRadarEvaluation(handle, { elapsedRealMs: 1000 })
+    ).toThrow(/SimulationRun.*not found/);
+
+    // Clock operations with old handle MUST be rejected
+    expect(() => store.startSimulationClock(handle)).toThrow(/SimulationRun.*not found/);
+    expect(() => store.stepSimulationClock(handle, 1000)).toThrow(/SimulationRun.*not found/);
+
+    // Status update with old handle MUST be rejected
+    expect(() => store.updateSimulationRunStatus(handle, 'completed')).toThrow(/SimulationRun.*not found/);
+
+    // State remains clean: no ghost records created
+    const state = useTacticalStore.getState();
+    expect(state.simulationRuns[handle.runId]).toBeUndefined();
+    expect(state.simulationClocks[handle.runId]).toBeUndefined();
+    expect(state.simulationTimelines[handle.runId]).toBeUndefined();
+  });
+
+  it('4. Bulk cleanup: only eligible sessions removed; running session preserved', () => {
+    const store = useTacticalStore.getState();
+
+    // 1. Run 1: Cancelled
+    const handle1 = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handle1);
+    store.initSimulationTimeline(handle1);
+    store.cancelSimulationRun(handle1);
+
+    // 2. Run 2: Completed
+    const handle2 = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handle2);
+    store.initSimulationTimeline(handle2);
+    store.updateSimulationRunStatus(handle2, 'completed');
+
+    // 3. Run 3: Running
+    const handle3 = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handle3);
+    store.initSimulationTimeline(handle3);
+    store.startSimulationClock(handle3);
+
+    expect(useTacticalStore.getState().simulationRuns[handle1.runId].status).toBe('cancelled');
+    expect(useTacticalStore.getState().simulationRuns[handle2.runId].status).toBe('completed');
+    expect(useTacticalStore.getState().simulationRuns[handle3.runId].status).toBe('running');
+
+    // Execute bulk cleanup for the plan
+    const removedCount = store.cleanupSimulationRuns({
+      planId: PLAN_ID,
+      scenarioId: SCENARIO_ID,
+      preserveActive: false,
+    });
+
+    expect(removedCount).toBe(2);
+
+    const stateAfterCleanup = useTacticalStore.getState();
+    // Run 1 and 2 removed
+    expect(stateAfterCleanup.simulationRuns[handle1.runId]).toBeUndefined();
+    expect(stateAfterCleanup.simulationClocks[handle1.runId]).toBeUndefined();
+    expect(stateAfterCleanup.simulationTimelines[handle1.runId]).toBeUndefined();
+    expect(stateAfterCleanup.simulationRuns[handle2.runId]).toBeUndefined();
+    expect(stateAfterCleanup.simulationClocks[handle2.runId]).toBeUndefined();
+    expect(stateAfterCleanup.simulationTimelines[handle2.runId]).toBeUndefined();
+
+    // Run 3 PRESERVED
+    expect(stateAfterCleanup.simulationRuns[handle3.runId]).toBeDefined();
+    expect(stateAfterCleanup.simulationRuns[handle3.runId].status).toBe('running');
+    expect(stateAfterCleanup.simulationClocks[handle3.runId]).toBeDefined();
+    expect(stateAfterCleanup.simulationTimelines[handle3.runId]).toBeDefined();
+
+    // Preserved running session can step normally
+    store.stepSimulationWithRadarEvaluation(handle3, { elapsedRealMs: 1000 });
+    expect(useTacticalStore.getState().simulationClocks[handle3.runId].simTimeNs).toBe(1_000_000_000);
+  });
+
+  it('5. Selected Run deletion: safe fallback/no-run state, no stale event displayed', () => {
+    const store = useTacticalStore.getState();
+
+    // Register Run A and Run B
+    const handleA = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handleA);
+    store.initSimulationTimeline(handleA);
+    store.startSimulationClock(handleA);
+    store.stepSimulationWithRadarEvaluation(handleA, { elapsedRealMs: 1000 });
+
+    const handleB = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handleB);
+    store.initSimulationTimeline(handleB);
+
+    // Set Run A as active
+    store.setActiveSimulationRunId(handleA.runId);
+    expect(useTacticalStore.getState().activeSimulationRunId).toBe(handleA.runId);
+
+    // Cancel & delete active Run A
+    store.cancelSimulationRun(handleA);
+    store.deleteSimulationRun(handleA.runId);
+
+    // Invariant C: activeSimulationRunId safely resolved (reset to null)
+    const stateAfterDeleteA = useTacticalStore.getState();
+    expect(stateAfterDeleteA.activeSimulationRunId).toBeNull();
+
+    // UI helper resolveActiveSimulationRun: falls back safely to remaining Run B
+    const planRunsAfterDeleteA = resolvePlanRuns(stateAfterDeleteA.simulationRuns, PLAN_ID, SCENARIO_ID);
+    const activeResolved = resolveActiveSimulationRun(handleA.runId, planRunsAfterDeleteA);
+    expect(activeResolved).toBeDefined();
+    expect(activeResolved?.id).toBe(handleB.runId);
+
+    // Cancel & delete Run B as well
+    store.cancelSimulationRun(handleB);
+    store.deleteSimulationRun(handleB.runId);
+
+    const stateAfterDeleteAll = useTacticalStore.getState();
+    const planRunsEmpty = resolvePlanRuns(stateAfterDeleteAll.simulationRuns, PLAN_ID, SCENARIO_ID);
+    expect(planRunsEmpty).toHaveLength(0);
+
+    // Safe no-run fallback
+    const noRunFallback = resolveActiveSimulationRun(null, planRunsEmpty);
+    expect(noRunFallback).toBeNull();
+
+    // No stale timeline data accessible
+    expect(stateAfterDeleteAll.simulationTimelines[handleA.runId]).toBeUndefined();
+    expect(stateAfterDeleteAll.simulationTimelines[handleB.runId]).toBeUndefined();
+  });
+
+  it('6. Import/freshness and canonical neutrality: existing contracts remain intact', () => {
+    const store = useTacticalStore.getState();
+
+    // Register and run a session
+    const handle = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handle);
+    store.initSimulationTimeline(handle);
+
+    // Export canonical package V2
+    const pkg = store.exportCanonicalPackageV2('Neutrality Test Package');
+    expect(pkg.schemaVersion).toBe(2);
+
+    // Canonical neutrality check: runtime session clock/timeline data is NEVER in package
+    expect((pkg as any).simulationClocks).toBeUndefined();
+    expect((pkg as any).simulationTimelines).toBeUndefined();
+
+    // Import package invalidates runtime sessions
+    const preImportGen = store.lastImportGen ?? 0;
+    store.importCanonicalPackage(pkg);
+    const postImportGen = useTacticalStore.getState().lastImportGen ?? 0;
+    expect(postImportGen).toBeGreaterThan(preImportGen);
+
+    // Stale handle rejected by import generation protection
+    expect(() =>
+      useTacticalStore.getState().stepSimulationWithRadarEvaluation(handle, { elapsedRealMs: 1000 })
+    ).toThrow(/Workspace was replaced by import after registration/);
+  });
+
+  it('7. B1 Regression: Cancel must not partially mutate runtime state on validation failure', () => {
+    const store = useTacticalStore.getState();
+
+    // 1. Initialize an advancing Run with Clock and Timeline
+    const handle = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handle);
+    store.initSimulationTimeline(handle);
+    store.startSimulationClock(handle);
+
+    // Step once to advance clock and create a timeline event
+    store.stepSimulationWithRadarEvaluation(handle, { elapsedRealMs: 1000 });
+
+    const stateBeforeAttempts = useTacticalStore.getState();
+    expect(stateBeforeAttempts.simulationRuns[handle.runId].status).toBe('running');
+    expect(stateBeforeAttempts.simulationClocks[handle.runId].phase).toBe('advancing');
+    expect(stateBeforeAttempts.simulationClocks[handle.runId].simTimeNs).toBe(1_000_000_000);
+    expect(stateBeforeAttempts.simulationClocks[handle.runId].tickCount).toBe(1);
+    expect(stateBeforeAttempts.simulationTimelines[handle.runId].events).toHaveLength(1);
+
+    // 2. Attempt cancellation with missing token: must throw and NOT mutate clock or run
+    expect(() =>
+      store.cancelSimulationRun({ runId: handle.runId } as any)
+    ).toThrow(/Invalid or missing execution incarnation token/);
+
+    const stateAfterFail1 = useTacticalStore.getState();
+    expect(stateAfterFail1.simulationRuns[handle.runId].status).toBe('running');
+    expect(stateAfterFail1.simulationClocks[handle.runId].phase).toBe('advancing');
+    expect(stateAfterFail1.simulationClocks[handle.runId].simTimeNs).toBe(1_000_000_000);
+    expect(stateAfterFail1.simulationClocks[handle.runId].tickCount).toBe(1);
+    expect(stateAfterFail1.simulationTimelines[handle.runId].events).toHaveLength(1);
+
+    // 3. Attempt cancellation with invalid token: must throw and NOT mutate clock or run
+    expect(() =>
+      store.cancelSimulationRun({ runId: handle.runId, runToken: 'rt_invalid_token' })
+    ).toThrow(/Invalid or missing execution incarnation token/);
+
+    const stateAfterFail2 = useTacticalStore.getState();
+    expect(stateAfterFail2.simulationRuns[handle.runId].status).toBe('running');
+    expect(stateAfterFail2.simulationClocks[handle.runId].phase).toBe('advancing');
+    expect(stateAfterFail2.simulationClocks[handle.runId].simTimeNs).toBe(1_000_000_000);
+    expect(stateAfterFail2.simulationClocks[handle.runId].tickCount).toBe(1);
+    expect(stateAfterFail2.simulationTimelines[handle.runId].events).toHaveLength(1);
+
+    // 4. Attempt cancellation with stale import generation handle: must throw and NOT mutate
+    expect(() =>
+      store.cancelSimulationRun({
+        runId: handle.runId,
+        runToken: handle.runToken,
+        importGen: 999,
+      })
+    ).toThrow(/Workspace was replaced by import after registration/);
+
+    const stateAfterFail3 = useTacticalStore.getState();
+    expect(stateAfterFail3.simulationRuns[handle.runId].status).toBe('running');
+    expect(stateAfterFail3.simulationClocks[handle.runId].phase).toBe('advancing');
+    expect(stateAfterFail3.simulationClocks[handle.runId].simTimeNs).toBe(1_000_000_000);
+    expect(stateAfterFail3.simulationClocks[handle.runId].tickCount).toBe(1);
+    expect(stateAfterFail3.simulationTimelines[handle.runId].events).toHaveLength(1);
+
+    // 5. Legitimate cancellation succeeds and pauses Clock in one atomic update
+    store.cancelSimulationRun(handle, { reason: 'Intentional cancellation test' });
+
+    const stateFinal = useTacticalStore.getState();
+    const finalRun = stateFinal.simulationRuns[handle.runId];
+    const finalClock = stateFinal.simulationClocks[handle.runId];
+    const finalTimeline = stateFinal.simulationTimelines[handle.runId];
+
+    expect(finalRun.status).toBe('cancelled');
+    expect(finalRun.diagnostics?.errors).toContain('Intentional cancellation test');
+    expect(finalClock.phase).toBe('paused');
+    expect(finalClock.simTimeNs).toBe(1_000_000_000);
+    expect(finalClock.tickCount).toBe(1);
+    expect(finalTimeline.events).toHaveLength(1);
+    expect(finalTimeline.events[0].eventType).toBe(RADAR_SURVEILLANCE_EVENT_TYPE);
+  });
+
+  it('8. B2 Regression 1: Active terminal Run is preserved, eligible terminal Run deleted; preview count matches actual removal', () => {
+    const store = useTacticalStore.getState();
+
+    // Run 1: Cancelled and designated as activeSimulationRunId
+    const handle1 = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handle1);
+    store.initSimulationTimeline(handle1);
+    store.cancelSimulationRun(handle1);
+    store.setActiveSimulationRunId(handle1.runId);
+    expect(useTacticalStore.getState().activeSimulationRunId).toBe(handle1.runId);
+
+    // Run 2: Completed, inactive
+    const handle2 = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handle2);
+    store.initSimulationTimeline(handle2);
+    store.updateSimulationRunStatus(handle2, 'completed');
+
+    // Run 3: Running, active execution
+    const handle3 = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handle3);
+    store.initSimulationTimeline(handle3);
+    store.startSimulationClock(handle3);
+
+    const currentState = useTacticalStore.getState();
+
+    // Derive preview using the shared pure helper with preserveActive: true
+    const previewEligible = getEligibleCleanupRunIds(currentState.simulationRuns, {
+      planId: PLAN_ID,
+      scenarioId: SCENARIO_ID,
+      activeRunId: currentState.activeSimulationRunId,
+      preserveActive: true,
+    });
+
+    // Run 1 is terminal BUT active -> preserved!
+    // Run 3 is running -> preserved!
+    // Run 2 is terminal and inactive -> eligible!
+    expect(previewEligible).toEqual([handle2.runId]);
+    expect(previewEligible).toHaveLength(1);
+
+    // Execute bulk cleanup with preserveActive: true
+    const actualRemovedCount = store.cleanupSimulationRuns({
+      planId: PLAN_ID,
+      scenarioId: SCENARIO_ID,
+      preserveActive: true,
+    });
+
+    // Preview count MUST match actual removed count
+    expect(actualRemovedCount).toBe(previewEligible.length);
+    expect(actualRemovedCount).toBe(1);
+
+    const postState = useTacticalStore.getState();
+    // Run 1 (active terminal) is preserved
+    expect(postState.simulationRuns[handle1.runId]).toBeDefined();
+    expect(postState.simulationRuns[handle1.runId].status).toBe('cancelled');
+    expect(postState.activeSimulationRunId).toBe(handle1.runId);
+
+    // Run 2 is deleted
+    expect(postState.simulationRuns[handle2.runId]).toBeUndefined();
+    expect(postState.simulationClocks[handle2.runId]).toBeUndefined();
+    expect(postState.simulationTimelines[handle2.runId]).toBeUndefined();
+
+    // Run 3 (running) is preserved
+    expect(postState.simulationRuns[handle3.runId]).toBeDefined();
+    expect(postState.simulationRuns[handle3.runId].status).toBe('running');
+  });
+
+  it('9. B2 Regression 2: Cleanup deletes UI-selected Run differing from store active Run; UI fallback and event scope isolation', () => {
+    const store = useTacticalStore.getState();
+
+    // Run A: Store active run (running)
+    const handleA = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handleA);
+    store.initSimulationTimeline(handleA);
+    store.startSimulationClock(handleA);
+    store.setActiveSimulationRunId(handleA.runId);
+
+    // Step Run A to create Event #0 for Run A
+    store.stepSimulationWithRadarEvaluation(handleA, { elapsedRealMs: 1000 });
+    const timelineA = useTacticalStore.getState().simulationTimelines[handleA.runId];
+    expect(timelineA.events).toHaveLength(1);
+    expect(timelineA.events[0].sequence).toBe(0);
+
+    // Run B: Terminal run (cancelled), different from active run
+    const handleB = store.registerSimulationRun({
+      scenarioId: SCENARIO_ID,
+      planId: PLAN_ID,
+      initialStatus: 'running',
+    });
+    store.initSimulationClock(handleB);
+    store.initSimulationTimeline(handleB);
+    store.startSimulationClock(handleB);
+    // Step Run B to create Event #0 for Run B
+    store.stepSimulationWithRadarEvaluation(handleB, { elapsedRealMs: 2000 });
+    store.cancelSimulationRun(handleB);
+
+    const timelineB = useTacticalStore.getState().simulationTimelines[handleB.runId];
+    expect(timelineB.events).toHaveLength(1);
+    expect(timelineB.events[0].sequence).toBe(0);
+    expect(timelineB.events[0].eventId).not.toBe(timelineA.events[0].eventId);
+
+    // UI state: user has selected Run B (which differs from store's activeSimulationRunId = Run A)
+    let uiSelectedRunId: string | null = handleB.runId;
+    let uiSelectedEventScope: { runId: string; sequence: number } | null = {
+      runId: handleB.runId,
+      sequence: 0,
+    };
+
+    // Pre-cleanup UI resolution:
+    const preRuns = resolvePlanRuns(useTacticalStore.getState().simulationRuns, PLAN_ID, SCENARIO_ID);
+    const preCurrentRun = resolveActiveSimulationRun(uiSelectedRunId, preRuns);
+    expect(preCurrentRun?.id).toBe(handleB.runId);
+
+    // Cleanup: deletes terminal Run B because preserveActive=true preserves store active Run (Run A)
+    const cleanupCount = store.cleanupSimulationRuns({
+      planId: PLAN_ID,
+      scenarioId: SCENARIO_ID,
+      preserveActive: true,
+    });
+    expect(cleanupCount).toBe(1);
+
+    // Post-cleanup UI resolution:
+    // 1. Authoritative post-state check resets selectedRunId if it was deleted
+    const postState = useTacticalStore.getState();
+    expect(postState.simulationRuns[handleB.runId]).toBeUndefined();
+    if (uiSelectedRunId && !postState.simulationRuns[uiSelectedRunId]) {
+      uiSelectedRunId = null;
+    }
+    if (uiSelectedEventScope && !postState.simulationRuns[uiSelectedEventScope.runId]) {
+      uiSelectedEventScope = null;
+    }
+
+    expect(uiSelectedRunId).toBeNull();
+    expect(uiSelectedEventScope).toBeNull();
+
+    // 2. Safe fallback resolves to remaining Run A
+    const postRuns = resolvePlanRuns(postState.simulationRuns, PLAN_ID, SCENARIO_ID);
+    const postCurrentRun = resolveActiveSimulationRun(uiSelectedRunId, postRuns);
+    expect(postCurrentRun?.id).toBe(handleA.runId);
+
+    // 3. Event Scope Isolation: even if an obsolete event scope { runId: handleB.runId, sequence: 0 } was tested,
+    // it MUST NOT resolve in Run A even though Run A also has sequence: 0.
+    const staleScope = { runId: handleB.runId, sequence: 0 };
+    const resolvedEventForA = (() => {
+      if (!postCurrentRun) return null;
+      const tl = postState.simulationTimelines[postCurrentRun.id];
+      if (!tl?.events || tl.events.length === 0) return null;
+      if (staleScope.runId === postCurrentRun.id) {
+        return tl.events.find((e) => e.sequence === staleScope.sequence) || null;
+      }
+      return null;
+    })();
+
+    // Stale scope from Run B does NOT resolve against Run A
+    expect(resolvedEventForA).toBeNull();
   });
 });
