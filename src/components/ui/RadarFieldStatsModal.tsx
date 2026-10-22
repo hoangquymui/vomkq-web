@@ -6,6 +6,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useShallow } from 'zustand/react/shallow';
 import {
   calculateRadarFieldOverlapAndProb,
   calculateConeOfSilenceRadiusKm,
@@ -20,7 +21,13 @@ export const RadarFieldStatsModal: React.FC = () => {
     setShowRadarFieldModal,
     targetHeightMeters,
     coverageResults,
-  } = useTacticalStore();
+  } = useTacticalStore(useShallow((state) => ({
+    instances: state.instances,
+    showRadarFieldModal: state.showRadarFieldModal,
+    setShowRadarFieldModal: state.setShowRadarFieldModal,
+    targetHeightMeters: state.targetHeightMeters,
+    coverageResults: state.coverageResults,
+  })));
 
   if (!showRadarFieldModal) return null;
 

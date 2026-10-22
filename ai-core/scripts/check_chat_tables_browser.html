@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<title>Chat table rendering check</title>
+<style>body{margin:0;padding:28px;background:#0a1211;color:#d9e5df;font:14px/1.7 system-ui;box-sizing:border-box}.message{max-width:960px;margin:auto}.ai-name{color:#89a598;font-size:11px;letter-spacing:.1em;margin-bottom:12px}.answer{min-width:0}.answer p{margin:12px 0}#result{font-size:11px;color:#8ddbb8}#checks{display:none}</style>
+<article class="message"><div class="ai-name">VECTOR AI</div><div class="answer" id="answer"></div><p id="result"></p></article><div id="checks"></div>
+<script type="module">
+import katex from "katex";
+import "katex/dist/katex.min.css";
+import "../src/knowledge-content.css";
+import "../src/chat-tables.css";
+import { prepareChatTables } from "../src/chat-tables.js";
+import { escapeContent } from "../src/knowledge-content.js";
+import mainSource from "../src/main.js?raw";
+
+// Exercise the real chat markdown function without starting/saving a conversation.
+const markdownBody = mainSource.match(/function markdown\([\s\S]*?(?=\nfunction isEscapedAt)/)[0];
+const decode = (text) => { const node=document.createElement("textarea");node.innerHTML=text;return node.value; };
+const markdown = new Function("esc", "renderLatex", "decodeEntities", "prepareChatTables", `${markdownBody}; return markdown;`)(escapeContent, (latex, displayMode) => katex.renderToString(decode(latex), {displayMode,throwOnError:false,trust:false}), decode, prepareChatTables);
+const data = String.raw`Dưới đây là bảng tổng hợp từ tài liệu:
+
+| STT | Tên mẫu | Khối lượng (kg) | Tỉ lệ | Khoảng cách (m) | Phương pháp | Thiết bị | Vị trí |
+| --- | --- | ---: | --- | ---: | --- | --- | --- |
+| 1 | Mẫu A <br>Mã A1 | 87,75 | $\frac{10}{57}$ | 9.600 | Tự động | | Trong nhà |
+| 2 | Mẫu B <br>Mã B2 | 34,46 | $\frac{3}{35}$ | 13.000 | Tự động | | Ngoài trời |
+| 3 | Mẫu C | 85 | Nhiều nhóm 10 × 0,6 | 10.000 | Theo tài liệu | 3 tầng | Trong nhà |
+| 4 | Mẫu D | 10–14 | $\frac{1}{2}$ | 11.000 | Theo tài liệu | Thiết bị thử nghiệm | Phòng kiểm tra |
+
+Nguồn: [R1]`;
+try {
+  const assert=(ok,label)=>{if(!ok)throw new Error(label);};
+  const answer=document.querySelector("#answer");answer.innerHTML=markdown(data);
+  await document.fonts.ready;
+  assert(answer.querySelectorAll("thead th").length===8,"Expected eight headers");
+  assert(answer.querySelectorAll("tbody tr").length===4,"Expected four data rows");
+  assert(answer.querySelectorAll("tbody td").length===32,"Empty cells must retain their columns");
+  assert(answer.querySelector("tbody td:nth-child(2) br"),"Cell line break missing");
+  assert(answer.querySelector(".katex"),"Math must render inside cells");
+  assert(!answer.querySelector("p table"),"Table is inside a paragraph");
+  assert(answer.lastElementChild.textContent.includes("[R1]"),"Source citation missing");
+  assert(document.documentElement.scrollWidth<=innerWidth,"Table overflowed the page");
+  const scroll=answer.querySelector(".chat-table-scroll");
+  if(scroll.scrollWidth>scroll.clientWidth){scroll.scrollLeft=80;assert(scroll.scrollLeft>0,"Wide table cannot scroll");scroll.scrollLeft=0;}
+  const checks=document.querySelector("#checks");
+  checks.innerHTML=markdown("```markdown\n| A | B |\n| --- | --- |\n| 1 | 2 |\n```\n\n"+data+"\n\n| A | B |\n| --- | --- |\n| <img src=x onerror=alert(1)> | <br onmouseover=alert(1)> |");
+  assert(checks.querySelectorAll("table").length===2,"Code fences should remain literal; two real tables expected");
+  assert(checks.querySelector("pre code").textContent.includes("| A | B |"),"Code sample changed");
+  assert(!checks.querySelector("img,[onmouseover]"),"Untrusted HTML became active");
+  checks.innerHTML=markdown("| A | B |\n| --- | --- |\n| Dữ liệu");
+  assert(checks.querySelector("table"),"Partial streamed row failed");
+  document.title="PASS — Chat tables";
+  document.querySelector("#result").textContent="PASS · Bảng 8 cột, 4 hàng · Công thức và xuống dòng trong ô · Cuộn ngang";
+} catch(error){document.title="FAIL — Chat tables";document.querySelector("#result").textContent=error.stack;}
+</script>
+</html>

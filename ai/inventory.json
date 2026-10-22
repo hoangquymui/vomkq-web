@@ -1,0 +1,363 @@
+{
+    "format":  "vomkq-ai-source-snapshot-v1",
+    "preparedForDate":  "2026-10-02",
+    "capturedAtUtc":  "2026-10-02T16:29:03.4353573Z",
+    "implementationState":  "source-snapshot-and-plan-only",
+    "upstreamBackendPath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend",
+    "coreCopiedUnmodified":  true,
+    "snapshotMayContainUncommittedSource":  true,
+    "upstreamEntrypointReadyForTarget":  false,
+    "exclusions":  [
+                       "runtime binaries and virtual environments",
+                       "model/embedding/OCR weights",
+                       "source documents and builtin knowledge",
+                       "user databases, chat history, backups, keys and .env",
+                       "source tests depending on original builtin documents",
+                       "placement/ranking/advisor prompts and application behavior"
+                   ],
+    "knownRelocationWork":  [
+                                "Explicit separate data_dir; upstream entrypoint defaults to original VECTOR_AI data",
+                                "Process identity/ownership and fixed port/CORS policy adaptation",
+                                "Explicit project knowledge loading instead of path-relative builtin imports",
+                                "Rich DOCX extraction helper adaptation and symbolic subprocess module paths",
+                                "Runtime dependencies and model assets require preparation and verification"
+                            ],
+    "files":  [
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/__init__.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\__init__.py",
+                      "kind":  "upstream-core",
+                      "bytes":  327,
+                      "sha256":  "dc8f4ac05c0ab48070f63c7294745bb4424ede8a3f9941dbc0498fb13cd59354"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/__main__.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\__main__.py",
+                      "kind":  "upstream-core",
+                      "bytes":  1571,
+                      "sha256":  "6797c72d62d95e0e6509b22706e875c58c06e48e8ec74fc2a971be1a60c3e76b"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/adapters/__init__.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\adapters\\__init__.py",
+                      "kind":  "upstream-core",
+                      "bytes":  81,
+                      "sha256":  "7ba94b2e656809931ff12bbddff0eafdf5fd326302bd895ef5c86dbbc653004b"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/adapters/document_extraction.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\adapters\\document_extraction.py",
+                      "kind":  "upstream-core",
+                      "bytes":  7779,
+                      "sha256":  "d4fe46d0822dc7390134957fa89ca16740160fe3dd299224786a0dddd04aa043"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/adapters/embeddings.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\adapters\\embeddings.py",
+                      "kind":  "upstream-core",
+                      "bytes":  5617,
+                      "sha256":  "8a0bda12dd8e93c2a3d3e1c4a90c71c4f341452ede968579eada7f86a4222b6f"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/adapters/langgraph_runner.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\adapters\\langgraph_runner.py",
+                      "kind":  "upstream-core",
+                      "bytes":  7565,
+                      "sha256":  "fa33b9295cb1c41a71759616d082161043896d0967644e5b8480029dc2fc9bd1"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/adapters/ollama.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\adapters\\ollama.py",
+                      "kind":  "upstream-core",
+                      "bytes":  5996,
+                      "sha256":  "f6a070ab1d28c414189fea8ef5eb46c0fa3460ca72f8c21caf18f1b258ed8150"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/adapters/services.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\adapters\\services.py",
+                      "kind":  "upstream-core",
+                      "bytes":  3032,
+                      "sha256":  "e90da92b6b18875b0d747c42c2bf055000d099abb3d7651ca7dfe072f6931b1a"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/adapters/symbolic.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\adapters\\symbolic.py",
+                      "kind":  "upstream-core",
+                      "bytes":  5483,
+                      "sha256":  "f336abb3d31e5ade69a4137271227d8396aa794923f23d73d01e53663d957a5e"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/adapters/symbolic_worker.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\adapters\\symbolic_worker.py",
+                      "kind":  "upstream-core",
+                      "bytes":  1470,
+                      "sha256":  "31f9330fa90d20f4d5f8ad55bacccf307c2b0a8cf05d7af40561dd9bd188315e"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/adapters/vector_store.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\adapters\\vector_store.py",
+                      "kind":  "upstream-core",
+                      "bytes":  10273,
+                      "sha256":  "7c5d09a911592b08bc476f36cdbbe74be890ea846eb5972e729d2c1fd7b73b5c"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/api.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\api.py",
+                      "kind":  "upstream-core",
+                      "bytes":  32860,
+                      "sha256":  "d74832407b250c5381a6d9551099fdaa095d483838c4c8e24dece56545343147"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/__init__.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\__init__.py",
+                      "kind":  "upstream-core",
+                      "bytes":  51,
+                      "sha256":  "eddb74edbf5df9a130e22559db3506f1194677b06a3c1939b8a940362ec0f12e"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/backups.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\backups.py",
+                      "kind":  "upstream-core",
+                      "bytes":  18025,
+                      "sha256":  "0316cacc4fd70068563c57afc7d8aff70d45d99e7af291c1edba0461088e93bd"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/conversations.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\conversations.py",
+                      "kind":  "upstream-core",
+                      "bytes":  3720,
+                      "sha256":  "2ff9bd47a09b8b6b351cfa34a86f373e2cfc5a4da37898fff5a94e7cd0614299"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/dataset_trees.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\dataset_trees.py",
+                      "kind":  "upstream-core",
+                      "bytes":  14243,
+                      "sha256":  "5e90f6669d3028aee8bae0c243f6601d2ba5c24e4c2480a17daa0b9b95e4a172"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/formula_policy.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\formula_policy.py",
+                      "kind":  "upstream-core",
+                      "bytes":  3650,
+                      "sha256":  "f30bdeae17514e0cd7054967bd6da33667f0517be7a09c773650fd6e5b009124"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/ingestion.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\ingestion.py",
+                      "kind":  "upstream-core",
+                      "bytes":  30415,
+                      "sha256":  "d278b8c4ccea8d6944a11c22fe84d98f0f9ea49dc2481df17fdbe8fec68a9d38"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/knowledge_folders.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\knowledge_folders.py",
+                      "kind":  "upstream-core",
+                      "bytes":  12193,
+                      "sha256":  "6965f6e7f50cc42f6963aae6516b753c8d70018f51da96a4529727c06eb1dd77"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/profiles.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\profiles.py",
+                      "kind":  "upstream-core",
+                      "bytes":  2526,
+                      "sha256":  "48316578a9fac392b498ef0e594c24a7a2b58775ec3d1d5b14004069116d7756"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/reasoning.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\reasoning.py",
+                      "kind":  "upstream-core",
+                      "bytes":  4403,
+                      "sha256":  "645716cd46b41017cac730e776c7b08414f50286161f20eabda1c741f63a7dcc"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/resources.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\resources.py",
+                      "kind":  "upstream-core",
+                      "bytes":  9135,
+                      "sha256":  "9b61df2dbbd7b3565cf49b3c6cd8ccc948538ec3d4837b84c68be317bcfa021a"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/retrieval.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\retrieval.py",
+                      "kind":  "upstream-core",
+                      "bytes":  6695,
+                      "sha256":  "d5279e39ffe4baa303a548a9a8338bf20d570cc28501bd9c261f3ec917151a3a"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/runs.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\runs.py",
+                      "kind":  "upstream-core",
+                      "bytes":  7360,
+                      "sha256":  "7f1303fc40e181251b636a550654ece072f839f9fa0fdd5a51d6084e1dacb094"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/services.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\services.py",
+                      "kind":  "upstream-core",
+                      "bytes":  11065,
+                      "sha256":  "ee362348947ea7731f837cea5bb8e550f98bd8923382c404ffd05a6062a90038"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/tools.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\tools.py",
+                      "kind":  "upstream-core",
+                      "bytes":  14706,
+                      "sha256":  "2b73900f8e93a2124e21d711860f9ce661c11e6e743cfeac6b6e68a40fa08efe"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/workflow_diagrams.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\workflow_diagrams.py",
+                      "kind":  "upstream-core",
+                      "bytes":  12605,
+                      "sha256":  "19445d08bdd1911a1071229cfd77ecac99b65a8c981168de411807c5466ff2fc"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/application/workflows.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\application\\workflows.py",
+                      "kind":  "upstream-core",
+                      "bytes":  6495,
+                      "sha256":  "6ab85b9325df0a41999d6ba59a821633bf08f1e5fa29b84c97d290fc571ce42c"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/bootstrap.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\bootstrap.py",
+                      "kind":  "upstream-core",
+                      "bytes":  10802,
+                      "sha256":  "4314d4bef0ac6284c939a471665ad6174657cfa4e09786e80d07fe9f59a96667"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/config.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\config.py",
+                      "kind":  "upstream-core",
+                      "bytes":  4796,
+                      "sha256":  "0da7cd360f04200b744641119fffd36685a6fbfc6423b026c45a265142779731"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/domain/__init__.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\domain\\__init__.py",
+                      "kind":  "upstream-core",
+                      "bytes":  164,
+                      "sha256":  "12db34db2980d583577d6f7d9f55166ac7072e9b06261a2eca3bda3d30daf199"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/domain/dataset_tree.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\domain\\dataset_tree.py",
+                      "kind":  "upstream-core",
+                      "bytes":  2690,
+                      "sha256":  "c0b9a37349d8a36a19cbabe53b309442f5f0f69258d2796a3a13c64141cff691"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/domain/models.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\domain\\models.py",
+                      "kind":  "upstream-core",
+                      "bytes":  10758,
+                      "sha256":  "9146a655bc9e3e65d640c20a7e498b5323700f6a99a16cf7f5ec0ac05c4820c8"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/domain/ports.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\domain\\ports.py",
+                      "kind":  "upstream-core",
+                      "bytes":  5025,
+                      "sha256":  "fb408c83b096551f36a232df121a6ea9fa0730687d3bd3573107680a393cd4de"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/formulas/__init__.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\formulas\\__init__.py",
+                      "kind":  "upstream-core",
+                      "bytes":  506,
+                      "sha256":  "8ac025de58839fc388e7178f95657b4da691339d5ff6ef49f57e4cd4c93bf138"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/formulas/safe_sympy.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\formulas\\safe_sympy.py",
+                      "kind":  "upstream-core",
+                      "bytes":  11317,
+                      "sha256":  "954cc03845b92ab538806ff781087c088e37fb50f11b07f522ede9d62b370b52"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/formulas/semantic.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\formulas\\semantic.py",
+                      "kind":  "upstream-core",
+                      "bytes":  3592,
+                      "sha256":  "1bf5ddd302c7afb0c000b741a3f9265ade8182e20f0c8e06492c3c853ff38aa3"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/formulas/validator.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\formulas\\validator.py",
+                      "kind":  "upstream-core",
+                      "bytes":  20027,
+                      "sha256":  "7536355c5fa0bf9edefc738b2a66c89b516a0bb2a2f9fa918c45377095b9282c"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/lifecycle.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\lifecycle.py",
+                      "kind":  "upstream-core",
+                      "bytes":  5668,
+                      "sha256":  "e1ca853667634f8161313d9f373ea70f3978fd183f246497c2d2e6edd654e2d7"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/prompts.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\prompts.py",
+                      "kind":  "upstream-core",
+                      "bytes":  3223,
+                      "sha256":  "34eb484f487f5f61af2c1aea26064e31e5919d925b8259f9d94401eb691dafcc"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/storage/__init__.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\storage\\__init__.py",
+                      "kind":  "upstream-core",
+                      "bytes":  254,
+                      "sha256":  "0c76d896cbfe32f0d49335c3fb348c4ac65e5a2c895df0fcc732f4fa365ce0c4"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/storage/checkpoints.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\storage\\checkpoints.py",
+                      "kind":  "upstream-core",
+                      "bytes":  10140,
+                      "sha256":  "aa692fd762bc488edca8cd9261a4233c67215fdebd148c196656a43259b76e8d"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/vector_ai_backend/storage/sqlite_repository.py",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\vector_ai_backend\\storage\\sqlite_repository.py",
+                      "kind":  "upstream-core",
+                      "bytes":  67745,
+                      "sha256":  "a664c0f00ced471d4b272f39c87b8db43087eed34e78b570af0aff72893627cb"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/pyproject.toml",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\pyproject.toml",
+                      "kind":  "upstream-metadata",
+                      "bytes":  863,
+                      "sha256":  "451346fff5bc84fb7a6aca3cfa0328004e8fd84e7bb3b6245b63a3b1cdb0c4a4"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/README.md",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\README.md",
+                      "kind":  "upstream-metadata",
+                      "bytes":  5061,
+                      "sha256":  "0bd515cd404c8aa34a9c34ce3fb0d9875f753d0ac6f96538e4fe6c96c8f8bab9"
+                  },
+                  {
+                      "relativePath":  "vendor/vector-ai/backend/requirements.txt",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\VECTOR AI\\backend\\requirements.txt",
+                      "kind":  "upstream-metadata",
+                      "bytes":  116,
+                      "sha256":  "ec05fe7a8c16b392184d5318212810c9ec2625be69cb4672f7df5b6e2a3b9bde"
+                  },
+                  {
+                      "relativePath":  "reference/web/vectorAiClient.ts",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\vomphongkhong\\src\\services\\vectorAiClient.ts",
+                      "kind":  "inactive-web-reference",
+                      "bytes":  20112,
+                      "sha256":  "f9fb4c57c14f9fe240d97ef5786f63ff9190f8f2d6c25ddcf5597c02b0939a89"
+                  },
+                  {
+                      "relativePath":  "reference/web/vectorAiLauncher.ts",
+                      "sourcePath":  "E:\\code\\du_an\\3D\\vkq\\vomphongkhong\\scripts\\vectorAiLauncher.ts",
+                      "kind":  "inactive-web-reference",
+                      "bytes":  10772,
+                      "sha256":  "5a2db7d53fefa760357a4d2e55439978e06d3fcb1ecf0f6f7455aca79621606d"
+                  }
+              ]
+}

@@ -12,19 +12,41 @@ import { DEFAULT_SPX_CONFIG } from '../types/spxRadarCoverage';
 import { createEquipmentFromTemplate } from '../utils/equipmentFactory';
 import { checkVectorAiHealth, askVectorAi } from '../services/vectorAiClient';
 import {
-  buildPlacementMessages,
+  buildRankingMessages,
   deriveAdvisorRadiusKm,
   getAdvisorViewport,
-  parsePlacementAdvice,
+  parsePlacementRanking,
+  resolveAdvisorSuggestionIndex,
 } from '../utils/aiPlacementAdvisor';
 import type {
   AiPlacementContext,
   AiPlacementRoutePoint,
   AiPlacementSuggestion,
 } from '../utils/aiPlacementAdvisor';
+import { generatePlacementCandidates } from '../utils/placementCandidateEngine';
+import type { PlacementCandidate } from '../utils/placementCandidateEngine';
+import { buildSiteProfile } from '../utils/featureAwareness';
+import type { SiteProfile } from '../utils/featureAwareness';
+import type { VectorFeature, VectorFeatureKind } from '../types/vectorFeature';
+import { loadVectorFeatureStore } from '../services/vectorFeatureStore';
 import type { RadarCoverageVolume } from '../types/radarVolume';
 import { invalidateVolumeCache } from '../utils/radarVolumeEngine';
 import { destinationPoint } from '../utils/radarLosEngine';
+import {
+  analyzeTerrainFlatness,
+  type FlatPatch,
+  type FlatnessAnalysisResult,
+} from '../utils/terrainFlatnessEngine';
+import { getTerrainProvider, ensureTerrainProvider } from '../utils/featureAwareness';
+import {
+  surveyRegionInventory,
+  type RegionInventoryResult,
+} from '../services/regionInventoryService';
+import {
+  createDefaultCompositeBatteryState,
+  recalculateLaunchersFromCenter,
+  updateSingleLauncherPosition,
+} from '../utils/compositeBatteryGeometry';
 
 /**
  * Trạng thái cố vấn vị trí đặt khí tài (VECTOR AI local).
@@ -36,6 +58,52 @@ import { destinationPoint } from '../utils/radarLosEngine';
  * - offline  : không kết nối được backend 127.0.0.1:8000
  */
 export type AiAdvisorStatus = 'idle' | 'checking' | 'thinking' | 'ready' | 'error' | 'offline';
+
+/**
+ * Trạng thái luồng khảo sát dữ liệu GIS trong vòng tròn 1km (Region Inventory).
+ * Tự động chạy ngay khi người dùng chọn tọa độ.
+ */
+export type RegionInventoryStatus = 'idle' | 'loading' | 'success' | 'empty' | 'error';
+
+/**
+ * Cấu hình điều kiện phân tích mảng địa hình trận địa do người dùng tùy chỉnh.
+ */
+export interface TerrainAnalysisConfig {
+  /** Chênh lệch độ cao tối đa nội bộ mảng (m). Mặc định 4m. */
+  maxElevationDifferenceM: number;
+  /** Diện tích tối đa mỗi mảng con (m²). Mặc định 10.000 m² = 1 ha (giới hạn trên). */
+  maxPatchAreaM2: number;
+  /** Độ dốc tối đa (°). Mặc định 6°. */
+  maxSlopeDeg: number;
+}
+
+export const DEFAULT_TERRAIN_ANALYSIS_CONFIG: TerrainAnalysisConfig = {
+  maxElevationDifferenceM: 4.0,
+  maxPatchAreaM2: 10_000,
+  maxSlopeDeg: 6.0,
+};
+
+/**
+ * Trạng thái luồng phân tích độ bằng phẳng tìm mảng trận địa.
+ * Chỉ chạy khi người dùng chủ động nhấn nút phân tích.
+ * - idle    : chưa chạy phân tích mảng
+ * - running : đang lấy mẫu địa hình DEM và chạy thuật toán phân cụm
+ * - success : quét thành công và tìm thấy ít nhất 1 mảng đạt chuẩn
+ * - empty   : quét thành công nhưng không có mảng nào đạt chuẩn
+ * - error   : gặp lỗi trong quá trình tính toán
+ */
+export type AnalysisStatus = 'idle' | 'running' | 'success' | 'empty' | 'error';
+
+/**
+ * Vùng được chọn trên bản đồ để phân tích địa hình bằng phẳng.
+ * Tâm vùng, bán kính cố định 1km, độc lập với kết quả quét.
+ */
+export interface AnalysisRegion {
+  lat: number;
+  lon: number;
+  radiusKm: number; // Cố định 1.0 km
+  regionId: string; // Nonce / Run ID chống race condition ghi đè kết quả cũ
+}
 
 /**
  * Bộ tham số "kiểu vòm tham chiếu" mặc định — port từ Defense/RadarDome.shader + RadarDomeMeshRenderer.cs
@@ -95,6 +163,36 @@ interface TacticalState {
   showSweeps: boolean;
   showSensorNetwork: boolean;
 
+  // === LỚP VECTƠ OFFLINE (OSM) & NHẬN THỨC VÙNG PHỦ ===
+  // Lớp thứ hai của bản đồ (lớp thứ nhất là ảnh raster - chỉ để nhìn). Cho biết
+  // pixel nào là nhà, pixel nào là sông/suối/núi, và mỗi đối tượng ở đâu.
+  showVectorLayer: boolean;
+  /**
+   * Có hiện các bảng nổi chồng lên bản đồ hay không.
+   *
+   * VÌ SAO CẦN: bản đồ vệ tinh + lớp đối tượng vẽ lên rất nhiều chi tiết. Các bảng
+   * nổi (Chú giải, Hiệu năng) đè lên đúng vùng quan tâm và che mất đối tượng. Khi
+   * bật lớp vectơ, ta tự tắt chúng; người dùng bật lại bất cứ lúc nào.
+   */
+  showMapOverlays: boolean;
+  /** Các loại đối tượng vectơ đang được hiển thị (rỗng = tất cả). */
+  visibleVectorKinds: VectorFeatureKind[];
+  /** Feature vectơ đang được chọn trên bản đồ (để đo cự ly tới khí tài). */
+  selectedVectorFeature: VectorFeature | null;
+  /** Đặc tính vùng phủ của khí tài đang chọn (null = chưa phân tích). */
+  siteProfile: SiteProfile | null;
+  /** true khi đang tính đặc tính vùng phủ. */
+  isAnalyzingSite: boolean;
+  /** Số gói dữ liệu vectơ đã tải (0 = chỉ có ảnh raster). */
+  vectorPackCount: number;
+  toggleVectorLayer: () => void;
+  setShowVectorLayer: (on: boolean) => void;
+  setShowMapOverlays: (show: boolean) => void;
+  setVisibleVectorKinds: (kinds: VectorFeatureKind[]) => void;
+  selectVectorFeature: (feature: VectorFeature | null) => void;
+  /** Dựng đặc tính vùng phủ cho khí tài đang chọn (bán kính = tầm hoạt động). */
+  analyzeSelectedSite: () => Promise<void>;
+
   // Measurement
   measurePoints: Array<{ lat: number; lon: number; height: number }>;
 
@@ -138,6 +236,29 @@ interface TacticalState {
   setSamEngagementMode: (instanceId: string, mode: import('../utils/missileVolumeEngine').SamEngagementMode) => void;
   clearSamVolumes: () => void;
 
+  // === Vùng Hỏa Lực SAM Cắt Địa Hình (Hiệp Đồng Radar & Cắt DEM Mặt Đất) ===
+  samCoverageResults: Record<string, import('../types/samCoverage').SamCoverageResult>;
+  setSamCoverageResult: (instanceId: string, result: import('../types/samCoverage').SamCoverageResult) => void;
+  clearSamCoverageResults: () => void;
+
+  // === So Sánh Tầm Nhìn Địa Hình GIS (Observer A vs B) ===
+  showTerrainComparison: boolean;
+  terrainComparisonResult: import('../utils/terrainComparisonEngine').TerrainComparisonResult | null;
+  terrainComparisonLayers: {
+    baseDem: boolean;
+    maskA: boolean;
+    maskB: boolean;
+    overlap: boolean;
+    nonOverlap: boolean;
+    missingDem: boolean;
+  };
+  setShowTerrainComparison: (show: boolean) => void;
+  setTerrainComparisonResult: (result: import('../utils/terrainComparisonEngine').TerrainComparisonResult | null) => void;
+  toggleTerrainComparisonLayer: (
+    layer: 'baseDem' | 'maskA' | 'maskB' | 'overlap' | 'nonOverlap' | 'missingDem'
+  ) => void;
+
+
   // === Kiểu vòm phủ sóng tham chiếu (port từ Unity Defense/RadarDome) ===
   domeAlpha: number; // Độ đục màu nền vòm | 0.05–0.9 | mặc định 0.30
   domeAzimuthSegments: number; // Số phân đoạn phương vị của lưới vòm | 32–192 | mặc định 96
@@ -169,6 +290,11 @@ interface TacticalState {
   aiAdvisorStatus: AiAdvisorStatus;
   aiAdvisorError: string | null;
   aiAdvisorSummary: string;
+  /**
+   * true khi kết quả do ĐỘNG CƠ CLIENT tính mà KHÔNG có diễn giải của AI (backend chưa chạy,
+   * model trả JSON hỏng...). Vẫn là gợi ý CÓ CĂN CỨ, chỉ thiếu phần văn do AI viết.
+   */
+  aiAdvisorDegraded: boolean;
   aiAdvisorSuggestions: AiPlacementSuggestion[];
   aiAdvisorRoute: AiPlacementRoutePoint[];
   /** templateId của khí tài sẽ được đặt tại gợi ý; null = suy ra từ khí tài đang chọn */
@@ -176,11 +302,22 @@ interface TacticalState {
   setAiAdvisorPanelOpen: (open: boolean) => void;
   toggleAiAdvisorPanel: () => void;
   setAiAdvisorTemplateId: (templateId: string | null) => void;
-  /** Kiểm tra backend -> dựng prompt -> hỏi model -> parse JSON. Không bao giờ ném lỗi ra UI. */
+  /**
+   * Chạy phân tích theo 3 bước, KHÔNG bao giờ ném lỗi ra UI:
+   *   1. Động cơ client tính ứng viên từ dữ liệu thật (placementCandidateEngine) -> gợi ý có căn cứ.
+   *   2. Nếu VECTOR AI sẵn sàng: gửi danh sách ứng viên để AI XẾP HẠNG + viết diễn giải.
+   *   3. Nếu AI không sẵn sàng / trả JSON hỏng: giữ kết quả động cơ và bật cờ `aiAdvisorDegraded`.
+   */
   runAiPlacementAnalysis: (model: string) => Promise<void>;
   clearAiPlacementSuggestions: () => void;
   /** Đặt khí tài tại gợi ý thứ `index` (tái dùng đúng action addEquipment hiện có) */
   placeEquipmentAtSuggestion: (index: number) => void;
+  /**
+   * Gợi ý đang được chọn (bấm trên bản đồ hoặc trong danh sách panel).
+   * `null` = không chọn gợi ý nào. Dùng để tô sáng marker + cuộn card tương ứng.
+   */
+  selectedAdvisorSuggestionIndex: number | null;
+  selectAdvisorSuggestion: (index: number | null) => void;
 
   // SPx Multi-Altitude Coverage (Cambridge Pixel Standard)
   showSpxPanel: boolean;
@@ -210,6 +347,25 @@ interface TacticalState {
     instanceId: string,
     updates: Partial<import('../types/spxRadarCoverage').SpxRadarCoverageConfig>
   ) => void;
+
+  // Composite Battery Actions
+  updateBatteryLauncherPosition: (
+    instanceId: string,
+    launcherId: string,
+    lat: number,
+    lon: number,
+    alt: number,
+    losResult?: { isValid: boolean; warningMessage?: string }
+  ) => void;
+  setBatteryCombatMode: (instanceId: string, mode: 'omnidirectional' | 'sector') => void;
+  setBatteryCombatAzimuth: (instanceId: string, azimuthDeg: number) => void;
+  setBatteryLayerVisibility: (
+    instanceId: string,
+    layer: 'tarDome' | 'fcrDome' | 'wezDome' | 'launchers',
+    visible: boolean
+  ) => void;
+  setBatteryMastHeightOverride: (instanceId: string, mastHeightM?: number) => void;
+  switchBatteryTarRadar: (instanceId: string, tarRadarId: string) => void;
 
   setTerrainEnabled: (enabled: boolean) => void;
   setTerrainExaggeration: (exaggeration: number) => void;
@@ -266,6 +422,50 @@ interface TacticalState {
   importFromLayout: (layout: LayoutSaveData) => void;
   exportToLayout: (layoutName: string) => LayoutSaveData;
   loadSampleScenario: () => void;
+
+  // === PHÂN TÍCH ĐỊA HÌNH BẰNG PHẲNG (Terrain Flatness Analysis) ===
+  /** Vùng được chọn: tâm + bán kính 1km, độc lập với kết quả quét. */
+  analysisRegion: AnalysisRegion | null;
+  /** Trạng thái luồng khảo sát dữ liệu GIS tổng quan ('idle' | 'loading' | 'success' | 'empty' | 'error'). */
+  regionInventoryStatus: RegionInventoryStatus;
+  /** Kết quả khảo sát toàn bộ đối tượng GIS trong bán kính 1km. */
+  regionInventoryResult: RegionInventoryResult | null;
+  /** Thông báo lỗi khảo sát GIS nếu có. */
+  regionInventoryError: string | null;
+  /** Cấu hình điều kiện phân tích mảng trận địa do người dùng tùy chỉnh. */
+  analysisConfig: TerrainAnalysisConfig;
+  /** Trạng thái luồng tìm kiếm mảng phẳng trận địa ('idle' | 'running' | 'success' | 'empty' | 'error'). */
+  analysisStatus: AnalysisStatus;
+  /** Thông báo lỗi phân tích mảng gần nhất nếu có. */
+  analysisError: string | null;
+  /** true khi đang chờ người dùng click lên bản đồ để chọn tâm vùng phân tích. */
+  isSelectingFlatnessCenter: boolean;
+  /** Kết quả phân tích địa hình gần nhất. null = chưa chạy / đã xóa. */
+  flatnessAnalysisResult: FlatnessAnalysisResult | null;
+  /** Danh sách các mảng địa hình bằng phẳng (alias tiện ích theo hợp đồng). */
+  flatnessPatches: FlatPatch[];
+  /** true khi đang lấy mẫu DEM và tính cluster. */
+  isAnalyzingFlatness: boolean;
+  /** ID của mảng đang được hover trên bản đồ. */
+  hoveredPatchId: string | null;
+  /** ID của mảng được click → mở TerrainZoneInspector. */
+  selectedPatchId: string | null;
+  /** Hiển thị màn TerrainZoneInspector fullscreen hay không. */
+  showTerrainZoneInspector: boolean;
+  /** true khi đang ở chế độ soi chi tiết một mảng phẳng (alias theo hợp đồng). */
+  isInspectingZone: boolean;
+
+  startFlatnessSelection: () => void;
+  cancelFlatnessSelection: () => void;
+  selectAnalysisRegion: (lat: number, lon: number) => void;
+  runRegionInventory: (lat: number, lon: number, radiusKm: number, regionId: string) => Promise<void>;
+  setAnalysisConfig: (config: Partial<TerrainAnalysisConfig>) => void;
+  resetAnalysisConfig: () => void;
+  runFlatnessAnalysis: (lat?: number, lon?: number) => Promise<void>;
+  setHoveredPatch: (id: string | null) => void;
+  selectPatch: (id: string | null) => void;
+  closeTerrainZoneInspector: () => void;
+  clearFlatnessResult: () => void;
 }
 
 /**
@@ -291,6 +491,69 @@ function resolveAdvisorTemplate(state: {
 
   if (state.pendingTemplate) return state.pendingTemplate;
   return EQUIPMENT_TEMPLATES[0];
+}
+
+/** Số điểm tối đa nối thành "tuyến khả thi" trên bản đồ. */
+const MAX_ADVISOR_ROUTE_POINTS = 5;
+
+/**
+ * Chuyển danh sách ứng viên của động cơ thành gợi ý + tuyến để render.
+ * `route` lấy các điểm tốt nhất nối thành tuyến khả thi (động cơ quyết định, không phải AI).
+ */
+function candidatesToSuggestions(candidates: readonly PlacementCandidate[]): {
+  suggestions: AiPlacementSuggestion[];
+  route: AiPlacementRoutePoint[];
+} {
+  const suggestions: AiPlacementSuggestion[] = candidates.map((candidate) => ({
+    latitude: candidate.latitude,
+    longitude: candidate.longitude,
+    score: candidate.score,
+    reason: candidate.reason,
+    breakdown: candidate.breakdown,
+    criteria: candidate.criteria,
+  }));
+
+  const route: AiPlacementRoutePoint[] = suggestions
+    .slice(0, MAX_ADVISOR_ROUTE_POINTS)
+    .map((suggestion) => ({ latitude: suggestion.latitude, longitude: suggestion.longitude }));
+
+  return { suggestions, route };
+}
+
+/**
+ * Gắn diễn giải của AI vào đúng ứng viên và sắp lại thứ tự theo xếp hạng của AI.
+ * `index` của AI trỏ vào vị trí trong danh sách gợi ý đã gửi (1:1 với danh sách ứng viên).
+ * Ứng viên AI bỏ qua vẫn được giữ, xếp sau, theo đúng thứ tự điểm của động cơ.
+ */
+function applyAiRanking(
+  suggestions: readonly AiPlacementSuggestion[],
+  ranking: readonly { index: number; reason: string }[]
+): AiPlacementSuggestion[] {
+  const aiReasonByIndex = new Map<number, string>();
+  const order: number[] = [];
+  for (const entry of ranking) {
+    if (aiReasonByIndex.has(entry.index)) continue;
+    aiReasonByIndex.set(entry.index, entry.reason);
+    order.push(entry.index);
+  }
+
+  const remaining = suggestions.map((_, index) => index).filter((index) => !aiReasonByIndex.has(index));
+  const orderedIndices = [...order, ...remaining];
+
+  return orderedIndices.map((index) => {
+    const base = suggestions[index];
+    const aiReason = aiReasonByIndex.get(index);
+    return aiReason ? { ...base, aiReason } : { ...base };
+  });
+}
+
+// A completed profile belongs to the selected equipment and its current area.
+// Invalidate pending work when that selection/area changes, so an older response
+// cannot restore the previous equipment's numbers on the map or in the panel.
+let siteAnalysisRequestId = 0;
+function clearSiteProfileState(): { siteProfile: null; isAnalyzingSite: false } {
+  siteAnalysisRequestId += 1;
+  return { siteProfile: null, isAnalyzingSite: false };
 }
 
 export const useTacticalStore = create<TacticalState>((set, get) => ({
@@ -332,10 +595,45 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         state.instances.filter((i) => i.category === category).length + 1;
       const autoShortId = `${prefix}-${countSameCategory.toString().padStart(2, '0')}`;
 
+      // Tự động hiệp đồng radar nếu là Tổ hợp Tên Lửa
+      let autoRadarId = instance.designatedRadarId;
+      let autoMaskMode = instance.samTerrainMaskMode;
+      if (category === 'TenLuaPhongKhong' && !autoRadarId) {
+        const tarTmplId = tmpl?.batteryConfig?.tarRadarId;
+        const fcrTmplId = tmpl?.batteryConfig?.fcrRadarId;
+        const pairedRadar = state.instances.find(
+          (i) => (i.templateId === tarTmplId || i.templateId === fcrTmplId) && i.status === 'Active'
+        );
+        const fireControlRadar = state.instances.find((i) => i.canDesignateForSam && i.status === 'Active');
+        const fallbackRadar = state.instances.find((i) => i.category === 'RadarCanhGioi' && i.status === 'Active');
+        const targetRadar = pairedRadar || fireControlRadar || fallbackRadar;
+        if (targetRadar) {
+          autoRadarId = targetRadar.instanceId;
+          autoMaskMode = 'intersection';
+        }
+      }
+
+      // Khởi tạo Cụm Tổ Hợp Đồng Bộ 4 Bệ Phóng nếu là SAM có batteryConfig
+      let compositeBattery = instance.compositeBattery;
+      if (!compositeBattery && tmpl?.batteryConfig) {
+        compositeBattery = createDefaultCompositeBatteryState(
+          instance.latitude,
+          instance.longitude,
+          instance.altitude || 0,
+          tmpl.batteryConfig
+        );
+      }
+
       const instanceWithProfile: EquipmentInstance = {
         ...instance,
         category,
         shortId: instance.shortId || autoShortId,
+        designatedRadarId: autoRadarId || null,
+        samTerrainMaskMode: autoMaskMode || (category === 'TenLuaPhongKhong' ? 'intersection' : undefined),
+        targetAltitudeM: instance.targetAltitudeM ?? (category === 'TenLuaPhongKhong' ? 500 : undefined),
+        batteryConfig: instance.batteryConfig || tmpl?.batteryConfig,
+        compositeBattery,
+        maxLaunchRangeKm: instance.maxLaunchRangeKm ?? tmpl?.maxLaunchRangeKm,
         coverageProfile: instance.coverageProfile || tmpl?.coverageProfile,
         altitudeDetectionTable: instance.altitudeDetectionTable || tmpl?.altitudeDetectionTable,
         minEngagementRangeKm: instance.minEngagementRangeKm ?? tmpl?.minEngagementRangeKm,
@@ -350,11 +648,33 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         model3dHeadingOffset: instance.model3dHeadingOffset ?? tmpl?.model3dHeadingOffset ?? 0,
         model3dAltitudeOffset: instance.model3dAltitudeOffset ?? tmpl?.model3dAltitudeOffset ?? 0,
       };
+
+      let nextInstances = [...state.instances, instanceWithProfile];
+
+      // Nếu khí tài vừa thêm là đài radar có khả năng chỉ thị mục tiêu:
+      // Tự động gán cho các tổ hợp SAM chưa có đài chỉ thị và kích hoạt chế độ intersection
+      const nextSamCoverage = { ...state.samCoverageResults };
+      if (instanceWithProfile.canDesignateForSam) {
+        nextInstances = nextInstances.map((inst) => {
+          if (inst.category === 'TenLuaPhongKhong' && !inst.designatedRadarId) {
+            delete nextSamCoverage[inst.instanceId];
+            return {
+              ...inst,
+              designatedRadarId: instanceWithProfile.instanceId,
+              samTerrainMaskMode: 'intersection',
+            };
+          }
+          return inst;
+        });
+      }
+
       return {
-        instances: [...state.instances, instanceWithProfile],
+        instances: nextInstances,
+        samCoverageResults: nextSamCoverage,
         selectedInstanceId: instance.instanceId,
         activeTool: 'select',
         pendingTemplate: null,
+        ...clearSiteProfileState(),
       };
     }),
 
@@ -377,18 +697,63 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         updates.longitude !== undefined ||
         updates.altitude !== undefined ||
         updates.antennaHeightAGL !== undefined ||
-        updates.rangeKm !== undefined;
+        updates.rangeKm !== undefined ||
+        updates.designatedRadarId !== undefined ||
+        updates.samTerrainMaskMode !== undefined;
+
       const nextVolumes = locationOrRadarChanged
         ? { ...state.coverageVolumes }
         : state.coverageVolumes;
       if (locationOrRadarChanged) {
         delete nextVolumes[instanceId];
       }
+
+      // Xóa kết quả SAM coverage để tính toán lại khi vị trí, tầm hoặc liên kết radar đổi
+      const nextSamCoverage = locationOrRadarChanged
+        ? { ...state.samCoverageResults }
+        : state.samCoverageResults;
+      if (locationOrRadarChanged) {
+        delete nextSamCoverage[instanceId];
+        // Nếu đài radar này thay đổi vị trí, xóa cache của tất cả SAM đang hiệp đồng với nó
+        state.instances.forEach((inst) => {
+          if (inst.designatedRadarId === instanceId) {
+            delete nextSamCoverage[inst.instanceId];
+          }
+        });
+      }
+
       return {
-        instances: state.instances.map((item) =>
-          item.instanceId === instanceId ? { ...item, ...updates } : item
-        ),
+        instances: state.instances.map((item) => {
+          if (item.instanceId !== instanceId) return item;
+          const updatedItem = { ...item, ...updates };
+
+          // Đồng bộ tự động 4 bệ phóng khi di chuyển tâm tổ hợp SAM
+          if (
+            (updates.latitude !== undefined || updates.longitude !== undefined || updates.altitude !== undefined) &&
+            updatedItem.compositeBattery &&
+            updatedItem.batteryConfig
+          ) {
+            const nextLaunchers = recalculateLaunchersFromCenter(
+              updatedItem.latitude,
+              updatedItem.longitude,
+              updatedItem.altitude || 0,
+              updatedItem.compositeBattery.launchers,
+              updatedItem.batteryConfig
+            );
+            updatedItem.compositeBattery = {
+              ...updatedItem.compositeBattery,
+              launchers: nextLaunchers,
+            };
+          }
+
+          return updatedItem;
+        }),
         coverageVolumes: nextVolumes,
+        samCoverageResults: nextSamCoverage,
+        ...(state.selectedInstanceId === instanceId &&
+        (updates.latitude !== undefined || updates.longitude !== undefined || updates.rangeKm !== undefined)
+          ? clearSiteProfileState()
+          : {}),
       };
     });
   },
@@ -408,16 +773,163 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       ),
     })),
 
+  updateBatteryLauncherPosition: (instanceId, launcherId, lat, lon, alt, losResult) =>
+    set((state) => ({
+      instances: state.instances.map((item) => {
+        if (item.instanceId !== instanceId || !item.compositeBattery || !item.batteryConfig) return item;
+        const nextLaunchers = updateSingleLauncherPosition(
+          item.latitude,
+          item.longitude,
+          launcherId,
+          lat,
+          lon,
+          alt,
+          item.compositeBattery.launchers,
+          item.batteryConfig,
+          losResult
+        );
+        return {
+          ...item,
+          compositeBattery: {
+            ...item.compositeBattery,
+            launchers: nextLaunchers,
+          },
+        };
+      }),
+    })),
+
+  setBatteryCombatMode: (instanceId, mode) =>
+    set((state) => ({
+      instances: state.instances.map((item) => {
+        if (item.instanceId !== instanceId || !item.compositeBattery) return item;
+        return {
+          ...item,
+          compositeBattery: {
+            ...item.compositeBattery,
+            combatMode: mode,
+          },
+        };
+      }),
+    })),
+
+  setBatteryCombatAzimuth: (instanceId, azimuthDeg) =>
+    set((state) => ({
+      instances: state.instances.map((item) => {
+        if (item.instanceId !== instanceId || !item.compositeBattery) return item;
+        return {
+          ...item,
+          compositeBattery: {
+            ...item.compositeBattery,
+            combatAzimuthDeg: (azimuthDeg + 360) % 360,
+          },
+        };
+      }),
+    })),
+
+  setBatteryLayerVisibility: (instanceId, layer, visible) =>
+    set((state) => ({
+      instances: state.instances.map((item) => {
+        if (item.instanceId !== instanceId || !item.compositeBattery) return item;
+        return {
+          ...item,
+          compositeBattery: {
+            ...item.compositeBattery,
+            showLayers: {
+              ...item.compositeBattery.showLayers,
+              [layer]: visible,
+            },
+          },
+        };
+      }),
+    })),
+
+  setBatteryMastHeightOverride: (instanceId, mastHeightM) =>
+    set((state) => ({
+      instances: state.instances.map((item) => {
+        if (item.instanceId !== instanceId || !item.compositeBattery) return item;
+        return {
+          ...item,
+          compositeBattery: {
+            ...item.compositeBattery,
+            mastHeightOverrideM: mastHeightM,
+          },
+        };
+      }),
+    })),
+
+  switchBatteryTarRadar: (instanceId, tarRadarId) => {
+    invalidateVolumeCache(instanceId);
+    set((state) => {
+      const nextSamCoverage = { ...state.samCoverageResults };
+      delete nextSamCoverage[instanceId];
+      const nextSamVolumes = { ...state.samVolumes };
+      delete nextSamVolumes[instanceId];
+
+      const instances = state.instances.map((inst) => {
+        if (inst.instanceId !== instanceId || !inst.batteryConfig) return inst;
+
+        // Find candidate radar in alternateTarOptions or EQUIPMENT_TEMPLATES
+        const altOption = inst.batteryConfig.alternateTarOptions?.find((o) => o.id === tarRadarId);
+        const tmplOption = EQUIPMENT_TEMPLATES.find((t) => t.id === tarRadarId);
+
+        const newTarId = altOption?.id || tmplOption?.id || tarRadarId;
+        const newTarName = altOption?.name || tmplOption?.name || inst.batteryConfig.tarRadarName;
+        const newRangeKm = altOption?.rangeKm ?? tmplOption?.defaultRangeKm ?? inst.batteryConfig.tarRangeKm;
+        const newHeightKm = altOption?.heightKm ?? tmplOption?.coverageHeightKm ?? inst.batteryConfig.tarHeightKm;
+        const newAglM = altOption?.aglM ?? tmplOption?.antennaHeightAGL ?? inst.batteryConfig.tarAglM;
+        const newWavelengthM = altOption?.wavelengthM ?? tmplOption?.wavelengthM ?? inst.batteryConfig.tarWavelengthM;
+
+        return {
+          ...inst,
+          batteryConfig: {
+            ...inst.batteryConfig,
+            tarRadarId: newTarId,
+            tarRadarName: newTarName,
+            tarRangeKm: newRangeKm,
+            tarHeightKm: newHeightKm,
+            tarAglM: newAglM,
+            tarWavelengthM: newWavelengthM,
+          },
+        };
+      });
+
+      return {
+        instances,
+        samCoverageResults: nextSamCoverage,
+        samVolumes: nextSamVolumes,
+      };
+    });
+  },
+
   removeEquipment: (instanceId) => {
     invalidateVolumeCache(instanceId);
     set((state) => {
       const nextVolumes = { ...state.coverageVolumes };
       delete nextVolumes[instanceId];
+      const nextSamCoverage = { ...state.samCoverageResults };
+      delete nextSamCoverage[instanceId];
+
+      const nextInstances = state.instances
+        .filter((item) => item.instanceId !== instanceId)
+        .map((item) => {
+          if (item.designatedRadarId === instanceId) {
+            delete nextSamCoverage[item.instanceId];
+            return {
+              ...item,
+              designatedRadarId: null,
+              samTerrainMaskMode: 'organic' as const,
+            };
+          }
+          return item;
+        });
+
       return {
-        instances: state.instances.filter((item) => item.instanceId !== instanceId),
+        instances: nextInstances,
         selectedInstanceId:
           state.selectedInstanceId === instanceId ? null : state.selectedInstanceId,
         coverageVolumes: nextVolumes,
+        samCoverageResults: nextSamCoverage,
+        ...(state.selectedInstanceId === instanceId ? clearSiteProfileState() : {}),
       };
     });
   },
@@ -429,6 +941,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       pendingTemplate: null,
       crossSectionProbePoint:
         state.selectedInstanceId === instanceId ? state.crossSectionProbePoint : null,
+      ...(state.selectedInstanceId !== instanceId ? clearSiteProfileState() : {}),
     })),
 
   setActiveTool: (tool) =>
@@ -508,6 +1021,88 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   toggleOccludedVolume: () => set((state) => ({ showOccludedVolume: !state.showOccludedVolume })),
   clearCoverageVolumes: () => set({ coverageVolumes: {} }),
 
+  // === So Sánh Tầm Nhìn Địa Hình GIS (Observer A vs B) ===
+  showTerrainComparison: false,
+  terrainComparisonResult: null,
+  terrainComparisonLayers: {
+    baseDem: true,
+    maskA: true,
+    maskB: true,
+    overlap: true,
+    nonOverlap: true,
+    missingDem: true,
+  },
+  setShowTerrainComparison: (show) => set({ showTerrainComparison: show }),
+  setTerrainComparisonResult: (result) => set({ terrainComparisonResult: result }),
+  toggleTerrainComparisonLayer: (layer) =>
+    set((state) => ({
+      terrainComparisonLayers: {
+        ...state.terrainComparisonLayers,
+        [layer]: !state.terrainComparisonLayers[layer],
+      },
+    })),
+
+
+  // === LỚP VECTƠ OFFLINE & NHẬN THỨC VÙNG PHỦ ===
+  showVectorLayer: false, // Mặc định tắt: nạp theo yêu cầu vì có thể nặng
+  visibleVectorKinds: [], // Rỗng = hiện tất cả loại
+  selectedVectorFeature: null,
+  siteProfile: null,
+  showMapOverlays: true,
+  isAnalyzingSite: false,
+  // Vite inject danh sách gói vectơ lúc khởi động; 0 nghĩa là chỉ có ảnh raster.
+  vectorPackCount: typeof __OFFLINE_MAP_ASSETS__ === 'undefined'
+    ? 0
+    : Array.isArray(__OFFLINE_MAP_ASSETS__.vectorRegions)
+      ? __OFFLINE_MAP_ASSETS__.vectorRegions.length
+      : 0,
+  toggleVectorLayer: () =>
+    set((state) => ({
+      showVectorLayer: !state.showVectorLayer,
+      // Bật lớp đối tượng thì ẩn các bảng nổi để không che mất bản đồ.
+      showMapOverlays: !state.showVectorLayer ? false : state.showMapOverlays,
+    })),
+  setShowVectorLayer: (on) =>
+    set((state) => ({
+      showVectorLayer: on,
+      // Bật lớp đối tượng thì ẩn các bảng nổi để không che mất bản đồ.
+      showMapOverlays: on ? false : state.showMapOverlays,
+    })),
+  setShowMapOverlays: (show) => set({ showMapOverlays: show }),
+  setVisibleVectorKinds: (kinds) => set({ visibleVectorKinds: kinds }),
+  selectVectorFeature: (feature) => set({ selectedVectorFeature: feature }),
+
+  /**
+   * Dựng đặc tính vùng phủ cho khí tài đang chọn.
+   *
+   * Bán kính phân tích = TẦM HOẠT ĐỘNG của chính khí tài đó (`instance.rangeKm`),
+   * nên "trong phạm vi hoạt động" là điều kiện bắt buộc chứ không phải lựa chọn.
+   * Nếu không có khí tài được chọn thì phân tích quanh tâm camera như cố vấn AI.
+   */
+  analyzeSelectedSite: async () => {
+    const requestId = ++siteAnalysisRequestId;
+    const state = get();
+    const instance = state.instances.find((i) => i.instanceId === state.selectedInstanceId);
+
+    const viewport = getAdvisorViewport();
+    const lat = instance ? instance.latitude : viewport.lat;
+    const lon = instance ? instance.longitude : viewport.lon;
+    const radiusKm = instance ? instance.rangeKm : deriveAdvisorRadiusKm(viewport.heightM);
+
+    set({ isAnalyzingSite: true, siteProfile: null });
+    try {
+      const store = await loadVectorFeatureStore();
+      if (requestId !== siteAnalysisRequestId) return;
+      const profile = await buildSiteProfile(lat, lon, radiusKm, undefined, store);
+      if (requestId !== siteAnalysisRequestId) return;
+      set({ siteProfile: profile, isAnalyzingSite: false });
+    } catch (error) {
+      if (requestId !== siteAnalysisRequestId) return;
+      console.error('Không phân tích được vùng phủ:', error);
+      set({ isAnalyzingSite: false, siteProfile: null });
+    }
+  },
+
   // 3D SAM Engagement Volume Initial State & Actions
   samVolumes: {},
   samEngagementModes: {},
@@ -520,12 +1115,40 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       const inst = state.instances.find((i) => i.instanceId === instanceId);
       if (!inst) return state;
       const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === inst.templateId);
-      const profile = (inst.samProfiles || tmpl?.samProfiles)?.[mode];
+      const profiles = inst.samProfiles || tmpl?.samProfiles;
+      let profile = profiles?.[mode];
+      let resolvedMode = mode;
+
+      if (!profile && profiles) {
+        if (mode === 'jamming_passive' && profiles['passive_jamming']) {
+          profile = profiles['passive_jamming'];
+          resolvedMode = 'passive_jamming';
+        } else if (mode === 'passive_jamming' && profiles['jamming_passive']) {
+          profile = profiles['jamming_passive'];
+          resolvedMode = 'jamming_passive';
+        } else if (mode === 'jamming_active' && profiles['active_jamming']) {
+          profile = profiles['active_jamming'];
+          resolvedMode = 'active_jamming';
+        } else if (mode === 'active_jamming' && profiles['jamming_active']) {
+          profile = profiles['jamming_active'];
+          resolvedMode = 'jamming_active';
+        } else if (mode === 'tbk_optical' && profiles['tvk_optical']) {
+          profile = profiles['tvk_optical'];
+          resolvedMode = 'tvk_optical';
+        } else if (mode === 'tvk_optical' && profiles['tbk_optical']) {
+          profile = profiles['tbk_optical'];
+          resolvedMode = 'tbk_optical';
+        } else if (mode === 'jamming' && (profiles['active_jamming'] || profiles['jamming_active'])) {
+          profile = profiles['active_jamming'] || profiles['jamming_active'];
+          resolvedMode = profiles['active_jamming'] ? 'active_jamming' : 'jamming_active';
+        }
+      }
+
       const nextInstances = state.instances.map((i) => {
         if (i.instanceId !== instanceId) return i;
         return {
           ...i,
-          samEngagementMode: mode,
+          samEngagementMode: resolvedMode,
           rangeKm: profile ? profile.dMaxKm : i.rangeKm,
           minEngagementRangeKm: profile ? profile.dMinKm : i.minEngagementRangeKm,
           maxEngagementAltitudeM: profile ? profile.hMaxM : i.maxEngagementAltitudeM,
@@ -536,10 +1159,18 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       });
       return {
         instances: nextInstances,
-        samEngagementModes: { ...state.samEngagementModes, [instanceId]: mode },
+        samEngagementModes: { ...state.samEngagementModes, [instanceId]: resolvedMode },
       };
     }),
   clearSamVolumes: () => set({ samVolumes: {} }),
+
+  // Vùng Hỏa Lực SAM Cắt Địa Hình State & Actions
+  samCoverageResults: {},
+  setSamCoverageResult: (instanceId, result) =>
+    set((state) => ({
+      samCoverageResults: { ...state.samCoverageResults, [instanceId]: result },
+    })),
+  clearSamCoverageResults: () => set({ samCoverageResults: {} }),
 
   triggerRadarCameraPreset: (preset) => {
     const state = get();
@@ -641,9 +1272,11 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
   aiAdvisorStatus: 'idle',
   aiAdvisorError: null,
   aiAdvisorSummary: '',
+  aiAdvisorDegraded: false,
   aiAdvisorSuggestions: [],
   aiAdvisorRoute: [],
   aiAdvisorTemplateId: null,
+  selectedAdvisorSuggestionIndex: null,
 
   // SPx Multi-Altitude Coverage (Cambridge Pixel Standard)
   showSpxPanel: false,
@@ -746,9 +1379,21 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     }),
 
   // === Cố vấn vị trí đặt khí tài bằng AI local (VECTOR AI) ===
-  setAiAdvisorPanelOpen: (open) => set({ aiAdvisorPanelOpen: open }),
-  toggleAiAdvisorPanel: () =>
-    set((state) => ({ aiAdvisorPanelOpen: !state.aiAdvisorPanelOpen })),
+  setAiAdvisorPanelOpen: (open) =>
+    set((state) => {
+      return {
+        aiAdvisorPanelOpen: open,
+        // Mở bảng phân tích thì tự bật lớp đối tượng: bảng này đếm nhà / sông /
+        // suối, người dùng cần nhìn thấy chúng trên bản đồ mới tin được con số.
+        // Đồng thời ẩn các bảng nổi khác cho khỏi chồng lên nhau.
+        showVectorLayer: open ? true : state.showVectorLayer,
+        // Đóng panel thì trả bảng nổi về lại. Nếu không, người dùng tắt bảng phân
+        // tích rồi bấm bật lại lớp đối tượng thì mất luôn Bảng chú giải và không
+        // còn đường nào để bật lại.
+        showMapOverlays: open ? false : true,
+      };
+    }),
+  toggleAiAdvisorPanel: () => get().setAiAdvisorPanelOpen(!get().aiAdvisorPanelOpen),
   setAiAdvisorTemplateId: (templateId) => set({ aiAdvisorTemplateId: templateId }),
 
   clearAiPlacementSuggestions: () =>
@@ -757,8 +1402,15 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       aiAdvisorRoute: [],
       aiAdvisorSummary: '',
       aiAdvisorError: null,
+      aiAdvisorDegraded: false,
       aiAdvisorStatus: 'idle',
+      selectedAdvisorSuggestionIndex: null,
     }),
+
+  selectAdvisorSuggestion: (index) => {
+    const list = get().aiAdvisorSuggestions;
+    set({ selectedAdvisorSuggestionIndex: resolveAdvisorSuggestionIndex(index, list.length) });
+  },
 
   runAiPlacementAnalysis: async (model) => {
     const state = get();
@@ -767,20 +1419,89 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     // Ghi lại template đã chọn để UI phản ánh đúng khí tài vừa dùng
     set({ aiAdvisorTemplateId: template.id, aiAdvisorStatus: 'checking', aiAdvisorError: null });
 
-    // 1. Kiểm tra backend (health)
-    const health = await checkVectorAiHealth();
-    if (!health.ok) {
-      // Backend local không trả lời (kể cả timeout) => coi như chưa kết nối
-      const isOffline = health.error.kind === 'offline' || health.error.kind === 'timeout';
+    // 1. ĐỘNG CƠ CLIENT: tính ứng viên từ DỮ LIỆU THẬT (terrain + lớp vectơ OSM).
+    // Đây là bước quyết định khắc phục hiện tượng "đặt đại": toạ độ KHÔNG do model bịa.
+    const viewport = getAdvisorViewport();
+    const areaRadiusKm = deriveAdvisorRadiusKm(viewport.heightM);
+
+    let candidates: PlacementCandidate[] = [];
+    try {
+      candidates = await generatePlacementCandidates({
+        center: { lat: viewport.lat, lon: viewport.lon },
+        radiusKm: areaRadiusKm,
+        template,
+        placed: state.instances.map((item) => ({
+          latitude: item.latitude,
+          longitude: item.longitude,
+          rangeKm: item.rangeKm,
+        })),
+      });
+    } catch (error) {
+      console.warn('Động cơ sinh ứng viên thất bại; không có gợi ý nào được tạo.', error);
+    }
+
+    const { suggestions, route } = candidatesToSuggestions(candidates);
+
+    // Ghi ngay kết quả CÓ CĂN CỨ của động cơ: kể cả VECTOR AI chưa chạy, người dùng vẫn
+    // thấy gợi ý kèm số liệu thật (thay vì màn hình trắng như trước).
+    set({
+      aiAdvisorSuggestions: suggestions,
+      aiAdvisorRoute: route,
+      aiAdvisorSummary: '',
+      aiAdvisorDegraded: true,
+      aiAdvisorError: null,
+      // Danh sách mới -> bỏ chọn gợi ý cũ để index không trỏ sai.
+      selectedAdvisorSuggestionIndex: null,
+    });
+
+    if (suggestions.length === 0) {
       set({
-        aiAdvisorStatus: isOffline ? 'offline' : 'error',
-        aiAdvisorError: health.error.message,
+        aiAdvisorStatus: 'ready',
+        aiAdvisorDegraded: false,
+        aiAdvisorSummary:
+          'Không tìm được ứng viên vị trí phù hợp trong vùng quan tâm (thiếu dữ liệu địa hình/vectơ hoặc vùng quá nhỏ).',
       });
       return;
     }
 
-    // 2. Dựng prompt từ state tác chiến hiện tại
-    const viewport = getAdvisorViewport();
+    // 2. VECTOR AI: chỉ XẾP HẠNG + DIỄN GIẢI danh sách ứng viên, KHÔNG sinh toạ độ.
+
+    // 2a. Kiểm tra backend (health)
+    const health = await checkVectorAiHealth();
+    if (!health.ok) {
+      // Backend local không trả lời (kể cả timeout) => vẫn giữ gợi ý của động cơ.
+      const isOffline = health.error.kind === 'offline' || health.error.kind === 'timeout';
+      set({
+        aiAdvisorStatus: isOffline ? 'offline' : 'error',
+        aiAdvisorError: health.error.message,
+        aiAdvisorDegraded: true,
+      });
+      return;
+    }
+
+    // The local engine remains usable when the backend has no selected model.
+    // Keep its measured candidates without issuing an invalid model="" request.
+    if (model.trim().length === 0) {
+      set({
+        aiAdvisorStatus: 'ready',
+        aiAdvisorDegraded: true,
+        aiAdvisorSummary:
+          'Đã tính ứng viên từ dữ liệu hiện có. Chọn mô hình AI để bổ sung xếp hạng và diễn giải.',
+      });
+      return;
+    }
+
+    // 2b. Dựng đặc tính địa hình vùng phủ (terrain + lớp vectơ OSM) làm NGỮ CẢNH cho AI
+    // viết diễn giải. Toạ độ/điểm đã do động cơ quyết định ở bước 1, nên phần này chỉ
+    // giúp AI hành văn sát thực tế; không có gói vectơ thì vẫn chạy được.
+    let siteProfileText: string | undefined;
+    try {
+      const profile = await buildSiteProfile(viewport.lat, viewport.lon, areaRadiusKm);
+      siteProfileText = profile.text;
+    } catch (error) {
+      console.warn('Không dựng được đặc tính địa hình; tiếp tục phân tích AI không có dữ liệu địa hình.', error);
+    }
+
     const context: AiPlacementContext = {
       equipment: {
         templateId: template.id,
@@ -803,38 +1524,50 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         status: item.status,
       })),
       viewport,
-      areaRadiusKm: deriveAdvisorRadiusKm(viewport.heightM),
+      areaRadiusKm,
+      siteProfileText,
     };
 
     set({ aiAdvisorStatus: 'thinking' });
 
-    // 3. Hỏi model qua SSE
+    // 2c. Hỏi model: gửi danh sách ứng viên đã tính điểm, xin XẾP HẠNG + diễn giải.
     const answer = await askVectorAi({
       model,
-      messages: buildPlacementMessages(context),
+      messages: buildRankingMessages(context, candidates),
+      // GIS evidence is provided by the local engine, rather than retrieved documents.
+      strictSources: false,
     });
     if (!answer.ok) {
+      // Vẫn giữ gợi ý của động cơ; chỉ thiếu phần diễn giải của AI.
       set({
         aiAdvisorStatus:
           answer.error.kind === 'offline' || answer.error.kind === 'timeout' ? 'offline' : 'error',
         aiAdvisorError: answer.error.message,
+        aiAdvisorDegraded: true,
       });
       return;
     }
 
-    // 4. Parse JSON an toàn
-    const parsed = parsePlacementAdvice(answer.value.text);
+    // 2d. Parse xếp hạng; gắn diễn giải vào đúng ứng viên, GIỮ toạ độ/điểm của động cơ.
+    const parsed = parsePlacementRanking(answer.value.text, suggestions.length);
     if (!parsed.ok) {
-      set({ aiAdvisorStatus: 'error', aiAdvisorError: parsed.message });
+      set({ aiAdvisorStatus: 'error', aiAdvisorError: parsed.message, aiAdvisorDegraded: true });
       return;
     }
 
+    const reranked = applyAiRanking(suggestions, parsed.value.ranking);
     set({
       aiAdvisorStatus: 'ready',
       aiAdvisorError: null,
+      // AI không chọn ứng viên nào -> coi như suy giảm (chỉ còn số liệu động cơ).
+      aiAdvisorDegraded: parsed.value.ranking.length === 0,
       aiAdvisorSummary: parsed.value.summary,
-      aiAdvisorSuggestions: parsed.value.suggestions,
-      aiAdvisorRoute: parsed.value.route,
+      aiAdvisorSuggestions: reranked,
+      // AI xếp hạng lại làm đổi thứ tự -> bỏ chọn để index không trỏ sai gợi ý.
+      selectedAdvisorSuggestionIndex: null,
+      aiAdvisorRoute: reranked
+        .slice(0, MAX_ADVISOR_ROUTE_POINTS)
+        .map((item) => ({ latitude: item.latitude, longitude: item.longitude })),
     });
   },
 
@@ -848,12 +1581,16 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     const latitude = Math.min(90, Math.max(-90, suggestion.latitude));
     const longitude = Math.min(180, Math.max(-180, suggestion.longitude));
 
-    // GIẢ ĐỊNH: gợi ý của AI chỉ có lat/lon nên cao độ mặt đất chưa biết -> đặt 0 m.
-    // Người dùng có thể dùng công cụ "Di chuyển đài" để trạm lại đúng cao độ DEM.
+    // Cao độ lấy từ SỐ LIỆU THẬT đã đo khi chấm điểm (criteria.elevationM). Nhờ vậy đài
+    // không còn bị "chôn" dưới đất như bản cũ (vốn luôn đặt altitude = 0).
+    const groundElevationM = suggestion.criteria?.hasTerrainData
+      ? suggestion.criteria.elevationM
+      : 0;
+
     const instance = createEquipmentFromTemplate(template, {
       latitude: Number(latitude.toFixed(5)),
       longitude: Number(longitude.toFixed(5)),
-      altitude: 0,
+      altitude: groundElevationM,
       nameIndex: state.instances.length + 1,
     });
 
@@ -876,6 +1613,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
       selectedInstanceId: null,
       measurePoints: [],
       coverageVolumes: {},
+      ...clearSiteProfileState(),
     });
   },
 
@@ -918,6 +1656,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     set({
       instances: importedInstances,
       selectedInstanceId: importedInstances[0]?.instanceId || null,
+      ...clearSiteProfileState(),
     });
   },
 
@@ -1120,19 +1859,19 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         instanceId: 'eq_sam_spyder_haiphong',
         shortId: 'SAM-02',
         templateId: 'sam_spyder',
-        name: 'Trận Địa Tên Lửa Spyder (SR/MR) Cảng Hải Phòng',
+        name: 'Trận Địa Tên Lửa SPYDER (SR/MR) Cảng Hải Phòng',
         category: 'TenLuaPhongKhong',
         latitude: 20.86,
         longitude: 106.72,
         altitude: 10,
-        antennaHeightAGL: 5,
+        antennaHeightAGL: 8,
         rangeKm: 50,
-        minEngagementRangeKm: 2,
+        minEngagementRangeKm: 1,
         maxEngagementAltitudeM: 16000,
         minEngagementAltitudeM: 20,
         maxTargetSpeedMps: 800,
-        reactionTimeSeconds: 9,
-        guidanceMethodVi: 'Chủ động sóng milimet Derby-MR & Hồng ngoại IIR Python-5',
+        reactionTimeSeconds: 4,
+        guidanceMethodVi: 'Chủ động sóng milimet Derby-MR & Hồng ngoại 2 băng IIR Python-5 kết hợp Datalink',
         scanSpeed: 0,
         minElevationDeg: 5,
         maxElevationDeg: 75,
@@ -1142,6 +1881,8 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         color: '#0ea5e9',
         showDome: true,
         showSweep: false,
+        samEngagementMode: 'head_on',
+        batteryConfig: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_spyder')?.batteryConfig,
         spyderConfig: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_spyder')?.spyderConfig,
         samProfiles: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_spyder')?.samProfiles,
         coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_spyder')?.coverageProfile,
@@ -1176,6 +1917,7 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
         showDome: true,
         showSweep: false,
         samEngagementMode: 'head_on',
+        batteryConfig: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_c125_2tm')?.batteryConfig,
         samProfiles: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_c125_2tm')?.samProfiles,
         coverageProfile: EQUIPMENT_TEMPLATES.find((t) => t.id === 'sam_c125_2tm')?.coverageProfile,
       },
@@ -1183,8 +1925,16 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
 
     const sampleWithModels = sample.map((item) => {
       const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === item.templateId);
+      const batteryConfig = item.batteryConfig || tmpl?.batteryConfig;
+      const compositeBattery =
+        item.compositeBattery ||
+        (batteryConfig
+          ? createDefaultCompositeBatteryState(item.latitude, item.longitude, item.altitude, batteryConfig)
+          : undefined);
       return {
         ...item,
+        batteryConfig,
+        compositeBattery,
         realPhotoUrl: item.realPhotoUrl || tmpl?.realPhotoUrl,
         model3dUrl: item.model3dUrl || tmpl?.model3dUrl,
         model3dScale: item.model3dScale ?? tmpl?.model3dScale ?? 1.0,
@@ -1194,6 +1944,248 @@ export const useTacticalStore = create<TacticalState>((set, get) => ({
     set({
       instances: sampleWithModels,
       selectedInstanceId: 'eq_radar_tamdao',
+      ...clearSiteProfileState(),
     });
   },
+
+  // === PHÂN TÍCH ĐỊA HÌNH BẰNG PHẲNG (Terrain Flatness Analysis) ===
+  analysisRegion: null,
+  regionInventoryStatus: 'idle',
+  regionInventoryResult: null,
+  regionInventoryError: null,
+  analysisConfig: { ...DEFAULT_TERRAIN_ANALYSIS_CONFIG },
+  analysisStatus: 'idle',
+  analysisError: null,
+  isSelectingFlatnessCenter: false,
+  flatnessAnalysisResult: null,
+  flatnessPatches: [],
+  isAnalyzingFlatness: false,
+  hoveredPatchId: null,
+  selectedPatchId: null,
+  showTerrainZoneInspector: false,
+  isInspectingZone: false,
+
+  startFlatnessSelection: () =>
+    set({
+      isSelectingFlatnessCenter: true,
+      activeTool: 'select',
+      pendingTemplate: null,
+    }),
+
+  cancelFlatnessSelection: () =>
+    set({
+      isSelectingFlatnessCenter: false,
+    }),
+
+  selectAnalysisRegion: (lat: number, lon: number) => {
+    const regionId = Math.random().toString(36).substring(2, 9);
+    const newRegion: AnalysisRegion = {
+      lat,
+      lon,
+      radiusKm: 1.0,
+      regionId,
+    };
+
+    // Ngay lập tức lưu vùng chọn, hiển thị vòng tròn, xóa kết quả mảng cũ
+    // ĐẶC BIỆT: KHÔNG tự động gọi runFlatnessAnalysis!
+    set({
+      analysisRegion: newRegion,
+      isSelectingFlatnessCenter: false,
+      regionInventoryStatus: 'loading',
+      regionInventoryResult: null,
+      regionInventoryError: null,
+      analysisStatus: 'idle',
+      analysisError: null,
+      isAnalyzingFlatness: false,
+      flatnessAnalysisResult: null,
+      flatnessPatches: [],
+      selectedPatchId: null,
+      hoveredPatchId: null,
+      showTerrainZoneInspector: false,
+      isInspectingZone: false,
+    });
+
+    // Tự động kích hoạt Luồng 1: Khảo sát dữ liệu GIS trong vòng tròn 1km
+    void (useTacticalStore.getState() as any).runRegionInventory(lat, lon, 1.0, regionId);
+  },
+
+  runRegionInventory: async (lat: number, lon: number, radiusKm: number, regionId: string) => {
+    try {
+      const result = await surveyRegionInventory(lat, lon, radiusKm);
+      const currentRegion = (useTacticalStore.getState() as any).analysisRegion as AnalysisRegion | null;
+      if (!currentRegion || currentRegion.regionId !== regionId) {
+        return;
+      }
+
+      set({
+        regionInventoryStatus: 'success',
+        regionInventoryResult: result,
+        regionInventoryError: null,
+      });
+    } catch (err) {
+      console.error('Lỗi khi khảo sát vùng GIS:', err);
+      const currentRegion = (useTacticalStore.getState() as any).analysisRegion as AnalysisRegion | null;
+      if (!currentRegion || currentRegion.regionId !== regionId) {
+        return;
+      }
+      set({
+        regionInventoryStatus: 'error',
+        regionInventoryError: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+
+  setAnalysisConfig: (config: Partial<TerrainAnalysisConfig>) => {
+    set((state) => ({
+      analysisConfig: {
+        ...state.analysisConfig,
+        ...config,
+      },
+    }));
+  },
+
+  resetAnalysisConfig: () => {
+    set({
+      analysisConfig: { ...DEFAULT_TERRAIN_ANALYSIS_CONFIG },
+    });
+  },
+
+  runFlatnessAnalysis: async (targetLat?: number, targetLon?: number) => {
+    const state = useTacticalStore.getState() as any;
+    const currentRegion = state.analysisRegion as AnalysisRegion | null;
+    const lat = typeof targetLat === 'number' ? targetLat : currentRegion?.lat;
+    const lon = typeof targetLon === 'number' ? targetLon : currentRegion?.lon;
+
+    if (
+      typeof lat !== 'number' ||
+      typeof lon !== 'number' ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lon)
+    ) {
+      return;
+    }
+
+    const regionId = currentRegion?.regionId ?? Math.random().toString(36).substring(2, 9);
+    if (!currentRegion) {
+      set({
+        analysisRegion: { lat, lon, radiusKm: 1.0, regionId },
+      });
+    }
+
+    const config = state.analysisConfig as TerrainAnalysisConfig;
+
+    set({
+      analysisStatus: 'running',
+      analysisError: null,
+      isAnalyzingFlatness: true,
+      flatnessAnalysisResult: null,
+      flatnessPatches: [],
+      selectedPatchId: null,
+      hoveredPatchId: null,
+      showTerrainZoneInspector: false,
+      isInspectingZone: false,
+    });
+
+    try {
+      let terrainProvider = getTerrainProvider();
+      if (!terrainProvider) {
+        terrainProvider = await ensureTerrainProvider();
+      }
+      if (!terrainProvider) {
+        throw new Error('Chưa thể kết nối tới dữ liệu độ cao địa hình 3D (DEM). Vui lòng kiểm tra thư mục public/offline-terrain.');
+      }
+      const vectorStore = await loadVectorFeatureStore();
+      const result = await analyzeTerrainFlatness(lat, lon, 1.0, {
+        gridSize: 81, // 81 điểm trên đường kính 2000m -> bước lưới đều ~25m (đạt yêu cầu 20-25m)
+        maxDeltaElevM: config.maxElevationDifferenceM,
+        maxSlopeDeg: config.maxSlopeDeg,
+        maxPatchAreaM2: config.maxPatchAreaM2,
+        minPatchAreaM2: 10_000,
+        terrainProvider,
+        vectorStore,
+      });
+
+      // Kiểm tra nonce: Nếu người dùng đã chọn vùng khác hoặc đã xóa vùng trong lúc đang quét thì bỏ qua kết quả cũ
+      const activeRegion = (useTacticalStore.getState() as any).analysisRegion as AnalysisRegion | null;
+      if (!activeRegion || activeRegion.regionId !== regionId) {
+        return;
+      }
+
+      if (result.patches.length > 0) {
+        set({
+          analysisStatus: 'success',
+          flatnessAnalysisResult: result,
+          flatnessPatches: result.patches,
+          isAnalyzingFlatness: false,
+          selectedPatchId: null, // Không tự động mở inspector khi chưa chọn mảng
+          showTerrainZoneInspector: false,
+          isInspectingZone: false,
+        });
+      } else {
+        set({
+          analysisStatus: 'empty',
+          flatnessAnalysisResult: result,
+          flatnessPatches: [],
+          isAnalyzingFlatness: false,
+          selectedPatchId: null,
+          showTerrainZoneInspector: false,
+          isInspectingZone: false,
+        });
+      }
+    } catch (err) {
+      console.error('Lỗi khi phân tích địa hình bằng phẳng:', err);
+      const activeRegion = (useTacticalStore.getState() as any).analysisRegion as AnalysisRegion | null;
+      if (!activeRegion || activeRegion.regionId !== regionId) {
+        return;
+      }
+      const rawErrorMsg = err instanceof Error ? err.message : String(err);
+      let friendlyError = rawErrorMsg;
+      if (
+        rawErrorMsg.includes('Terrain height unavailable') ||
+        rawErrorMsg.includes('unavailable for') ||
+        rawErrorMsg.includes('nằm ngoài phạm vi bao phủ')
+      ) {
+        friendlyError = 'Chưa có dữ liệu độ cao địa hình cho khu vực này (nằm ngoài phạm vi bao phủ của gói DEM offline).';
+      }
+      set({
+        analysisStatus: 'error',
+        analysisError: friendlyError,
+        isAnalyzingFlatness: false,
+      });
+    }
+  },
+
+  setHoveredPatch: (id: string | null) => set({ hoveredPatchId: id }),
+
+  selectPatch: (id: string | null) =>
+    set({
+      selectedPatchId: id,
+      showTerrainZoneInspector: id !== null,
+      isInspectingZone: id !== null,
+    }),
+
+  closeTerrainZoneInspector: () =>
+    set({
+      showTerrainZoneInspector: false,
+      isInspectingZone: false,
+    }),
+
+  clearFlatnessResult: () =>
+    set({
+      analysisRegion: null,
+      regionInventoryStatus: 'idle',
+      regionInventoryResult: null,
+      regionInventoryError: null,
+      analysisStatus: 'idle',
+      analysisError: null,
+      flatnessAnalysisResult: null,
+      flatnessPatches: [],
+      selectedPatchId: null,
+      hoveredPatchId: null,
+      showTerrainZoneInspector: false,
+      isInspectingZone: false,
+      isSelectingFlatnessCenter: false,
+      isAnalyzingFlatness: false,
+    }),
 }));
+

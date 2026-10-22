@@ -1,0 +1,22 @@
+/* Cambria contains complete precomposed Vietnamese glyphs on Windows. */
+.welcome h1,
+.setup-box h2,
+.about-box h2,
+.answer h1,
+.answer h2,
+.answer h3 {
+  font-family: Cambria, "Times New Roman", "Segoe UI", serif;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+}
+
+.welcome h1 {
+  letter-spacing: 0;
+  word-spacing: normal;
+}
+
+.welcome h1 em {
+  font-family: Cambria, "Times New Roman", "Segoe UI", serif;
+  font-style: italic;
+  letter-spacing: 0;
+}

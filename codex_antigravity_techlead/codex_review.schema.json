@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": {"type": "string", "enum": ["pass", "needs_fix", "inconclusive"]},
+    "summary": {"type": "string"},
+    "requirements_review": {
+      "type": "array", "items": {
+        "type": "object", "properties": {
+          "requirement": {"type": "string"},
+          "status": {"type": "string", "enum": ["met", "not_met", "unclear"]},
+          "evidence": {"type": "string"}
+        },
+        "required": ["requirement", "status", "evidence"], "additionalProperties": false
+      }
+    },
+    "issues": {
+      "type": "array", "items": {
+        "type": "object", "properties": {
+          "severity": {"type": "string", "enum": ["critical", "major", "minor"]},
+          "file": {"type": "string"},
+          "line": {"type": "integer"},
+          "description": {"type": "string"},
+          "fix": {"type": "string"}
+        },
+        "required": ["severity", "file", "line", "description", "fix"], "additionalProperties": false
+      }
+    },
+    "verification": {"type": "string", "enum": ["passed", "not_run", "failed", "partial"]},
+    "verification_notes": {"type": "string"}
+  },
+  "required": ["verdict", "summary", "requirements_review", "issues", "verification", "verification_notes"],
+  "additionalProperties": false
+}

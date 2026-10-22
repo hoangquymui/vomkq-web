@@ -8,27 +8,31 @@ export const SPYDER_SYSTEM_DEFAULT_CONFIG: SpyderSystemConfig = {
   sr: {
     name: 'SPYDER-SR',
     nameVi: 'Tầm Ngắn (SPYDER-SR)',
-    missileTypeVi: 'Tên lửa tầm ngắn Python-5 (Hồng ngoại IIR)',
-    dMaxKm: 20, // Bảng 1, Mục 2: Cự ly tiêu diệt lớn nhất 20 km (Ảnh 2)
-    dMinKm: 1,  // Bảng 1, Mục 2: Cự ly tiêu diệt nhỏ nhất 1 km
-    hMaxM: 9000, // Bảng 1, Mục 2: Độ cao tiêu diệt lớn nhất 9 km = 9.000 m (Ảnh 2)
-    hMinM: 20,  // Bảng 1, Mục 2: Độ cao tiêu diệt nhỏ nhất 20 m
-    colorHex: '#10b981', // Màu vòm xanh lục nhạt (như trong ảnh 2)
+    missileTypeVi: 'Tên lửa tầm ngắn Python-5-SR (Hồng ngoại IIR) & Derby-SR (Radar chủ động RF)',
+    dMaxKm: 20, // Cự ly tiêu diệt lớn nhất 20 km
+    dMinKm: 1,  // Cự ly tiêu diệt nhỏ nhất 1 km
+    hMaxM: 9000, // Độ cao tiêu diệt lớn nhất 9 km = 9.000 m (Derby-SR 9km, Python-5-SR 6-9km)
+    hMinM: 20,  // Độ cao tiêu diệt nhỏ nhất 20 m
+    colorHex: '#10b981', // Màu vòm xanh lục nhạt
   },
   mr: {
     name: 'SPYDER-MR',
     nameVi: 'Tầm Trung (SPYDER-MR)',
-    missileTypeVi: 'Tên lửa tầm trung Derby-MR (Radar chủ động sóng milimet & Booster)',
-    dMaxKm: 50, // Bảng 1, Mục 2: Cự ly tiêu diệt lớn nhất 50 km (Ảnh 2)
-    dMinKm: 2,  // Bảng 1, Mục 2: Cự ly tiêu diệt nhỏ nhất 2 km
-    hMaxM: 16000, // Bảng 1, Mục 2: Độ cao tiêu diệt lớn nhất 16 km = 16.000 m (Ảnh 2)
-    hMinM: 20,  // Bảng 1, Mục 2: Độ cao tiêu diệt nhỏ nhất 20 m
-    colorHex: '#0ea5e9', // Màu vòm xanh lam nhạt (như trong ảnh 2)
+    missileTypeVi: 'Tên lửa tầm trung Derby-MR (Radar chủ động sóng mm) & Python-5-MR (IIR/CCD) có Booster',
+    dMaxKm: 50, // Cự ly tiêu diệt lớn nhất 50 km
+    dMinKm: 2,  // Cự ly tiêu diệt nhỏ nhất 2 km
+    hMaxM: 16000, // Độ cao tiêu diệt lớn nhất 16 km = 16.000 m
+    hMinM: 20,  // Độ cao tiêu diệt nhỏ nhất 20 m
+    colorHex: '#0ea5e9', // Màu vòm xanh lam nhạt
   },
   targetSpeeds: {
-    aircraftMps: 800, // Bảng 1, Mục 3: Máy bay ở độ cao > 30m: < 800 m/s
-    helicopterMps: 200, // Bảng 1, Mục 3: Trực thăng > 20m: 0 - 200 m/s
-    uavMps: 300, // Bảng 1, Mục 3: Thiết bị bay không người lái (UAV) > 100m: < 300 m/s
+    aircraftMps: 800, // Máy bay ở độ cao > 30m: < 800 m/s
+    helicopterMps: 200, // Trực thăng > 20m: 0 - 200 m/s
+    uavMps: 300, // Thiết bị bay không người lái (UAV) > 100m: < 300 m/s
+  },
+  missileSpeeds: {
+    mrMps: 1200, // Vận tốc cực đại tên lửa Derby-MR & Python-5-MR: 1.200 m/s
+    srMps: 700,  // Vận tốc cực đại tên lửa Derby-SR & Python-5-SR: 700 m/s
   },
   targetTypesVi: [
     'Máy bay, trực thăng, tên lửa hành trình, máy bay không người lái (UAVs)',
@@ -43,6 +47,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     name: 'Đài Radar 36D6',
     category: 'RadarCanhGioi',
     categoryNameVi: 'Radar Cảnh Giới',
+    radarGroup: 'acquisition_3d',
     description: 'Radar 3D cảnh giới và chỉ thị mục tiêu tầm trung-xa, bám sát các mục tiêu bay thấp và tên lửa hành trình.',
     defaultRangeKm: 300,
     defaultScanSpeed: 36, // 6 vòng/phút = 36 deg/s
@@ -55,6 +60,10 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     realPhotoUrl: '/images/equipments/radar_36d6.jpg',
     model3dUrl: '/models/equipments/radar_3d.glb',
     wavelengthM: 0.1, // Sóng dm (S-band ~10cm)
+    isIntegratedOnly: true, // Đài radar tích hợp trong tổ hợp tên lửa (S-300PMU1), không đặt lẻ
+    canDesignateForSam: true, // Radar 3D đo 3 toạ độ, chỉ thị mục tiêu chuyên dụng cho tên lửa (S-300, C-125...)
+    radarSubRole: 'chi_thi_ten_lua',
+    radarSubRoleVi: 'Radar 3D Chỉ thị mục tiêu cho Tên Lửa (SAM Capable)',
     coverageProfile: {
       id: 'prof_36d6',
       name: 'Giản đồ 36D6 ST-68UM',
@@ -86,10 +95,158 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     },
   },
   {
+    id: 'radar_p19',
+    name: 'Đài ra đa П-19 (P-19 "Flat Face B")',
+    category: 'RadarCanhGioi',
+    categoryNameVi: 'Radar Cảnh Giới',
+    radarGroup: 'surveillance_2d',
+    isIntegratedOnly: true, // Đài radar chỉ thị mục tiêu hữu cơ đi kèm C-125M / C-125-2TM, không đặt lẻ
+    description:
+      'Đài ra đa trinh sát cảnh giới và chỉ thị mục tiêu tầm thấp П-19 (P-19 "Flat Face B") dải sóng dm (830 - 882 MHz, λ = 35 cm) chuyên phối thuộc cho các tổ hợp tên lửa C-125M và C-125-2TM. Tầm phát hiện 260 km, góc tà 0.5° - 20°, độ cao phát hiện đến 20 km.',
+    defaultRangeKm: 260,
+    defaultScanSpeed: 36, // 6 vòng/phút = 36 deg/s
+    minElevationDeg: 0.5,
+    maxElevationDeg: 20.0,
+    antennaHeightAGL: 6.0,
+    coverageHeightKm: 20,
+    symbolColor: '#0ea5e9',
+    iconName: 'Radar',
+    realPhotoUrl: '/images/equipments/radar_36d6.jpg',
+    model3dUrl: '/models/equipments/radar_3d.glb',
+    wavelengthM: 0.35, // 35 cm (dm-band 830-882 MHz)
+    frequencyRangeGhz: '0.83 - 0.882 GHz (Sóng dm, λ = 35 cm)',
+    canDesignateForSam: true,
+    radarSubRole: 'chi_thi_ten_lua',
+    radarSubRoleVi: 'Đài ra đa chỉ thị mục tiêu cho C-125 (TAR)',
+    coverageProfile: {
+      id: 'prof_p19',
+      name: 'Giản đồ Đài ra đa П-19',
+      minElevationDeg: 0.5,
+      maxElevationDeg: 20.0,
+      points: [
+        { elevationDeg: 0.5, maxRangeKm: 260 },
+        { elevationDeg: 1.5, maxRangeKm: 260 },
+        { elevationDeg: 3.0, maxRangeKm: 220 },
+        { elevationDeg: 6.0, maxRangeKm: 160 },
+        { elevationDeg: 10.0, maxRangeKm: 110 },
+        { elevationDeg: 15.0, maxRangeKm: 70 },
+        { elevationDeg: 20.0, maxRangeKm: 35 },
+      ],
+    },
+    altitudeDetectionTable: {
+      headers: ['Độ cao mục tiêu (m)', 'Tiêm kích MiG-17 (km)', 'Ném bom Il-28 (km)'],
+      rows: [
+        { altitudeM: 100, val1: 32, val2: 38 },
+        { altitudeM: 200, val1: 45, val2: 52 },
+        { altitudeM: 500, val1: 65, val2: 75 },
+        { altitudeM: 1000, val1: 85, val2: 105 },
+        { altitudeM: 3000, val1: 125, val2: 150 },
+        { altitudeM: 6000, val1: 150, val2: 190 },
+        { altitudeM: 10000, val1: 160, val2: 240 },
+      ],
+    },
+  },
+  {
+    id: 'radar_96l6e',
+    name: 'Đài Radar 3D 96L6E (Mọi độ cao)',
+    category: 'RadarCanhGioi',
+    categoryNameVi: 'Radar Cảnh Giới',
+    radarGroup: 'acquisition_3d',
+    isIntegratedOnly: true, // Đài radar chỉ thị mục tiêu hữu cơ đi kèm S-300PMU1, không đặt lẻ
+    description: 'Radar 3D mảng pha nhìn vòng mọi độ cao (All-altitude acquisition radar) trong biên chế tổ hợp S-300PMU2, bám sát đồng thời 100 mục tiêu, phát hiện tên lửa hành trình bay bám địa hình và máy bay tàng hình.',
+    defaultRangeKm: 300,
+    defaultScanSpeed: 30, // 5-6 vòng/phút = 30 deg/s
+    minElevationDeg: -3,
+    maxElevationDeg: 60,
+    antennaHeightAGL: 15,
+    coverageHeightKm: 30,
+    symbolColor: '#0ea5e9',
+    iconName: 'Radar',
+    realPhotoUrl: '/images/equipments/radar_36d6.jpg',
+    model3dUrl: '/models/equipments/radar_3d.glb',
+    wavelengthM: 0.05, // Sóng cm (C-band ~5cm)
+    canDesignateForSam: true,
+    radarSubRole: 'chi_thi_ten_lua',
+    radarSubRoleVi: 'Radar 3D Chỉ thị mục tiêu cho S-300 (SAM Capable)',
+    coverageProfile: {
+      id: 'prof_96l6e',
+      name: 'Giản đồ Radar 3D 96L6E',
+      minElevationDeg: -3,
+      maxElevationDeg: 60,
+      points: [
+        { elevationDeg: -1.0, maxRangeKm: 40 },
+        { elevationDeg: 0.5, maxRangeKm: 120 },
+        { elevationDeg: 2.0, maxRangeKm: 300 },
+        { elevationDeg: 10.0, maxRangeKm: 250 },
+        { elevationDeg: 25.0, maxRangeKm: 160 },
+        { elevationDeg: 45.0, maxRangeKm: 90 },
+        { elevationDeg: 60.0, maxRangeKm: 40 },
+      ],
+    },
+    altitudeDetectionTable: {
+      headers: ['Độ cao (m)', 'Mục tiêu bay thấp (km)', 'Mục tiêu thông thường (km)'],
+      rows: [
+        { altitudeM: 50, val1: 25, val2: 35 },
+        { altitudeM: 100, val1: 35, val2: 45 },
+        { altitudeM: 500, val1: 70, val2: 90 },
+        { altitudeM: 1000, val1: 95, val2: 130 },
+        { altitudeM: 3000, val1: 140, val2: 200 },
+        { altitudeM: 10000, val1: 180, val2: 300 },
+      ],
+    },
+  },
+  {
+    id: 'radar_el_m_2084',
+    name: 'Radar 3D Đa Chức Năng EL/M-2084AD MMR',
+    category: 'RadarCanhGioi',
+    categoryNameVi: 'Radar Cảnh Giới',
+    radarGroup: 'acquisition_3d',
+    isIntegratedOnly: true, // Đài radar đa nhiệm hữu cơ của tổ hợp SPYDER, không đặt lẻ
+    description: 'Radar 3D mảng pha quét điện tử chủ động AESA đa nhiệm (MMR - Multi-Mission Radar), đa tia bán dẫn S-band (3.1-3.5 GHz). Bám sát tức thời với tốc độ quay 30 vòng/phút (180°/s), theo dõi 1.200 mục tiêu TWS, phát hiện mục tiêu xa đến 330 km và chỉ thị hỏa lực cho tổ hợp SPYDER.',
+    defaultRangeKm: 330,
+    defaultScanSpeed: 180, // 30 vòng/phút (30 RPM) = 180 deg/s
+    minElevationDeg: 0,
+    maxElevationDeg: 70, // Sục sạo 0-30°, bám sát lên tới 50°-70°
+    antennaHeightAGL: 8, // Chiều cao ăng-ten khi triển khai từ mặt đất là 8 m
+    coverageHeightKm: 30,
+    symbolColor: '#38bdf8',
+    iconName: 'Radar',
+    realPhotoUrl: '/images/equipments/radar_36d6.jpg',
+    model3dUrl: '/models/equipments/radar_3d.glb',
+    wavelengthM: 0.09, // S-band 3.1 - 3.5 GHz (~9cm)
+    canDesignateForSam: true,
+    radarSubRole: 'chi_thi_ten_lua',
+    radarSubRoleVi: 'Radar 3D Chỉ thị & Dẫn bắn Tên Lửa (MMR EL/M-2084AD)',
+    coverageProfile: {
+      id: 'prof_el_m_2084',
+      name: 'Giản đồ EL/M-2084AD MMR (330 km)',
+      minElevationDeg: 0,
+      maxElevationDeg: 70,
+      points: [
+        { elevationDeg: 0.5, maxRangeKm: 220 },
+        { elevationDeg: 3.0, maxRangeKm: 330 },
+        { elevationDeg: 15.0, maxRangeKm: 280 },
+        { elevationDeg: 30.0, maxRangeKm: 180 },
+        { elevationDeg: 50.0, maxRangeKm: 100 },
+        { elevationDeg: 70.0, maxRangeKm: 40 },
+      ],
+    },
+    altitudeDetectionTable: {
+      headers: ['Độ cao (m)', 'Cự ly phát hiện (km)'],
+      rows: [
+        { altitudeM: 100, val1: 45 },
+        { altitudeM: 500, val1: 95 },
+        { altitudeM: 3000, val1: 220 },
+        { altitudeM: 10000, val1: 330 },
+      ],
+    },
+  },
+  {
     id: 'radar_p18',
     name: 'Đài Radar P-18M',
     category: 'RadarCanhGioi',
     categoryNameVi: 'Radar Cảnh Giới',
+    radarGroup: 'surveillance_2d',
     description: 'Radar cảnh giới sóng mét (VHF) chống máy bay tàng hình, tầm phát hiện theo độ cao mục tiêu từ 30km (200m) đến 230km (20.000m).',
     defaultRangeKm: 230,
     defaultScanSpeed: 24, // 4 vòng/phút = 24 deg/s
@@ -103,6 +260,9 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     realPhotoUrl: '/images/equipments/radar_p18.jpg',
     model3dUrl: '/models/equipments/radar_3d.glb',
     wavelengthM: 2.0, // Sóng mét (VHF ~2m)
+    canDesignateForSam: false, // Radar cảnh giới nhìn vòng phát hiện sớm từ xa, không đo cao 3D để dẫn bắn tên lửa
+    radarSubRole: 'canh_gioi_nhin_vong',
+    radarSubRoleVi: 'Radar Cảnh giới nhìn vòng phát hiện sớm (Không dùng cho Tên Lửa)',
     coverageProfile: {
       id: 'prof_p18',
       name: 'Giản đồ P-18M (Chuẩn bảng tầm độ cao)',
@@ -144,6 +304,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     name: 'Đài Radar 1L13-3 / 55Ж6-1 (Nebo)',
     category: 'RadarCanhGioi',
     categoryNameVi: 'Radar Cảnh Giới',
+    radarGroup: 'surveillance_2d',
     description: 'Radar cảnh giới nhìn vòng sóng mét (VHF) chống tàng hình Nebo-SV/Nebo, tầm phát hiện siêu xa 320 - 400km ở độ cao 20.000m.',
     defaultRangeKm: 360,
     defaultScanSpeed: 24, // 4 vòng/phút = 24 deg/s
@@ -156,6 +317,9 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     realPhotoUrl: '/images/equipments/radar_nebo.jpg',
     model3dUrl: '/models/equipments/radar_3d.glb',
     wavelengthM: 2.0, // Sóng mét (VHF ~2m)
+    canDesignateForSam: false, // Radar cảnh giới nhìn vòng phát hiện sớm từ xa, không đo cao 3D để dẫn bắn tên lửa
+    radarSubRole: 'canh_gioi_nhin_vong',
+    radarSubRoleVi: 'Radar Cảnh giới nhìn vòng phát hiện sớm (Không dùng cho Tên Lửa)',
     coverageProfile: {
       id: 'prof_nebo',
       name: 'Giản đồ 1L13-3 / 55Ж6-1 Nebo',
@@ -197,6 +361,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     name: 'Đài Radar Bắt Thấp VRS-2DM',
     category: 'RadarCanhGioi',
     categoryNameVi: 'Radar Cảnh Giới',
+    radarGroup: 'surveillance_2d',
     description: 'Radar 2D cảnh giới bắt thấp cơ động cao do Việt Nam chế tạo, tối ưu phát hiện mục tiêu bay thấp 35km (100m) đến cực đại 185km (4.500m).',
     defaultRangeKm: 185,
     defaultScanSpeed: 36, // 6 vòng/phút = 36 deg/s
@@ -209,6 +374,9 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     realPhotoUrl: '/images/equipments/radar_vrs2dm.jpg',
     model3dUrl: '/models/equipments/radar_3d.glb',
     wavelengthM: 0.1, // Sóng đề-xi-mét (S-band ~10cm)
+    canDesignateForSam: false, // Radar cảnh giới 2D bắt thấp, không dẫn bắn tên lửa
+    radarSubRole: 'canh_gioi_nhin_vong',
+    radarSubRoleVi: 'Radar Cảnh giới nhìn vòng phát hiện sớm (Không dùng cho Tên Lửa)',
     coverageProfile: {
       id: 'prof_vrs2dm',
       name: 'Giản đồ VRS-2DM Bắt Thấp',
@@ -241,6 +409,8 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     name: 'Đài Radar P-18 Terek (tham chiếu video)',
     category: 'RadarCanhGioi',
     categoryNameVi: 'Radar Cảnh Giới',
+    radarGroup: 'surveillance_2d',
+    isIntegratedOnly: true, // Khí tài tham chiếu nội bộ Unity, không hiển thị trên danh mục tác chiến
     description:
       'Cấu hình mô phỏng đúng theo dự án tham chiếu Unity VomKQ_test (Assets/Data/Equipment/Radar_Test.asset): tầm 20 km, góc tà 0°–70°, trần phủ sóng 6 km, tốc độ quét 36°/s, tháp ăng-ten 10 m. Giản đồ phủ phẳng 20 km trên toàn dải góc tà.',
     defaultRangeKm: 20,
@@ -255,6 +425,9 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     realPhotoUrl: '/images/equipments/radar_p18.jpg',
     model3dUrl: '/models/equipments/radar_3d.glb',
     wavelengthM: 2.0, // Sóng mét (VHF ~2m)
+    canDesignateForSam: false, // Radar cảnh giới nhìn vòng tham chiếu
+    radarSubRole: 'canh_gioi_nhin_vong',
+    radarSubRoleVi: 'Radar Cảnh giới nhìn vòng phát hiện sớm (Không dùng cho Tên Lửa)',
     coverageProfile: {
       id: 'prof_p18_terek_video',
       name: 'Giản đồ P-18 Terek (tham chiếu video)',
@@ -314,57 +487,222 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     },
   },
   {
+    id: 'radar_30n6e1',
+    name: 'Đài chiếu xạ và điều khiển РПН 30Н6Э1 (30N6E1)',
+    category: 'RadarCanhGioi',
+    categoryNameVi: 'Radar Điều Khiển Hỏa Lực',
+    radarGroup: 'acquisition_3d',
+    isIntegratedOnly: true, // Đài radar dẫn bắn hữu cơ của tổ hợp С-300ПМУ1, không đặt lẻ
+    description:
+      'Đài chiếu xạ và điều khiển tên lửa РПН 30Н6Э1 (Flap Lid B) dải tần X (bước sóng ~3 cm) đa kênh mảng pha quét điện tử trong biên chế tổ hợp С-300ПМУ1. Bám sát cự ly 200 km, theo dõi đồng thời 6 mục tiêu và điều khiển 12 tên lửa 48Н6Э đồng thời. Góc quét phương vị 90°, góc tà -3° đến +85°.',
+    defaultRangeKm: 200,
+    defaultScanSpeed: 0,
+    minElevationDeg: -3,
+    maxElevationDeg: 85,
+    antennaHeightAGL: 4,
+    coverageHeightKm: 27,
+    symbolColor: '#f97316',
+    domeColor: '#f97316',
+    iconName: 'Crosshair',
+    realPhotoUrl: '/images/equipments/radar_36d6.jpg',
+    model3dUrl: '/models/equipments/radar_3d.glb',
+    wavelengthM: 0.03, // Sóng cm (X-band ~3cm)
+    frequencyRangeGhz: '8.0 - 12.0 GHz (X-band, λ ≈ 3 cm)',
+    canDesignateForSam: true,
+    radarSubRole: 'chi_thi_ten_lua',
+    radarSubRoleVi: 'Đài điều khiển dẫn bắn FCR С-300ПМУ1',
+    coverageProfile: {
+      id: 'prof_30n6e1',
+      name: 'Giản đồ Đài chiếu xạ РПН 30Н6Э1',
+      minElevationDeg: -3,
+      maxElevationDeg: 85,
+      points: [
+        { elevationDeg: -3.0, maxRangeKm: 40 },
+        { elevationDeg: 0.5, maxRangeKm: 200 },
+        { elevationDeg: 15.0, maxRangeKm: 200 },
+        { elevationDeg: 35.0, maxRangeKm: 180 },
+        { elevationDeg: 60.0, maxRangeKm: 100 },
+        { elevationDeg: 85.0, maxRangeKm: 30 },
+      ],
+    },
+  },
+  {
+    id: 'radar_snr125_2tm',
+    name: 'Đài điều khiển dẫn bắn УНВ-2ТМ (SNR-125-2TM)',
+    category: 'RadarCanhGioi',
+    categoryNameVi: 'Radar Điều Khiển Hỏa Lực',
+    radarGroup: 'acquisition_3d',
+    isIntegratedOnly: true, // Đài radar dẫn bắn hữu cơ của tổ hợp C-125-2TM, không đặt lẻ
+    description:
+      'Xe an ten УНВ-2ТМ trên xe thuyền УВ-600-2ТМ (cao 8.2m) kết hợp ca bin điều khiển УНК-2ТМ của tổ hợp C-125-2TM Pechora-2TM. Tầm phát hiện 75 km (H ≤ 7km) và 100 km (H > 7km). Dẫn bắn đồng thời 2 đạn diệt 2 mục tiêu bằng phương pháp КДУ qua kênh vô tuyến РЛК và quang-điện tử ОЭС (ТВК + ảnh nhiệt ТПК).',
+    defaultRangeKm: 75,
+    defaultScanSpeed: 0,
+    minElevationDeg: 0.5,
+    maxElevationDeg: 65,
+    antennaHeightAGL: 8.2,
+    coverageHeightKm: 25,
+    symbolColor: '#f97316',
+    domeColor: '#f97316',
+    iconName: 'Crosshair',
+    realPhotoUrl: '/images/equipments/radar_36d6.jpg',
+    model3dUrl: '/models/equipments/radar_3d.glb',
+    wavelengthM: 0.03, // Sóng cm (X-band ~3cm)
+    canDesignateForSam: true,
+    radarSubRole: 'chi_thi_ten_lua',
+    radarSubRoleVi: 'Đài điều khiển dẫn bắn FCR C-125-2TM',
+    coverageProfile: {
+      id: 'prof_snr125_2tm',
+      name: 'Giản đồ Đài dẫn bắn УНВ-2ТМ',
+      minElevationDeg: 0.5,
+      maxElevationDeg: 65,
+      points: [
+        { elevationDeg: 0.5, maxRangeKm: 75 },
+        { elevationDeg: 15.0, maxRangeKm: 75 },
+        { elevationDeg: 35.0, maxRangeKm: 60 },
+        { elevationDeg: 50.0, maxRangeKm: 40 },
+        { elevationDeg: 65.0, maxRangeKm: 15 },
+      ],
+    },
+  },
+  {
+    id: 'radar_snr125',
+    name: 'Đài điều khiển dẫn bắn УНВ/СНР-125 (SNR-125 Pechora)',
+    category: 'RadarCanhGioi',
+    categoryNameVi: 'Radar Điều Khiển Hỏa Lực',
+    radarGroup: 'acquisition_3d',
+    isIntegratedOnly: true, // Đài radar dẫn bắn hữu cơ của tổ hợp C-125M, không đặt lẻ
+    description:
+      'Trụ an ten УНВ cao 3.9m và ca bin điều khiển УНК của tổ hợp C-125M. Cự ly phát hiện mục tiêu 80 km (chu kỳ 2T0) và 37 km (chu kỳ T0). Dẫn bắn 2 tên lửa 5V27 tiêu diệt 1 mục tiêu qua lệnh điều khiển vô tuyến và quang học TVK (Bảng II.13).',
+    defaultRangeKm: 37,
+    defaultScanSpeed: 0,
+    minElevationDeg: -2,
+    maxElevationDeg: 65,
+    antennaHeightAGL: 3.9,
+    coverageHeightKm: 18,
+    symbolColor: '#f97316',
+    domeColor: '#f97316',
+    iconName: 'Crosshair',
+    realPhotoUrl: '/images/equipments/radar_36d6.jpg',
+    model3dUrl: '/models/equipments/radar_3d.glb',
+    wavelengthM: 0.03, // Sóng cm (X-band ~3cm)
+    canDesignateForSam: true,
+    radarSubRole: 'chi_thi_ten_lua',
+    radarSubRoleVi: 'Đài điều khiển dẫn bắn FCR C-125M',
+    coverageProfile: {
+      id: 'prof_snr125',
+      name: 'Giản đồ Đài dẫn bắn УНВ/СНР-125',
+      minElevationDeg: -2,
+      maxElevationDeg: 65,
+      points: [
+        { elevationDeg: -2.0, maxRangeKm: 25 },
+        { elevationDeg: 0.5, maxRangeKm: 37 },
+        { elevationDeg: 20.0, maxRangeKm: 37 },
+        { elevationDeg: 35.0, maxRangeKm: 30 },
+        { elevationDeg: 50.0, maxRangeKm: 20 },
+        { elevationDeg: 65.0, maxRangeKm: 8 },
+      ],
+    },
+  },
+  {
     id: 'sam_s300',
-    name: 'Tổ hợp Tên lửa S-300PMU2 (Favorit)',
+    name: 'Tổ hợp Tên lửa Phòng không С-300ПМУ1 (S-300PMU1)',
     category: 'TenLuaPhongKhong',
     categoryNameVi: 'Tên Lửa Phòng Không',
-    description: 'Tổ hợp tên lửa phòng không tầm xa chiến lược, đánh chặn máy bay tàng hình, tên lửa hành trình và đạn đạo chiến thuật.',
-    defaultRangeKm: 200,
-    minEngagementRangeKm: 3,
+    description:
+      'Tổ hợp tên lửa phòng không tầm xa chiến lược С-300ПМУ1 (S-300PMU1) theo tài liệu quân sự chính quy: tiêu diệt mục tiêu khí động cự ly 150 km, đạn đạo 40 km, trần bắn 27 km, tốc độ mục tiêu tới 2.800 m/s, bám sát 6 mục tiêu, điều khiển 12 tên lửa 48Н6Э đồng thời, đài chiếu xạ dẫn bắn РПН 30Н6Э1 và đài ra đa nhìn vòng mọi độ cao ВВО 96Л6Э.',
+    defaultRangeKm: 150,
+    minEngagementRangeKm: 5,
     maxEngagementAltitudeM: 27000,
     minEngagementAltitudeM: 10,
     optimalAltitudeM: 8000,
     maxTargetSpeedMps: 2800,
     maxTargetParamKm: 120,
     reactionTimeSeconds: 5,
-    guidanceMethodVi: 'Radar Track-via-Missile (TVM) 48N6E2',
+    guidanceMethodVi: 'Lệnh điều khiển kết hợp bộ định vị trên khoang tên lửa (TVM / БРП) đạn 48Н6Э',
     defaultScanSpeed: 0,
-    minElevationDeg: 3,
-    maxElevationDeg: 65,
-    antennaHeightAGL: 8,
+    minElevationDeg: -3,
+    maxElevationDeg: 85,
+    antennaHeightAGL: 4, // Ca bin an ten F1E trên khung gầm MAZ-543M (có thể đưa lên tháp 40V6M 25m - 40m)
     coverageHeightKm: 27,
     symbolColor: '#ef4444', // Red
     domeColor: '#ef4444',
     iconName: 'Crosshair',
     realPhotoUrl: '/images/equipments/sam_s300.jpg',
     model3dUrl: '/models/equipments/sam_launcher.glb',
+    samTerrainMaskMode: 'organic',
+    maxLaunchRangeKm: 180,
+    batteryConfig: {
+      batteryType: 'С-300ПМУ1 (S-300PMU1)',
+      tarRadarName: 'Đài ra đa nhìn vòng mọi độ cao ВВО 96Л6Э',
+      tarRadarId: 'radar_96l6e',
+      tarRangeKm: 300,
+      tarHeightKm: 30,
+      tarAglM: 15,
+      alternateTarOptions: [
+        {
+          id: 'radar_96l6e',
+          name: 'Đài ra đa nhìn vòng mọi độ cao ВВО 96Л6Э',
+          rangeKm: 300,
+          heightKm: 30,
+          aglM: 15,
+          wavelengthM: 0.05,
+          description: 'Dải tần C, phát hiện mọi độ cao, bám sát 100 mục tiêu đồng thời',
+        },
+        {
+          id: 'radar_36d6',
+          name: 'Đài Radar 36D6 (ST-68UM)',
+          rangeKm: 300,
+          heightKm: 30,
+          aglM: 25,
+          wavelengthM: 0.1,
+          description: 'Dải tần S (sóng dm), chuyên bắt thấp và tên lửa hành trình bay lọt thung lũng',
+        },
+      ],
+      fcrRadarName: 'Đài chiếu xạ và điều khiển РПН 30Н6Э1',
+      fcrRadarId: 'radar_30n6e1',
+      fcrRangeKm: 200,
+      fcrHeightKm: 27,
+      fcrAglM: 4,
+      fcrSectorAngleDeg: 90,
+      fcrBlindConeDeg: 85,
+      launcherName: 'Bệ phóng tự hành 5П85СЭ',
+      launcherCount: 4,
+      defaultLauncherDistanceM: 100,
+      maxCableDistanceM: 200,
+      minEngagementRangeKm: 5,
+      maxEngagementRangeKm: 150,
+      maxLaunchRangeKm: 180,
+      maxEngagementAltitudeM: 27000,
+      minEngagementAltitudeM: 10,
+    },
     samProfiles: {
-      head_on: { modeVi: 'Bắn đón (Không nhiễu)', dMinKm: 3.0, dMaxKm: 200.0, hMinM: 10, hMaxM: 27000, vMaxMps: 2800, pGhKm: 120.0 },
-      tail_chase: { modeVi: 'Bắn đuổi (Không nhiễu)', dMinKm: 8.0, dMaxKm: 110.0, hMinM: 50, hMaxM: 20000, vMaxMps: 600, pGhKm: 80.0 },
-      jamming_passive: { modeVi: 'Nhiễu vô tuyến tiêu cực', dMinKm: 3.0, dMaxKm: 140.0, hMinM: 20, hMaxM: 18000, vMaxMps: 1800, pGhKm: 80.0 },
-      jamming_active: { modeVi: 'Nhiễu vô tuyến tích cực', dMinKm: 3.0, dMaxKm: 100.0, hMinM: 30, hMaxM: 15000, vMaxMps: 1800, pGhKm: 60.0 },
-      tbk_optical: { modeVi: 'Chế độ quang truyền hình / Khẩn cấp', dMinKm: 3.0, dMaxKm: 120.0, hMinM: 25, hMaxM: 16000, vMaxMps: 1200, pGhKm: 70.0 },
+      head_on: { modeVi: 'Mục tiêu khí động (Bắn đón)', dMinKm: 5.0, dMaxKm: 150.0, hMinM: 10, hMaxM: 27000, vMaxMps: 2800, pGhKm: 120.0 },
+      ballistic: { modeVi: 'Mục tiêu đạn đạo (Đánh chặn)', dMinKm: 5.0, dMaxKm: 40.0, hMinM: 2000, hMaxM: 25000, vMaxMps: 2800, pGhKm: 30.0 },
+      tail_chase: { modeVi: 'Bắn đuổi khí động', dMinKm: 8.0, dMaxKm: 90.0, hMinM: 50, hMaxM: 20000, vMaxMps: 600, pGhKm: 80.0 },
+      jamming: { modeVi: 'Nhiễu / Tác chiến điện tử', dMinKm: 5.0, dMaxKm: 120.0, hMinM: 20, hMaxM: 25000, vMaxMps: 1800, pGhKm: 80.0 },
     },
     coverageProfile: {
       id: 'prof_s300',
-      name: 'Khu vực Tiêu diệt S-300PMU2',
-      minElevationDeg: 3,
-      maxElevationDeg: 65,
+      name: 'Khu vực Tiêu diệt С-300ПМУ1',
+      minElevationDeg: -3,
+      maxElevationDeg: 85,
       points: [
-        { elevationDeg: 3.0, maxRangeKm: 200 },
-        { elevationDeg: 15.0, maxRangeKm: 200 },
-        { elevationDeg: 30.0, maxRangeKm: 170 },
-        { elevationDeg: 45.0, maxRangeKm: 110 },
-        { elevationDeg: 65.0, maxRangeKm: 35 },
+        { elevationDeg: -3.0, maxRangeKm: 40 },
+        { elevationDeg: 0.5, maxRangeKm: 150 },
+        { elevationDeg: 15.0, maxRangeKm: 150 },
+        { elevationDeg: 35.0, maxRangeKm: 130 },
+        { elevationDeg: 60.0, maxRangeKm: 70 },
+        { elevationDeg: 85.0, maxRangeKm: 25 },
       ],
     },
   },
   {
     id: 'sam_c125_2tm',
-    name: 'Tổ hợp Tên lửa C-125-2TM Pechora-2TM',
+    name: 'Tổ hợp Tên lửa Phòng không C-125-2TM (S-125-2TM)',
     category: 'TenLuaPhongKhong',
     categoryNameVi: 'Tên Lửa Phòng Không',
-    description: 'Tổ hợp tên lửa phòng không cơ động cải tiến Pechora-2TM của QĐNDVN, tiêu diệt mục tiêu bay vận tốc đến 900 m/s, cự ly đón 35.4 km, trần bắn 25 km, bám sát và tiêu diệt đồng thời 2 mục tiêu, kháng nhiễu cao, tích hợp ngắm quang truyền hình Karat.',
+    description:
+      'Tổ hợp tên lửa phòng không cơ động cải tiến Pechora-2TM của QĐNDVN: tiêu diệt mục tiêu vận tốc đến 900 m/s, cự ly đón 35.4 km, trần bắn 25 km, bắn đồng thời 2 mục tiêu bằng 2 tên lửa, phương pháp KDU (vô tuyến RLK + quang điện tử OES: TVK + ảnh nhiệt TPK), kháng nhiễu 2.700 W/MHz, 03 bệ phóng 5П73-2TM, đài chỉ thị П-19.',
     defaultRangeKm: 35.4,
     minEngagementRangeKm: 3.5,
     maxEngagementAltitudeM: 25000,
@@ -374,31 +712,56 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     maxTargetParamKm: 25.0,
     reactionTimeSeconds: 5,
     deployTimeMinutes: 25,
-    guidanceMethodVi: 'Lệnh vô tuyến bám qua đạn (Command Guidance) & Quang truyền hình Karat',
+    guidanceMethodVi: 'Phương pháp КДУ (Vô tuyến РЛК + Quang-điện tử ОЭС: ТВК và ảnh nhiệt ТПК)',
     defaultScanSpeed: 0,
-    minElevationDeg: 6.0,
+    minElevationDeg: 0.5,
     maxElevationDeg: 65.0,
-    antennaHeightAGL: 6,
+    antennaHeightAGL: 8.2, // Xe trụ УНВ-2ТМ trên xe thuyền УВ-600-2ТМ cao 8.2m khi triển khai
     coverageHeightKm: 25,
     symbolColor: '#f43f5e', // Rose Red
     domeColor: '#f43f5e',
     iconName: 'Crosshair',
     realPhotoUrl: '/images/equipments/sam_c125.jpg',
     model3dUrl: '/models/equipments/sam_launcher.glb',
+    samTerrainMaskMode: 'organic',
+    maxLaunchRangeKm: 42,
+    batteryConfig: {
+      batteryType: 'C-125-2TM Pechora-2TM',
+      tarRadarName: 'Đài ra đa chỉ thị mục tiêu П-19',
+      tarRadarId: 'radar_p19',
+      tarRangeKm: 250,
+      tarHeightKm: 20,
+      tarAglM: 6,
+      fcrRadarName: 'Đài điều khiển dẫn bắn УНВ-2ТМ',
+      fcrRadarId: 'radar_snr125_2tm',
+      fcrRangeKm: 75,
+      fcrHeightKm: 25,
+      fcrAglM: 8.2,
+      fcrSectorAngleDeg: 60,
+      fcrBlindConeDeg: 65,
+      launcherName: 'Bệ phóng 5П73-2ТМ',
+      launcherCount: 3,
+      defaultLauncherDistanceM: 80,
+      maxCableDistanceM: 200,
+      minEngagementRangeKm: 3.5,
+      maxEngagementRangeKm: 35.4,
+      maxLaunchRangeKm: 42,
+      maxEngagementAltitudeM: 25000,
+      minEngagementAltitudeM: 20,
+    },
     samProfiles: {
       head_on: { modeVi: 'Bắn đón (Không nhiễu)', dMinKm: 3.5, dMaxKm: 35.4, hMinM: 20, hMaxM: 25000, vMaxMps: 900, pGhKm: 25.0 },
-      tail_chase: { modeVi: 'Bắn đuổi (Không nhiễu)', dMinKm: 6.0, dMaxKm: 26.0, hMinM: 100, hMaxM: 18000, vMaxMps: 300, pGhKm: 20.0 },
-      jamming_passive: { modeVi: 'Nhiễu vô tuyến tiêu cực', dMinKm: 3.5, dMaxKm: 18.0, hMinM: 20, hMaxM: 12000, vMaxMps: 650, pGhKm: 15.0 },
-      jamming_active: { modeVi: 'Nhiễu vô tuyến tích cực', dMinKm: 3.5, dMaxKm: 15.0, hMinM: 30, hMaxM: 9000, vMaxMps: 650, pGhKm: 15.0 },
-      tbk_optical: { modeVi: 'Chế độ quang truyền hình Karat (TBK)', dMinKm: 3.5, dMaxKm: 28.0, hMinM: 30, hMaxM: 16000, vMaxMps: 500, pGhKm: 22.0 },
+      tail_chase: { modeVi: 'Bắn đuổi (Không nhiễu - đạn 5В27Д)', dMinKm: 5.0, dMaxKm: 25.0, hMinM: 50, hMaxM: 18000, vMaxMps: 300, pGhKm: 20.0 },
+      tvk_optical: { modeVi: 'Chế độ thụ động Quang-Điện tử (ОЭС: ТВК + ТПК)', dMinKm: 3.5, dMaxKm: 28.0, hMinM: 20, hMaxM: 18000, vMaxMps: 500, pGhKm: 22.0 },
+      surface: { modeVi: 'Bắn mục tiêu mặt đất / mặt nước', dMinKm: 3.5, dMaxKm: 25.0, hMinM: 0, hMaxM: 500, vMaxMps: 100, pGhKm: 15.0 },
     },
     coverageProfile: {
       id: 'prof_c125_2tm',
       name: 'Khu vực Tiêu diệt C-125-2TM Pechora-2TM',
-      minElevationDeg: 6.0,
+      minElevationDeg: 0.5,
       maxElevationDeg: 65.0,
       points: [
-        { elevationDeg: 6.0, maxRangeKm: 35.4 },
+        { elevationDeg: 0.5, maxRangeKm: 35.4 },
         { elevationDeg: 20.0, maxRangeKm: 35.4 },
         { elevationDeg: 35.0, maxRangeKm: 30.0 },
         { elevationDeg: 50.0, maxRangeKm: 20.0 },
@@ -408,10 +771,11 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   },
   {
     id: 'sam_c125m',
-    name: 'Tổ hợp Tên lửa C-125M Pechora',
+    name: 'Tổ hợp Tên lửa Phòng không C-125M (S-125M Pechora)',
     category: 'TenLuaPhongKhong',
     categoryNameVi: 'Tên Lửa Phòng Không',
-    description: 'Tổ hợp tên lửa phòng không tầm trung C-125M (Bảng II.13 - Đài điều khiển C125M), cự ly tiêu diệt đón 25 km, đuổi 22 km, trần bắn 18 km, vận tốc mục tiêu 700 m/s, tham số 16.5 km.',
+    description:
+      'Tổ hợp tên lửa phòng không tầm trung C-125M theo tài liệu quân sự chính quy (Bảng II.13): tiêu diệt mục tiêu đón 25 km, đuổi 22 km, trần bắn 18 km, sàn hỏa lực 20 m, vận tốc mục tiêu 700 m/s, tham số 16.5 km, 03 bệ phóng 5П73, đài chỉ thị П-19, đài dẫn bắn УНВ/СНР-125.',
     defaultRangeKm: 25.0,
     minEngagementRangeKm: 3.5,
     maxEngagementAltitudeM: 18000,
@@ -420,32 +784,60 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     maxTargetSpeedMps: 700,
     maxTargetParamKm: 16.5,
     reactionTimeSeconds: 6,
-    deployTimeMinutes: 120,
-    guidanceMethodVi: 'Lệnh điều khiển vô tuyến qua đài SNR-125',
+    deployTimeMinutes: 90,
+    guidanceMethodVi: 'Lệnh điều khiển vô tuyến qua đài УНВ/СНР-125 (ПЛК, ТВК, ПЛК-ТВК)',
     defaultScanSpeed: 0,
-    minElevationDeg: 6.0,
+    minElevationDeg: -2.0,
     maxElevationDeg: 65.0,
-    antennaHeightAGL: 6,
+    antennaHeightAGL: 3.9,
     coverageHeightKm: 18,
     symbolColor: '#fb7185',
     domeColor: '#fb7185',
     iconName: 'Crosshair',
     realPhotoUrl: '/images/equipments/sam_c125.jpg',
     model3dUrl: '/models/equipments/sam_launcher.glb',
+    samTerrainMaskMode: 'organic',
+    maxLaunchRangeKm: 30,
+    batteryConfig: {
+      batteryType: 'C-125M Pechora',
+      tarRadarName: 'Đài ra đa chỉ thị mục tiêu П-19',
+      tarRadarId: 'radar_p19',
+      tarRangeKm: 180,
+      tarHeightKm: 18,
+      tarAglM: 6,
+      fcrRadarName: 'Đài điều khiển dẫn bắn УНВ/СНР-125',
+      fcrRadarId: 'radar_snr125',
+      fcrRangeKm: 37,
+      fcrHeightKm: 18,
+      fcrAglM: 3.9,
+      fcrSectorAngleDeg: 60,
+      fcrBlindConeDeg: 65,
+      launcherName: 'Bệ phóng 5П73',
+      launcherCount: 3,
+      defaultLauncherDistanceM: 80,
+      maxCableDistanceM: 150,
+      minEngagementRangeKm: 3.5,
+      maxEngagementRangeKm: 25.0,
+      maxLaunchRangeKm: 30,
+      maxEngagementAltitudeM: 18000,
+      minEngagementAltitudeM: 20,
+    },
     samProfiles: {
-      head_on: { modeVi: 'Bắn đón (Không nhiễu)', dMinKm: 3.5, dMaxKm: 25.0, hMinM: 20, hMaxM: 18000, vMaxMps: 700, pGhKm: 16.5 },
-      tail_chase: { modeVi: 'Bắn đuổi (Không nhiễu)', dMinKm: 6.0, dMaxKm: 22.0, hMinM: 100, hMaxM: 14000, vMaxMps: 300, pGhKm: 16.5 },
-      jamming_passive: { modeVi: 'Nhiễu vô tuyến tiêu cực', dMinKm: 3.5, dMaxKm: 13.0, hMinM: 20, hMaxM: 8000, vMaxMps: 550, pGhKm: 10.5 },
-      jamming_active: { modeVi: 'Nhiễu vô tuyến tích cực', dMinKm: 3.5, dMaxKm: 11.7, hMinM: 30, hMaxM: 6000, vMaxMps: 550, pGhKm: 10.5 },
-      tbk_optical: { modeVi: 'Chế độ ngắm quang truyền hình (TBK)', dMinKm: 3.5, dMaxKm: 20.0, hMinM: 30, hMaxM: 11000, vMaxMps: 400, pGhKm: 16.5 },
+      head_on: { modeVi: 'Không nhiễu - Bắn đón', dMinKm: 3.5, dMaxKm: 25.0, hMinM: 20, hMaxM: 18000, vMaxMps: 700, pGhKm: 16.5 },
+      tail_chase: { modeVi: 'Không nhiễu - Bắn đuổi (đạn 5В27Д)', dMinKm: 6.0, dMaxKm: 22.0, hMinM: 100, hMaxM: 14000, vMaxMps: 300, pGhKm: 16.5 },
+      passive_jamming: { modeVi: 'Nhiễu vô tuyến tiêu cực', dMinKm: 3.5, dMaxKm: 13.0, hMinM: 20, hMaxM: 8000, vMaxMps: 550, pGhKm: 10.5 },
+      active_jamming: { modeVi: 'Nhiễu vô tuyến tích cực', dMinKm: 3.5, dMaxKm: 11.7, hMinM: 30, hMaxM: 6000, vMaxMps: 550, pGhKm: 10.5 },
+      tvk_optical: { modeVi: 'Chế độ Quang truyền hình ТВК', dMinKm: 3.5, dMaxKm: 20.0, hMinM: 30, hMaxM: 11000, vMaxMps: 400, pGhKm: 16.5 },
+      surface: { modeVi: 'Bắn mục tiêu mặt đất / mặt nước', dMinKm: 3.5, dMaxKm: 17.0, hMinM: 0, hMaxM: 500, vMaxMps: 100, pGhKm: 10.0 },
     },
     coverageProfile: {
       id: 'prof_c125m',
       name: 'Khu vực Tiêu diệt C-125M Pechora',
-      minElevationDeg: 6.0,
+      minElevationDeg: -2.0,
       maxElevationDeg: 65.0,
       points: [
-        { elevationDeg: 6.0, maxRangeKm: 25.0 },
+        { elevationDeg: -2.0, maxRangeKm: 15.0 },
+        { elevationDeg: 0.5, maxRangeKm: 25.0 },
         { elevationDeg: 20.0, maxRangeKm: 25.0 },
         { elevationDeg: 35.0, maxRangeKm: 21.0 },
         { elevationDeg: 50.0, maxRangeKm: 14.0 },
@@ -455,36 +847,64 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   },
   {
     id: 'sam_spyder',
-    name: 'Tổ hợp Tên lửa Phòng không Spyder (SR/MR)',
+    name: 'Tổ hợp Tên lửa Phòng không SPYDER (SR/MR)',
     category: 'TenLuaPhongKhong',
     categoryNameVi: 'Tên Lửa Phòng Không',
-    description: 'Tổ hợp tên lửa phòng không cơ động phản ứng nhanh kết hợp tầm ngắn SPYDER-SR (cự ly 20km, trần 9km, tên lửa Python-5) và tầm trung SPYDER-MR (cự ly 50km, trần 16km, tên lửa Derby-MR) theo Bảng 1 và Mặt cắt đứng chuẩn quân sự.',
+    description: 'Tổ hợp tên lửa phòng không cơ động phản ứng nhanh SPYDER kết hợp đạn tầm ngắn SR (cự ly 1-20km, trần 9km, đạn Python-5/Derby) và đạn tầm trung MR trang bị tầng khởi tốc Booster (cự ly 2-50km, trần 16km, đạn Derby-MR/Python-5-MR). Tích hợp đài radar 3D đa chức năng EL/M-2084AD tầm xa 330km, xe chỉ huy CCU và 6 xe bệ phóng MFU (36 đạn trực chiến trên bệ). Kết nối vô tuyến băng rộng BNET cự ly 10.000m, thời gian phản ứng 4s, tiêu diệt đồng thời 20 mục tiêu.',
     defaultRangeKm: 50,
-    minEngagementRangeKm: 2, // Tầm trung MR 2km (Tầm ngắn SR 1km)
+    minEngagementRangeKm: 1, // Tầm ngắn SR từ 1km, tầm trung MR từ 2km
     maxEngagementAltitudeM: 16000, // Tầm trung MR 16km (Tầm ngắn SR 9km)
     minEngagementAltitudeM: 20, // Bảng 1: Sàn hỏa lực 20m
     optimalAltitudeM: 5000,
     maxTargetSpeedMps: 800, // Bảng 1: Vận tốc mục tiêu máy bay < 800 m/s
     maxTargetParamKm: 35.0,
-    reactionTimeSeconds: 9,
-    guidanceMethodVi: 'Chủ động sóng milimet Derby-MR & Hồng ngoại IIR Python-5',
+    reactionTimeSeconds: 4, // Tài liệu BQP: Thời gian phản ứng 4 giây
+    guidanceMethodVi: 'Chủ động sóng milimet Derby-MR & Hồng ngoại 2 băng IIR Python-5 kết hợp Datalink',
     defaultScanSpeed: 0,
     minElevationDeg: 5,
     maxElevationDeg: 75,
-    antennaHeightAGL: 5,
+    antennaHeightAGL: 8,
     coverageHeightKm: 16,
-    symbolColor: '#0ea5e9', // Blue/cyan như ảnh 2
+    symbolColor: '#0ea5e9', // Blue/cyan
     domeColor: '#0ea5e9',
     iconName: 'Zap',
     realPhotoUrl: '/images/equipments/sam_spyder.jpg',
     model3dUrl: '/models/equipments/sam_launcher.glb',
+    samTerrainMaskMode: 'organic',
+    maxLaunchRangeKm: 55,
+    batteryConfig: {
+      batteryType: 'SPYDER-MR/SR',
+      tarRadarName: 'Đài Ra đa Đa chức năng EL/M-2084AD MMR',
+      tarRadarId: 'radar_el_m_2084',
+      tarRangeKm: 330,
+      tarHeightKm: 30,
+      tarAglM: 8,
+      fcrRadarName: 'Xe Chỉ Huy & Điều Khiển Hỏa Lực CCU (Datalink)',
+      fcrRadarId: 'radar_spyder_ccu',
+      fcrRangeKm: 60,
+      fcrHeightKm: 16,
+      fcrAglM: 4,
+      fcrSectorAngleDeg: 360,
+      fcrBlindConeDeg: 75,
+      launcherName: 'Xe Bệ Phóng Tự Hành MFU (3 MFU-MR x 8 đạn + 3 MFU-SR x 4 đạn)',
+      launcherCount: 6,
+      defaultLauncherDistanceM: 500,
+      maxCableDistanceM: 10000, // Máy vô tuyến băng rộng UHF BNET cự ly đến 10.000m
+      minEngagementRangeKm: 1,
+      maxEngagementRangeKm: 50,
+      maxLaunchRangeKm: 55,
+      maxEngagementAltitudeM: 16000,
+      minEngagementAltitudeM: 20,
+    },
     spyderConfig: SPYDER_SYSTEM_DEFAULT_CONFIG,
     samProfiles: {
-      head_on: { modeVi: 'Bắn đón (Không nhiễu)', dMinKm: 2.0, dMaxKm: 50.0, hMinM: 20, hMaxM: 16000, vMaxMps: 800, pGhKm: 35.0 },
-      tail_chase: { modeVi: 'Bắn đuổi (Không nhiễu)', dMinKm: 3.0, dMaxKm: 28.0, hMinM: 50, hMaxM: 12000, vMaxMps: 450, pGhKm: 22.0 },
-      jamming_passive: { modeVi: 'Nhiễu vô tuyến tiêu cực', dMinKm: 2.0, dMaxKm: 42.0, hMinM: 20, hMaxM: 14000, vMaxMps: 800, pGhKm: 28.0 },
-      jamming_active: { modeVi: 'Nhiễu vô tuyến tích cực', dMinKm: 2.0, dMaxKm: 35.0, hMinM: 30, hMaxM: 12000, vMaxMps: 800, pGhKm: 25.0 },
-      tbk_optical: { modeVi: 'Chế độ quang điện tử IIR quang học (Python-5)', dMinKm: 1.0, dMaxKm: 45.0, hMinM: 20, hMaxM: 15000, vMaxMps: 800, pGhKm: 30.0 },
+      head_on: { modeVi: 'SPYDER-MR: Bắn đón (Derby-MR)', dMinKm: 2.0, dMaxKm: 50.0, hMinM: 20, hMaxM: 16000, vMaxMps: 800, pGhKm: 35.0 },
+      sr_mode: { modeVi: 'SPYDER-SR: Tầm ngắn (Python-5 / Derby)', dMinKm: 1.0, dMaxKm: 20.0, hMinM: 20, hMaxM: 9000, vMaxMps: 800, pGhKm: 15.0 },
+      lobl_sr: { modeVi: 'SPYDER-SR: Khóa trước khi phóng (LOBL)', dMinKm: 1.0, dMaxKm: 15.0, hMinM: 20, hMaxM: 9000, vMaxMps: 800, pGhKm: 12.0 },
+      tail_chase: { modeVi: 'Bắn đuổi mục tiêu bay xa dần', dMinKm: 3.0, dMaxKm: 28.0, hMinM: 50, hMaxM: 12000, vMaxMps: 450, pGhKm: 22.0 },
+      toplite_optical: { modeVi: 'Cảm biến Toplite MFU (FLIR/CCD/LRF phục kích quang học)', dMinKm: 1.0, dMaxKm: 20.0, hMinM: 20, hMaxM: 9000, vMaxMps: 600, pGhKm: 15.0 },
+      jamming_passive: { modeVi: 'Nhiễu tiêu cực (Kim loại/Chaff)', dMinKm: 2.0, dMaxKm: 42.0, hMinM: 20, hMaxM: 14000, vMaxMps: 800, pGhKm: 28.0 },
+      jamming_active: { modeVi: 'Nhiễu tích cực (Chế độ HOJ bám nguồn nhiễu)', dMinKm: 2.0, dMaxKm: 35.0, hMinM: 30, hMaxM: 12000, vMaxMps: 800, pGhKm: 25.0 },
     },
     coverageProfile: {
       id: 'prof_spyder',

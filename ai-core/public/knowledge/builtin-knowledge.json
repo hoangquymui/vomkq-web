@@ -1,0 +1,361 @@
+{
+  "schema_version": 1,
+  "knowledge_id": "vector-ai.builtin-reference.v1",
+  "language": "vi",
+  "policy": "reference_only",
+  "documents": [
+    {
+      "id": "trinh-sat-tren-khong",
+      "title": "Trinh Sát Trên Không",
+      "source_file": "Trinh Sat Tren Khong.docx",
+      "sha256": "b784c5b8ce99cb8037afaa9c364819a53ebb1d62b2f288a5449eb83e261866be",
+      "paragraphs": 448,
+      "tables": 0,
+      "math_objects": 355,
+      "math_paragraphs": 64,
+      "characters": 22955,
+      "chunks": 15
+    },
+    {
+      "id": "so-tay",
+      "title": "Sổ Tay",
+      "source_file": "So Tay.docx",
+      "sha256": "2795bbe444bb6e4e91a5809f288683c6659c336d0464125b4d390ef185d1f608",
+      "paragraphs": 342,
+      "tables": 0,
+      "math_objects": 255,
+      "math_paragraphs": 42,
+      "characters": 23969,
+      "chunks": 15
+    },
+    {
+      "id": "si-quan-cao-xa",
+      "title": "Sĩ Quan Cao Xạ",
+      "source_file": "Si Quan Cao Xa.docx",
+      "sha256": "b95347b054092ced561051413f8aa1cc2fb92743285c8021e81d19d4f3ffafc1",
+      "paragraphs": 148,
+      "tables": 5,
+      "math_objects": 133,
+      "math_paragraphs": 27,
+      "characters": 8190,
+      "chunks": 5
+    }
+  ],
+  "chunks": [
+    {
+      "id": "trinh-sat-tren-khong-001",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 1,
+      "start_block": 1,
+      "end_block": 36,
+      "text": "Trinh Sát Trên Không\n\nCông Thức tính điểm mù trên đầu:\n\n$${R}_{kh mù}={H}_{mt}.Cotg{∈}_{1}$$\n\n${R}_{kh mù}$: bán kính khu mù đỉnh đầu\n\n$${H}_{mt}:độ cao của mục tiêu$$\n\n${∈}_{1}$: góc tà của mép trên cánh sóng\n\n-Các tham số của vùng phát hiện:\n\nPhương Vị phát hiện: β\n\nCự ly phát hiện xa nhất: ${D}_{max}$\n\nCự ly phát hiện gần nhất: ${D}_{min}$\n\nĐộ cao phát hiện thấp nhất: ${H}_{min}$\n\nTrần phát hiện của đài:\n\n+ Góc tà phát hiện nhỏ nhất: ${Ԑ}_{min}$\n\n+Góc tà phát hiện lớn nhất: ${Ԑ}_{max}$\n\n2.Trường Rada\n\nb)Những tham số cơ bản của trường rada:\n\n*Độ cao giới hạn dưới: (${G}_{ghd}$)\n\nĐộ cao giới hạn dưới của trường rada là độ cao thấp nhất của trường rada khi mục tiêu bay bằng hoặc lớn hơn độ cao đó, đài rada phát hiện và bám sát liên tục.\n\n$${D}_{tb}=\\frac{{n}_{1}{D}_{1}+n{D}_{2}+…….{n}_{n}{D}_{n}}{{n}_{1}+{n}_{2}+…….{n}_{n}}$$\n\n${D}_{tb}$: Cự ly phát hiện trung bình của các trạm tham gia tạo trường.\n\n${n}_{1}+{n}_{2}$…….${n}_{n}$: số lượng trạm có cùng loại đài rada\n\n${D}_{1},{D}_{2}$……..${D}_{n}$: cự ly phát hiện của từng loại đài ở độ cao ấn định để tính: công thức cự ly phát hiện của trường rada của độ cao giới hạn dưới:\n\n$${D}_{0}=\\sqrt{\\frac{{S}_{Trường rada}}{2,6xn}}$$\n\n$${S}_{trường rada}:diện tích khu vực trường rada$$\n\nn: số trạm rada tạo trường\n\nĐể trường rada có độ cao giới hạn trên thích hợp phải thỏa mãn điều kiện:\n\n$$d\\le {D}_{Phghtr}-{R}_{khu mù}$$\n\n${D}_{phgtr}$:cự ly phát hiện của đài rada ở độ cao giới hạn trên\n\n${R}_{khu mù}$: bán kính khu mù đỉnh đầu\n\nd: giãn cách bố trí các đại đội\n\n*diện tích của trường rada:\n\nLà mạt phẳng cắt ngang trường rada qua độh cao giới hạn dưới và giới hạn trong phạm vi phát hiện mục tiêu của các đài rada ở độ cao đó."
+    },
+    {
+      "id": "trinh-sat-tren-khong-002",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 2,
+      "start_block": 36,
+      "end_block": 62,
+      "text": "Là mạt phẳng cắt ngang trường rada qua độh cao giới hạn dưới và giới hạn trong phạm vi phát hiện mục tiêu của các đài rada ở độ cao đó.\n\n${S}_{trường rada}$=2,6x $D\\frac{2}{0}$ x n\n\n${S}_{trường rada}$: diện tích của trường rada\n\nn: số trạm tạo nên trường rada\n\n${D}_{0}$:cự ly phát hiện ở độ cao giới hạn dưới\n\n*hệ số trùng lặp của trường rada\n\n${K}_{trl}=1,2$x$(\\frac{D H}{D 0}{)}^{2}$\n\n${K}_{trl}$:hệ số trùng lặp\n\n$${D}_{H}:cự ly phát hiện của trường rada ở một độ cao nhất định$$\n\n${D}_{0}$:cự ly phát hiện ở độ cao giới hạn dưới\n\n*Xác suất phát hiện mục tiêu của trường rada.\n\nXác suất phát hiện mục tiêu của trường rada: đại lượng đặc trưng cho khả năng phát hiện mục tieu của trường rada trong những điều kiện xác định có trị số thay đổi từ 0÷1.\n\nNó phụ thuocj vào tính năng, kỹ thuật, chiến thuật của từng loại đài rada.\n\n${P}_{ph}=1-\\left(1-{P}_{1}\\right)x\\left(1-{P}_{2}\\right)$x… (1-${P}_{n})$\n\n${P}_{1}$ ${P}_{2}$….${P}_{n}$:xác xuất phát hiện của từng loại đài rada:\n\nSóng mét = 0,8; sóng cm= 0,7. Xác suất trung bình của các loại đài là 0,75\n\n${P}_{ph}$: xác suất phát hiện của trường rada.\n\n+ Công thức tính xác suất phát hiện của trường rada dưới dạng xác suất trung bình\n\n$${P}_{ph}=1-(1-{P}_{tb}{)}^{{K}_{Trl}}$$\n\n${P}_{tb}$:xác suất phát hiện hiện trung bình của các loại đài:\n\nKhả năng chiến đấu của trạm rada\n\n*khả năng chiến đấu chủ yếu:\n\nKhả năng phát hiện và bám sát mục tiêu: là khả năng xác định số lượng mục tiêu mà trạm rada có thể phát hiện bám sát theo giãn cách quy định.\n\n$$N={K}_{trl}\\left(\\frac{{t}_{g}}{{t}_{cm}}{K}_{ncm}+\\frac{{t}_{g}}{{t}_{dm}}{K}_{ndm}+\\frac{{t}^{g}}{{t}_{m}}{K}_{nm}\\right)$$\n\nN: số lượng mục tieu mà trạm rada đã chỉnh lý"
+    },
+    {
+      "id": "trinh-sat-tren-khong-003",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 3,
+      "start_block": 62,
+      "end_block": 86,
+      "text": "N: số lượng mục tieu mà trạm rada đã chỉnh lý\n\n${K}_{trl}$: hệ số trùng lặp tình báo khi hai đài cùng bám sát một tốp(0,8)\n\n$${t}_{g}:giãn cách xác định thông báo tọa độ mục tiêu của các tốp mỗi lần(60\")$$\n\n${t}_{cm},{t}_{dm},{t}_{m}$:thời gian trắc thủ rada xác định tọa độ một tốp mục tiêu(7,5”)\n\n${K}_{ncm},{K}_{ndm},{K}_{nm}$: hệ số nhiễu đối với từng loại rada (0,6÷0,8).\n\n*khả năng thông báo:\n\n$N=\\sum_{i=1}^{m} \\frac{T}{{t}_{j}}$\n\n$$N:số lượng tình báo phát lên SCH eRada.$$\n\n$m$:số kênh thông báo\n\n$T$:Giãn cách thông báo(60”)\n\n$${t}_{1}:thời gian thông báo một tình báo(VTĐ=12, HTĐ=7,5\")$$\n\n*Khả năng dẫn đường cho không quân tiêm kích\n\n${K}_{dđ}$=(1÷2)N\n\n${K}_{dđ}$:Số máy bay tiêm kích mà trạm dẫn được\n\nN:số lượng máy đo cao được trang bị\n\nKhả năng chiến đấu của rada trung đoàn\n\n*khả năng chiến đấu chủ yếu\n\n-khả năng tạo trường rada: là khả năng tạo vùng quan sát của các phan đội rada dược xác định bằng không gian có giới hạn mà trong đó các trạm rada có thể phát hiện, bán sát, phân biệt và thông báo liên tục khi cụ bay với xác suất không nhỏ hơn 0,5.\n\n${S}_{e}$:diện tích của trường rada\n\n${D}_{0}$:cự ly phát hiện độ cao giới hạn dưới của đài rada\n\nn: số lượng trạm rada triển khai chiến đấu\n\n*Khả năng thông báo tình báo: là số lượng và chất lượng tình báo mà SCH trung đoàn rada truyền đạt lên SCH cấp trên và các đơn vị hiệp đồng chiến đấu trong một thời gian nhất định, trong mọi điều kiện khí hậu, thời tiết, nó phụ thuộc vào trình độ chỉ huy của cán bộm khả năng nghiệp vụ của nhân viên số lượng, chat lượng khí tài thông tin\n\n${N}_{tb}={K}_{ss}{K}_{n}\\sum_{i=1}^{n} \\frac{T}{{t}_{i}}$\n\n${N}_{tb}$: số lượng tình báo rada thông báo trong một phút"
+    },
+    {
+      "id": "trinh-sat-tren-khong-004",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 4,
+      "start_block": 86,
+      "end_block": 116,
+      "text": "${N}_{tb}$: số lượng tình báo rada thông báo trong một phút\n\n${K}_{ss}$:hệ số song song biểu thị trùng tình báo rada khi truyền trên nhiều kênh khác nhau(0,8)\n\n${K}_{n}$:hệ số biểu thị sự mất mát tình báo do nhiễu thông tin(0,5÷0,8)\n\nT: giãn cách tình báo (60”)\n\n${t}_{i}$:thời gian cần thiết để truyền đạt một tình báo (VTĐ=12”; HTĐ=7,5”)\n\nn: số liowngj kênh thông tin dung để truyền đạt tình báo rada\n\n*Khả năng bảo đảm dẫn đường chiến đấu cho không quân tiêm kích\n\n${K}_{dđ}={n}_{1}{N}_{MB}$\n\n${K}_{dđ}$:số tốp máy bay trung đoàn rada bảo đảm dẫn đường\n\n${n}_{t}$: số trạm dẫn đường.\n\n${N}_{MB}$: số tốp máy bay một trạm rađa bảo đảm dẫn đường cùng một lúc ($1\\div 2$ tốp).\n\n*Yêu cầu bảo đảm rađa cho không quân tiêm kích:\n\nCự ly thông báo xa:\n\n$${D}_{th.báo xa}={D}_{đánh chặn}+{V}_{mt}\\cdot \\left({t}_{giữ chậm}+{t}_{Σ…}\\right)$$\n\n$${t}_{Σ}={t}_{lệnh}+{t}_{cất cánh}+{t}_{lên cao}+{t}_{bay bằng}+{t}_{cơ động}$$\n\n${D}_{thông báo xa}$: cự ly thông báo xa.\n\n${D}_{đánh chặn}$: cự ly tuyến đánh chặn.\n\n${V}_{mt}$: vận tốc mục tiêu.\n\n${t}_{giữ chậm}$: thời gian giữ chậm tình báo.\n\n${t}_{lệnh}$: thời gian ra lệnh.\n\n${t}_{cất cánh}$: thời gian máy bay nổ máy cất cánh.\n\n${t}_{lên cao}$: thời gian máy bay lấy độ cao.\n\n${t}_{bay bằng}$: thời gian máy bay bay bằng.\n\n${t}_{cơ động}$: thời gian máy bay cơ động tìm mục tiêu.\n\n$${T}_{bb}=\\frac{{D}_{đánh chặn}}{{V}_{MBTK}}$$\n\nCự ly thông báo chính xác:\n\n$${D}_{th.báo ch.xác}={D}_{đánh chặn}+{V}_{mt}\\cdot \\left({t}_{dẫn đường}+{t}_{cơ động}\\right)$$\n\n+ Yêu cầu đảm bảo:\n\n$${D}_{th.báo xa}={D}_{phát hiện đài 1}+{V}_{mt}\\cdot \\left({t}_{giữ chậm}+{t}_{SSCĐ}\\right)$$\n\n$${D}_{th.báo ch.xác}={D}_{xa vst}+{V}_{mt}\\cdot \\left({t}_{giữ chậm}+{t}_{ttoán}+{t}_{bay}\\right)$$"
+    },
+    {
+      "id": "trinh-sat-tren-khong-005",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 5,
+      "start_block": 116,
+      "end_block": 146,
+      "text": "$${D}_{th.báo ch.xác}={D}_{xa vst}+{V}_{mt}\\cdot \\left({t}_{giữ chậm}+{t}_{ttoán}+{t}_{bay}\\right)$$\n\n${D}_{phát hiện đài 1}$: cự ly phát hiện mục tiêu của đài rađa nhìn vòng (d tên lửa) hoặc khí tài của PPK.\n\n${V}_{mt}$: vận tốc bay của mục tiêu $m/s$\n\n${t}_{giữ chậm}$: thời gian giữ chậm tình báo 30\"\n\n${t}_{SSCĐ}={t}_{lệnh}+{t}_{nguồn}+{t}_{mở đài}+{t}_{thao tác}$\n\n${t}_{lệnh}$: thời gian ra lệnh từ SCH trung đoàn cho SCH tiểu đoàn.\n\n${t}_{nguồn}$: thời gian mở máy nổ hoặc điện công nghiệp cấp điện cho đài.\n\n${t}_{mở đài}$: thời gian mở máy.\n\n${t}_{thao tác}$: thời gian kiểm tra chức năng.\n\n${D}_{xa vst}$: cự ly xa nhất vùng sát thương của tên lửa hoặc cự ly diệt xa nhất của pháo phòng không.\n\n${t}_{tính toán}$: thời gian xác định phần tử mục tiêu (cả ВОЛГА và ПЕЧОРА lấy $=25''\\div 27''$).\n\n${t}_{bay}$: thời gian bay của tên lửa đến điểm gặp mục tiêu.\n\n*Ghi chú:\n\n${D}_{xa vst}$: cự ly xa nhất đối với ВОЛГА = 56km; ПЕЧОРА = 25km.\n\n${t}_{bay}$:thời gian bay của tên lửa dến cự ly xa nhất của vùng sát thương\n\nОЛГА=81±5”\n\nПЕЧОРА=39±3”\n\nYêu cầu trận địa rada\n\n$${OP}_{1}=0,7\\frac{{h}_{a}^{2}}{λ}$$\n\n$$OP=4\\frac{{h}_{a}^{2}}{λ}$$\n\n$${OP}_{0}=12\\frac{{h}_{a}^{2}}{λ}$$\n\n$${OP}_{2}=23,3\\frac{{h}_{a}^{2}}{λ}$$\n\n$${a}_{1}=11,3\\frac{{h}_{a}^{2}}{λ}$$\n\n$${b}_{1}=2,82\\frac{{h}_{a}^{2}}{λ}$$\n\n${h}_{a}$: độ cao của anten.\n\n$λ$: bước sóng của đài.\n\n${a}_{1}$: bán kính lớn nhất của khu vực phản xạ.\n\n${b}_{1}$: bán kính nhỏ nhất của khu vực phản xạ.\n\nKhi chọn trận địa phải chọn được một khu vực bằng phẳng xung quanh điểm đặt đài có kích thước như trên đặc biệt chú ý tới khu vực $OP$ và ${OP}_{0}$.\n\nb) Tính toán độ lồi lõm cho phép:\n\nĐối với đài rada sóng mét:"
+    },
+    {
+      "id": "trinh-sat-tren-khong-006",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 6,
+      "start_block": 146,
+      "end_block": 174,
+      "text": "Đối với đài rada sóng mét:\n\n$${h}_{v}\\le \\frac{λL}{32{h}_{a}}$$\n\n${h}_{v}$: độ chênh cao đối với điểm đặt đài.\n\n$λ$: bước sóng của đài.\n\n$L$: cự ly từ anten đến vật lồi lõm.\n\n${h}_{a}$: độ cao của anten.\n\nĐối với đài rađa sóng cm:\n\n$${h}_{v}\\le \\frac{λL}{16{h}_{a}}$$\n\n${h}_{v}$: độ chênh cao đối với điểm đặt đài.\n\n$λ$: bước sóng của đài rađa.\n\n$L$: cự ly từ anten đến vật lồi lõm.\n\nc) Tính góc nghiêng trung bình: ${γ}_{tb}$\n\nĐối với địa hình có mặt phản xạ nghiêng, đều, bằng phẳng:\n\n$${γ}_{tb}=3440\\cdot \\frac{Δ{h}_{2} \\left(m\\right)}{L \\left(m\\right)} \\left(phút\\right)$$\n\nMặt phản xạ có địa hình không bằng phẳng:\n\nTa chia mặt phản xạ ra thành 5 khu vực theo năng lượng nguồn phản xạ.\n\n${L}_{1},{L}_{2},{L}_{3},{L}_{4},{L}_{5}$: khoảng cách từ vị trí đặt đài đến tâm các khu vực phản xạ A, B, C, D, E.\n\n${D}_{1},{D}_{2},{D}_{3},{D}_{4},{D}_{5}$: chiều dài của các khu vực phản xạ A, B, C, D, E.\n\n$D$: chiều dài của cả khu vực phản xạ.\n\n${S}_{a},{S}_{b},{S}_{c},{S}_{d},{S}_{e}$: diện tích mặt cắt địa hình.\n\n$${γ}_{tb}^{ph}=M\\cdot C$$\n\n$$M=0,55\\frac{{S}_{a}}{{D}_{1}}+0,20\\frac{{S}_{B}}{{D}_{2}}+0,10\\frac{{S}_{e}}{{D}_{3}}+0,10\\frac{{S}_{d}}{{D}_{4}}+0,05\\frac{{S}_{e}}{{D}_{5}}$$\n\n$$C=\\frac{3440}{0,55 {l}_{1}+0,20 {l}_{2}+0,1 {l}_{3}+0,1 {l}_{4}+0,05 {l}_{5}}$$\n\nĐể tính ${γ}_{tb}$ một cách chính xác phải tính trung bình ở ba góc tà.\n\n$${γ}_{tb}=\\frac{{γ}_{tb}\\left({3}^{∘}\\right)+{γ}_{tb}\\left({6}^{∘}\\right)+{γ}_{tb}\\left({12}^{∘}\\right)}{3}$$\n\nĐể xác định ${γ}_{tb}$ cho phép:\n\nNếu địa hình dốc xuống, để năng lượng bị tiêu hao ít nhất ở mặt phản xạ thì được chọn sao cho trục cánh sóng thứ nhất vừa tiếp giáp với mặt đất.\n\n$${γ}_{tb}\\le Sin{θ}_{1max}=\\frac{λ}{4{h}_{a}}$$"
+    },
+    {
+      "id": "trinh-sat-tren-khong-007",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 7,
+      "start_block": 174,
+      "end_block": 210,
+      "text": "$${γ}_{tb}\\le Sin{θ}_{1max}=\\frac{λ}{4{h}_{a}}$$\n\nNếu địa hình dốc lên thì chọn ở mức độ đảm bảo khi năng lượng phát hiện tầng thấp và tầng trung.\n\n$${γ}_{tb}\\le 30'$$\n\nd) Tính góc che khuất: ${α}_{ck}$:\n\n$${α}_{ck}=3,44\\times \\frac{Δh \\left(m\\right)}{L \\left(km\\right)} \\left(phút\\right)$$\n\n$$Δh={H}_{mt}-{H}_{ck}-{h}_{a}-{h}_{z}$$\n\n${h}_{a}$: độ cao anten so với vị trí đặt đài.\n\n${H}_{ck}$: độ cao vật che khuất.\n\n${h}_{z}$: lượng sửa đường cong trái đất (tra bảng).\n\n$L$: cự ly từ điểm đặt đài đến vật che khuất.\n\nGóc che khuất cho phép:\n\n$${ε}_{Ck}\\le Sin{θ}_{1min}=\\frac{λ}{16{h}_{a}} \\left(phút\\right)$$\n\n* Công thức tính độ cong trái đất: ${h}_{z}$\n\n$${h}_{z}=\\frac{{D}^{2}}{2R}$$\n\n$D$: cự ly tà của mặt phẳng ngang.\n\n$R$: bán kính trái đất $=6.370km$.\n\n${R}_{tương đương}=8.580km$.\n\ne) Tính cự ly nhìn thẳng:\n\n$${D}_{nt}=3,57\\left(\\sqrt{{h}_{a}}+\\sqrt{{H}_{mt}}\\right) \\left(km\\right)$$\n\n${h}_{a}$: độ cao anten.\n\n${H}_{mt}$: độ cao mục tiêu.\n\nf) Vẽ cánh sóng:\n\nTính số lượng búp sóng $N$.\n\n$$N\\ge \\frac{2{h}_{a}}{λ}$$\n\nĐộ rộng cánh sóng chính ở mức 0,5 công suất.\n\n$$2θ=B\\cdot \\sqrt{\\frac{λ}{L}}$$\n\n$L$: chiều dài anten.\n\n$B$: hệ số phụ thuộc vào $L$ và $λ$ (thường lấy 6,71) nó thay đổi trong phạm vi $0,5\\div 10,2$.\n\nCông thức tính cánh sóng hướng tổng hợp:\n\n${F}_{tổng}\\left(θ\\right)={F}_{a}\\left(θ\\right)\\cdot {F}_{θđ}$\n\n${F}_{a}\\left(θ\\right)$: biểu đồ hướng của anten.\n\n${F}_{θđ}$: biểu đồ hướng của mặt đất.\n\ng) Tính vùng phát hiện của đài:\n\nPhương trình cự ly tầng trung:\n\n$D=\\sqrt[4]{\\frac{{P}_{u}\\cdot {τ}_{u}{G}_{a}^{2}\\cdot {λ}^{2}\\cdot {δ}_{mt} n n'}{{\\left(4π\\right)}^{3}\\cdot {P}_{th min}}}\\times f\\left(θ,φ\\right)$\n\n${P}_{u}$: công suất phát."
+    },
+    {
+      "id": "trinh-sat-tren-khong-008",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 8,
+      "start_block": 210,
+      "end_block": 247,
+      "text": "${P}_{u}$: công suất phát.\n\n${τ}_{u}$: độ rộng xung phát.\n\n${G}_{a}$: hệ số khuếch đại của anten.\n\n$λ$: bước sóng của đài.\n\n${δ}_{mt}$: mặt phản xạ hiệu dụng của mục tiêu.\n\n${P}_{th min}$: độ nhạy máy thu nhỏ nhất.\n\n$n$: hiệu suất truyền năng lượng (thường $=1$).\n\n$n'$: hiệu suất truyền năng lượng trong dây cáp.\n\nPhương trình cự ly tầng thấp:\n\n$D=\\sqrt[8]{\\frac{{P}_{u}\\cdot {G}_{a}^{2}\\cdot {H}_{mt}^{4}\\cdot {δ}_{mt}\\cdot {h}_{a}^{4}\\cdot 4π}{{P}_{th min}\\cdot {λ}^{2}}}$\n\n${H}_{mt}$: độ cao mục tiêu.\n\n${h}_{a}$: độ cao anten.\n\nh) Tính hệ số trái đất:\n\n$Sin {θ}_{max}=\\left(2n+1\\right)\\times \\frac{λ}{4{h}_{a}}$\n\n$Sin {θ}_{min}=n \\frac{λ}{2{h}_{a}}$\n\n$Sin {θ}_{tb}=\\left(n+1\\right) \\frac{λ}{8{h}_{a}}$\n\ni) Lập hồ sơ trận địa:\n\nVẽ mặt cắt địa hình và ${γ}_{tb}$.\n\nPhân chia khu vực hình quạt.\n\nVẽ cánh sóng đứng và hiệu chỉnh cánh sóng.\n\nVẽ góc che khuất.\n\nVẽ phạm vi phát hiện mặt phẳng ngang.\n\nVẽ sơ đồ bố trí trận địa.\n\nThuyết minh trận địa.\n\nTập hồ sơ văn kiện trận địa.\n\nSơ đồ tổng hợp trận địa.\n\nTác Chiến phòng không\n\nCác trạng thái sẵn sàng chiến đấu và cấp báo động chiến đấu\n\n*Một số nội dung tính toán chiến thuật\n\n1. Mật độ hỏa lực: (${M}_{HL}$)\n\na) Mật độ hỏa lực (mật độ bắn) của 1 tiểu đoàn tên lửa:\n\n$${M}_{HL (d)}=\\frac{1}{{T}_{ck}} \\left(lần bắn/ phút\\right).$$\n\n${T}_{ck}$: chu kỳ bắn của tiểu đoàn tên lửa.\n\nb) Mật độ hỏa lực của 1 trung đoàn hoặc một cụm tên lửa:\n\n$${M}_{HL e (lữ)}=\\sum_{i=1}^{n} {M}_{HLi}\\left(C75M\\right)+\\sum_{j=1}^{n} {M}_{HLj}\\left(C.125M\\right)$$\n\n${M}_{HLi(j)}$: mật độ hoả lực của tiểu đoàn thứ i (j).\n\n$${M}_{HL (cụm)}=\\sum_{i=1}^{n} {M}_{HLi}+\\sum_{j=1}^{n} {M}_{HLj}$$\n\n$n$: số lượng bộ khí tài kiểu i(j) bố trí trong đội hình."
+    },
+    {
+      "id": "trinh-sat-tren-khong-009",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 9,
+      "start_block": 247,
+      "end_block": 278,
+      "text": "$n$: số lượng bộ khí tài kiểu i(j) bố trí trong đội hình.\n\nMật độ bắn của tiểu đoàn hỏa lực phụ thuộc vào tính năng bộ khí tài tên lửa và trình độ của kíp chiến đấu.\n\n2. Mật độ bay: (${M}_{B}$)\n\n$${M}_{B}=\\frac{{N}_{mb}}{{T}_{đh}} \\left(số máy bay/ phút\\right).$$\n\n$${T}_{đh}=\\frac{{S}_{đh}}{{V}_{mt}}$$\n\n${M}_{B}$: mật độ bay.\n\n${N}_{mb}$: tổng số máy bay bay vào yếu địa.\n\n${T}_{đh}$: thời gian đội hình bay.\n\n${S}_{đh}$: chiều dài đội hình bay.\n\n${V}_{mt}$: tốc độ máy bay địch.\n\nYêu cầu: ${M}_{HL}>{M}_{B}$.\n\n3. Số lần bắn (${N}_{LB}$)\n\na) Số lần bắn của tiểu đoàn:\n\n* Số lần bắn tính theo thời gian tập kích:đội hình\n\n$${N}_{lần bắn (d)}=\\frac{{T}_{lưu phóng}}{{T}_{Ck}}+1 \\left(đối với mục tiêu lẻ\\right)$$\n\n$${N}_{lần bắn (d)}=\\frac{{T}_{lưu phóng}+{T}_{đội hình}}{{T}_{Ck}}+1 \\left(đối với tốp mục tiêu\\right)$$\n\n$+$ Số 1 là lần bắn đầu tiên.\n\n$+$ ${T}_{đội hình}$: Giãn cách giữa chiếc đầu và chiếc cuối trong tốp.\n\n${T}_{Ck}$: chu kỳ bắn của tiểu đoàn tên lửa.\n\n$${T}_{Ck}={T}_{bắn}+{T}_{chuyển}$$\n\n$${T}_{bắn}={t}_{G.chậm phóng}+{t}_{G.cách} \\left(n-1\\right)+{t}_{bay}$$\n\n$n$: số đạn bắn trong loạt.\n\n$${T}_{chuyển}={T}_{lệnh}+{t}_{S.sao}+{t}_{P.tử}$$\n\n${T}_{Lưu phóng}$: Thời gian lưu của mục tiêu trong khu vực phóng (tra bảng hoặc tính).\n\nCông thức tính:\n\n$${T}_{Lưu phóng}=\\frac{{h}_{i}}{{V}_{mt}}+{t}_{bay xa}-{t}_{bay gần}$$\n\n${h}_{i}$: chiều sâu khu vực sát thương.\n\n$${h}_{i}={D}_{xa KVST}-{D}_{gần KVST}$$\n\n${V}_{mt}$: tốc độ máy bay địch.\n\n${t}_{bay xa}$: thời gian tên lửa bay đến giới hạn xa khu vực sát thương.\n\n${t}_{bay gần}$: thời gian tên lửa bay đến giới hạn gần khu vực sát thương.\n\n* Công thức tính thời gian bay của tên lửa."
+    },
+    {
+      "id": "trinh-sat-tren-khong-010",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 10,
+      "start_block": 278,
+      "end_block": 311,
+      "text": "* Công thức tính thời gian bay của tên lửa.\n\n+ Đối với C125M:\n\nKhi $H<5km$: ${t}_{bay}=1,6{D}_{gặp}+1,4''$.\n\nKhi $H>5km$: ${t}_{bay}=1,25{D}_{gặp}+3,1''$.\n\n+ Đối với C75M:\n\n$${T}_{bay}=\\frac{4}{3}{D}_{gặp}+\\left(7,3\\div 7,55''\\right)$$\n\nThời gian bay của tên lửa đến điểm gặp tức là thời gian địch bay đến tuyến hoàn thành nhiệm vụ (tuyến cắt bom).\n\n* Tuyến cắt bom hoặc tuyến hoàn thành nhiệm vụ (HTNV) của địch được tính như sau:\n\n$${R}_{HTNV}={R}_{M}+{R}_{ST}+A$$\n\n${R}_{M}$: bán kính mục tiêu bảo vệ:\n\nMục tiêu điểm ${R}_{M}=0$\n\nKích thước nhỏ ${R}_{M}=\\left(1,5\\div 2\\right)km$.\n\nKích thước vừa ${R}_{M}=\\left(5\\div 7\\right)km$.\n\nKích thước lớn ${R}_{M}=\\left(7\\div 10\\right)km$.\n\n${R}_{ST}$: bán kính sát thương của bom đạn.\n\nBom thường $=0km$.\n\nBom đạn hạt nhân $=5km$\n\n$A$: cự ly ném bom.\n\n$$A={V}_{mt}\\cdot {t}_{bom rơi}-Δ$$\n\n$${t}_{bom rơi}=\\sqrt{\\frac{2{H}_{mt}}{g}}$$\n\n$$A={V}_{mt}\\cdot \\sqrt{\\frac{2{H}_{mt}}{g}}-Δ$$\n\n$Δ$: độ lùi của bom.\n\n$$Δ=\\left\\{\\begin{matrix}0,25\\cdot {H}_{mt} & \\left(khi {V}_{mt}\\le 300m/s\\right). \\\\ 0,4\\cdot {H}_{mt} & \\left(khi {V}_{mt}>300m/s\\right).\\end{matrix}\\right)$$\n\n${H}_{mt}$: độ cao của mục tiêu.\n\n$g$: gia tốc rơi tự do ($\\approx 10{m/s}^{2}$).\n\nb) Số lần bắn tối đa của d trong 1 trận (tính theo lượng đạn tên lửa).\n\n$${N}_{b tối đa}\\le \\frac{Q}{n}$$\n\n${N}_{b tối đa}$: số lần bắn tối đa của tiểu đoàn.\n\n$Q$: tổng số đạn có ở tiểu đoàn.\n\n$n$: số đạn trong 1 lần bắn.\n\n* Điều kiện bắn chuyển di hỏa lực:\n\nĐể đạn gặp máy bay địch ở giới hạn xa khu vực sát thương:\n\n${Δ}_{t}>{T}_{CkB}$\n\nNếu ${Δ}_{t}<{T}_{CkB}$: thì phải tính toán (tra bảng) chọn cự ly phóng tên lửa sao cho tên lửa gặp mục tiêu ở trong khu vực sát thương."
+    },
+    {
+      "id": "trinh-sat-tren-khong-011",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 11,
+      "start_block": 311,
+      "end_block": 337,
+      "text": "Nếu ${Δ}_{t}<{T}_{CkB}$: thì phải tính toán (tra bảng) chọn cự ly phóng tên lửa sao cho tên lửa gặp mục tiêu ở trong khu vực sát thương.\n\n${Δ}_{t}$: Giãn cách bay giữa các mục tiêu đến giới hạn xa khu vực sát thương.\n\nc) Số lần bắn của trung (lữ) đoàn:\n\n${N}_{lần bắn (e)}=\\sum_{i=1}^{{K}_{t.gia}} {N}_{lần bắn i}$\n\n${N}_{lần bắn}$: số lần bắn của 1 tiểu đoàn.\n\n${K}_{t.gia}$: số tiểu đoàn tham gia bắn.\n\n$N$: lần bắn của e khi bắn tốp mục tiêu: đội hình\n\n${N}_{lần bắn (e)}=\\sum_{i=1}^{{K}_{t.gia}} \\left(\\frac{{T}_{lưu phóng}+{T}_{đội hình}}{{T}_{Ck}}+1\\right)$\n\nd) Số lần bắn của sư đoàn:\n\n${N}_{lần bắn (f)}=tổng số lần bắn của các trung đoàn.$\n\n4. Khả năng hỏa lực\n\nKhả năng hỏa lực của f (e) là kỳ vọng toán học số mục tiêu bị tiêu diệt (${M}_{M}(e)$) và được tính như sau:\n\na. Đối với e tên lửa.\n\nTrung đoàn có 1 loại khí tài:\n\n${M}_{M}(e)=\\sum_{i=1}^{{K}_{t.gia}} {N}_{Lbắn i}\\cdot {P}_{ni}\\cdot {K}_{Thực tế}$\n\nTrung đoàn có 2 loại khí tài:\n\n${M}_{M}(e)=\\sum_{i=1}^{{K}_{t.gia}} {N}_{Lbắn i}\\cdot {P}_{ni}\\cdot {K}_{Thực tế}+\\sum_{j=1}^{{K}_{t.gia}} {N}_{Lbắn j}\\cdot {P}_{nj}\\cdot {K}_{Thực tế}$\n\n${K}_{thực tế}={K}_{C.dấu}\\cdot {K}_{C.huy}\\cdot {K}_{P.tạp}$\n\n* Khi xác suất sát thương mục tiêu của mỗi tên lửa đều bằng nhau thì xác suất sát thương mục tiêu của n tên lửa sẽ là:\n\n${P}_{n}=1-{\\left(1-{P}_{1}\\right)}^{n}$\n\n${P}_{1}$: xác suất diệt mục tiêu bằng 1 quả đạn.\n\n$n$: số quả đạn bắn.\n\nTính ${P}_{n}$của các loại khí tài trong điều kiện khác nhau.\n\n5. Đối với trung đoàn pháo phòng không\n\n* Xác suất tiêu diệt máy bay địch của cụm pháo phòng không:\n\nGọi R: số trận địa PPK (cụm PPK).\n\n${P}_{i}$: xác suất diệt máy bay địch của trận địa i."
+    },
+    {
+      "id": "trinh-sat-tren-khong-012",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 12,
+      "start_block": 337,
+      "end_block": 364,
+      "text": "${P}_{i}$: xác suất diệt máy bay địch của trận địa i.\n\n${P}_{c}$: xác suất diệt máy bay địch của cụm.\n\n${P}_{c}=1-\\prod_{i=1}^{R} \\left(1-{P}_{i}\\right) \\left(đúng trong mọi trường hợp\\right).$\n\nTrường hợp đặc biệt khi các trận địa có xác suất ${P}_{i}$ giống nhau thì có thể tính theo công thức:\n\n${P}_{c}=1-{\\left(1-{P}_{i}\\right)}^{R}$\n\n$R$: số trận địa trong cụm.\n\n* Xác suất diệt mục tiêu địch của 1 trận địa (${P}_{i}$) có thể tính theo công thức:\n\nSố máy bay bị diệt trung bình được tính cho 1 đại đội với trình độ trung bình:\n\n${M}_{M 1 cC.X}={α}_{C.huy}\\cdot {α}_{SSCĐ}\\cdot \\frac{N}{{n}_{đạn tb}}$\n\n${M}_{M 1 cC.X}$: số máy bay bị diệt trung bình.\n\n$N$: số đạn tiêu thụ của 1 đại đội.\n\n${n}_{đạn tb}$: số đạn trung bình diệt 1 máy bay.\n\n$N=Số loạt\\times Số khẩu\\times Số đạn 1 loạt$\n\nKhi biết được số loạt và xác suất tiêu diệt máy bay của 1 loạt, ta tìm được kỳ vọng toán học số máy bay bị diệt:\n\n${M}_{M}={n}_{loạt}\\cdot {P}_{1 loạt}$\n\nb) Đối với sư đoàn phòng không (${f}_{PK}$):\n\n${M}_{M}\\left({f}_{PK}\\right)={M}_{MTL}+{M}_{MPPK}$\n\n${M}_{MTL}$: kỳ vọng toán học số mục tiêu tên lửa diệt.\n\n${M}_{MPPK}$: kỳ vọng toán học số mục tiêu PPK diệt.\n\n(Nếu có không quân tiêm kích thì cộng thêm ${M}_{M}$ của KQTK).\n\nc) Hiệu quả chiến đấu:\n\nCòn gọi là hiệu quả bắn được đặc trưng bằng tỉ lệ phần trăm số máy bay bị bắn rơi và số máy bay đánh phá yếu địa bảo vệ.\n\n${H}_{HQ}=\\frac{{m}_{mục tiêu}}{{n}_{mục tiêu}} \\left(%\\right)$\n\n${m}_{mục tiêu}$: số máy bay bị bắn rơi.\n\n${n}_{mục tiêu}$: số máy bay đánh phá yếu địa bảo vệ.\n\nMỘT SỐ TÍNH TOÁN KHÁC KHI LÀM VĂN KIỆN CHIẾN ĐẤU\n\nA. TÊN LỬA PHÒNG KHÔNG\n\n1. Tuyến giao nhiệm vụ chiến đấu cho các trung đoàn tên lửa"
+    },
+    {
+      "id": "trinh-sat-tren-khong-013",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 13,
+      "start_block": 364,
+      "end_block": 393,
+      "text": "1. Tuyến giao nhiệm vụ chiến đấu cho các trung đoàn tên lửa\n\n$${D}_{giao nhiệm vụ (e, lữ)}={d}_{xa (ST)}+{V}_{M} \\left({T}_{Ck}+{T}_{SCH}\\right)$$\n\n${d}_{xa (ST)}$: giới hạn xa khu vực sát thương, cự ly này tính thống nhất:\n\nKhí tài C.75M $=38km$.\n\nKhí tài C.125M $=17km$.\n\n${V}_{M}$: tốc độ mục tiêu (lấy trung bình $=250m/s$).\n\n${T}_{Ck}$: thời gian của 1 chu kỳ bắn:\n\nKhí tài C.75M $=2 phút$.\n\nKhí tài C.125M $=1,5 phút$.\n\n${T}_{SCH}$: thời gian thao tác làm việc của SCH, phụ thuộc vào:\n\nKiểu loại ACY.\n\nTrình độ của kíp chiến đấu.\n\nKhả năng phát hiện, thông báo của rada.\n\nĐặc điểm đánh phá của địch.\n\nThông thường tính trung bình ${T}_{SCH}=1 phút$.\n\nVậy: $D$ giao nhiệm vụ (e, lữ) của C.75M $=113km$.\n\n$$C.125M=77km.$$\n\n$D$ giao nhiệm vụ (e, lữ) khi vẽ lên bản đồ tính từ tâm của tiểu đoàn hỏa lực bố trí vòng ngoài.\n\n2. Tuyến giao nhiệm vụ bắn cho tiểu đoàn hoả lực\n\n$${D}_{giao nhiệm vụ (d)}={d}_{xa KVST}+{V}_{M} \\left({T}_{SCH}+{T}_{TT}\\right)$$\n\n${V}_{M}$: tốc độ mục tiêu (lấy $=250 m/s$).\n\n${T}_{SCH}$: thời gian làm việc của SCH: lấy $=1 phút$.\n\n${T}_{TT}$: thời gian thao tác kíp chiến đấu d: lấy $=30giây$.\n\nVậy: cự ly trung đoàn (lữ) giao nhiệm vụ cho tiểu đoàn hỏa lực là: (tính từ tâm trận địa tiểu đoàn hỏa lực).\n\n$$C.75M=76km. C.125M=46km.$$\n\n3. Tuyến báo động cấp 1 cho tiểu đoàn hoả lực\n\n$${D}_{cấp 1}={D}_{giao nhiệm vụ (d)}+{V}_{M} \\left({T}_{mở đài 2}+{T}_{giữ chậm thông báo}\\right)$$\n\n${D}_{giao nhiệm vụ (d)}$: cự ly giao nhiệm vụ bắn cho tiểu đoàn tiêu diệt địch ở giới hạn xa KVST.\n\n${V}_{M}$: tốc độ mục tiêu (lấy $=250 m/s$).\n\n${T}_{mở đài 2}$: thời gian mở đài điều khiển phụ thuộc vào mạng điện sử dụng: $\\left(5\\div 11\\right) phút$. Lấy trung bình: $7 phút$ (kể cả thời gian kiểm tra chức năng khí tài)."
+    },
+    {
+      "id": "trinh-sat-tren-khong-014",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 14,
+      "start_block": 393,
+      "end_block": 420,
+      "text": "${T}_{mở đài 2}$: thời gian mở đài điều khiển phụ thuộc vào mạng điện sử dụng: $\\left(5\\div 11\\right) phút$. Lấy trung bình: $7 phút$ (kể cả thời gian kiểm tra chức năng khí tài).\n\n${T}_{giữ chậm thông báo}$: thời gian giữ chậm thông báo (lấy $=30 giây$).\n\nVậy tuyến báo động cấp 1 cho tiểu đoàn hoả lực được tính:\n\nĐối với C.75M: $188km$.\n\nĐối với C.125M: $158km$.\n\n4. Tuyến báo động cấp 1 cho trung đoàn tên lửa\n\n(Cũng tính như trên chỉ khác là cự ly giao nhiệm vụ cho trung đoàn (lữ)).\n\nĐối với C.75M: $225km$.\n\nĐối với C.125M: $189km$.\n\nB. PHÁO PHÒNG KHÔNG\n\n1. Tuyến giao nhiệm vụ bắn cho các đại đội pháo phòng không\n\n${d}_{gnv}={d}_{yln}+{V}_{mt}\\times {T}_{Σ}$\n\n${d}_{yln}$: Cự ly bắn lớn nhất của từng loại pháo (pháo $57mm=5.500m$; pháo $37mm=3.500m$).\n\n${V}_{mt}$: Tốc độ mục tiêu lấy trung bình bằng $250m/s$.\n\n${T}_{Σ}$: Thời gian tổng hợp tính theo công thức:\n\n${T}_{Σ}={t}_{l}+{t}_{g/c}+{t}_{ss}+{t}_{tt}+{t}_{tyln}$\n\n${t}_{l}$ ($t lệnh$): Thời gian trung đoàn giao nhiệm vụ $=5s$.\n\n${t}_{gc}$ ($t giữ chậm$): thời gian giữ chậm tình báo $=30s$.\n\n${t}_{ss}$: Thời gian sục sạo mục tiêu $=60s$.\n\n${t}_{tt}$: Thời gian thao tác $=22s$ (pháo $57mm$); $10s$ (pháo $37mm$).\n\n${t}_{tyln}$: Thời gian bắn đón $=13s$ (pháo $57mm$); $9s$ (pháo $37mm$).\n\nTừ đó tính ra:\n\n${d}_{ giao nhiệm vụ}=38km \\left(pháo 57mm\\right);$\n\n${d}_{ giao nhiệm vụ}=32km \\left(pháo 37mm\\right).$\n\n2. Tuyến chuyển cấp của trung đoàn pháo phòng không\n\n${d}_{c.c.gn}={d}_{p.h.g.n}+{V}_{m.t}\\cdot {T}_{Σ}$\n\n${d}_{c.c.gn}$ - Cự ly chuyển cấp gần nhất.\n\n${d}_{p.h.g.n}$ - Cự ly phát hiện gần nhất bảo đảm đủ thời gian thao tác bắn ít nhất 1 điểm xạ trên đường mục tiêu bay tới."
+    },
+    {
+      "id": "trinh-sat-tren-khong-015",
+      "document_id": "trinh-sat-tren-khong",
+      "document_title": "Trinh Sát Trên Không",
+      "index": 15,
+      "start_block": 420,
+      "end_block": 429,
+      "text": "${d}_{p.h.g.n}$ - Cự ly phát hiện gần nhất bảo đảm đủ thời gian thao tác bắn ít nhất 1 điểm xạ trên đường mục tiêu bay tới.\n\nPháo $57mm=15km$; pháo $37mm=10km$.\n\n${V}_{m.t}$ - Tốc độ mục tiêu $=250m/s$.\n\n${T}_{Σ}$ - Thời gian tổng hợp được tính theo công thức:\n\n${T}_{Σ}={t}_{g.c}+{t}_{c.c}+{t}_{s.s}$\n\n${t}_{g.c}$ - Thời gian giữ chậm tình báo $9\\times 9=180s$ cho cả pháo $57mm$ và pháo $37mm$.\n\n${t}_{c.c}$ - Thời gian chuyển cấp (mở máy):\n\n$=180s$ (pháo $57mm$);\n\n$=30s$ (pháo $37mm$).\n\n${t}_{s.s}$ - Thời gian sục sạo mục tiêu $=60s$."
+    },
+    {
+      "id": "so-tay-001",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 1,
+      "start_block": 1,
+      "end_block": 27,
+      "text": "Sổ Tay\n\nSĩ Quan Phòng Không\n\nBộ Đội Tên Lửa Phòng Không\n\nThiết bị lập lệnh điều khiển:\n\nTrong giai đoạn thứ nhất: - Tạo ra các điện áp của tín hiệu sai lệch ở các mặt phẳng $ϵ$ và $β$ (điện áp tín hiệu sai số).\n\n$${U}_{Δε}={K}_{hd}{Δ}_{ε}{D}_{tl}$$\n\n$${U}_{Δβ}={K}_{bđ}{Δ}_{β}{D}_{tl}$$\n\nGiải thích các ký hiệu:\n\n${K}_{bđ}$: Hệ số biến đổi.\n\n$Δε$ và $Δβ$: Hiệu số tọa độ góc của mục tiêu và tên lửa.\n\n${D}_{tl}$: Cự lý của tên lửa.\n\nCác tín hiệu ${S}_{i}\\left(t\\right)$ từ đầu ra của bộ mã hóa được đưa vào bộ tổng hợp (bộ điều chế). Ở lối ra của bộ này sẽ tạo ra tín hiệu.\n\n$$S\\left(t\\right)=K\\sum_{i=1}^{N} {K}_{{y}_{i}}\\left(t\\right)\\cdot {L}_{i}$$\n\nTrong đó:\n\n$K$: Hệ số khuếch đại.\n\n${K}_{{y}_{i}}$: Tín hiệu ở lối ra bộ biến đổi thứ $i$;\n\n${L}_{i}$: Bộ mã hóa rãnh vô tuyến thứ $i$.\n\n${K}_{cn}$ là tỷ số giữa chỉ số hiệu quả của tổ hợp tên lửa phòng không làm việc trong điều kiện nhiễu (${M}_{nh}$) và giá trị của nó khi không có nhiễu (${M}_{o}$).\n\n$${K}_{cn}=\\frac{{M}_{nh}}{{M}_{o}}$$\n\nTrong điều kiện nếu bước sóng của máy phát nhiễu và của phương tiện vô tuyến điện tử bị chế áp bằng nhau thì chỉ số ${ρ}_{x\\left(g\\right)}$ khi có nhiễu tạp tích cực được xác định bằng công thức:\n\n$${ρ}_{x\\left(g\\right)}=\\frac{{K}_{ca}{P}_{p}{G}_{1}{σ}_{mt}{D}_{nh}^{2}}{4πΔ{f}_{thu}F\\left(β,ε\\right){D}_{mtycxa(g)}{γ}_{thu}}$$\n\nỞ đây:\n\n${K}_{ca}$ – Là hệ số chế áp.\n\n${P}_{p}$ – Là công suất máy phát của phương tiện vô tuyến điện tử bị chế áp.\n\n${G}_{1}$ – Là hệ số khuếch đại của anten phát.\n\n${σ}_{mt}$ – Là bề mặt phản xạ hiệu dụng của mục tiêu.\n\n${D}_{ph}$ – Là cự ly của máy phát nhiễu.\n\n$Δ{f}_{thu}$ – Là giải thông tần của thiết bị thu của phương tiện vô tuyến điện tử bị áp chế."
+    },
+    {
+      "id": "so-tay-002",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 2,
+      "start_block": 27,
+      "end_block": 50,
+      "text": "$Δ{f}_{thu}$ – Là giải thông tần của thiết bị thu của phương tiện vô tuyến điện tử bị áp chế.\n\n${γ}_{thu}$ – Là hệ số không trùng cực tính của tín hiệu nhiễu và tín hiệu hữu ích.\n\n$F\\left(β,ε\\right)$ – Trị số cách sóng thu.\n\n$β,ε$ – Là các góc lệch của hướng thu tín hiệu nhiễu so với hướng khi búp sóng chính của cánh sóng anten thu của phương tiện vô tuyến điện tử ở các mặt phẳng phương vị và góc tà tương ứng có giá trị lớn nhất.\n\nGiá trị ${D}_{mtycx(g)}$ được xác định theo công thức:\n\n${D}_{mtycx(g)}=\\sqrt{{\\left[{d}_{x(g)}+{V}_{mt}\\left({t}_{tlx(g)}+{t}_{tl}\\right)\\right]}^{2}+{H}_{mt}^{2}+{P}_{mt}^{2}}$\n\nỞ đây:\n\n${D}_{x(g)}$ – Là cự ly ngang của giới hạn xa (gần) của khu vực sát thương.\n\n${V}_{mt},{H}_{mt},{P}_{mt}$ – Là tốc độ, độ cao và tham số đường bay tương ứng của mục tiêu bị bắn.\n\n${T}_{tl}$ – Là thời gian bay của tên lửa tới giới hạn xa (gần) của khu vực sát thương.\n\nKhi gây nhiễu trong đội hình (phương pháp bảo vệ cá nhân)\n\n$F\\left(β,ε\\right)=1; {D}_{mt}={D}_{nhiễu}.$\n\nCự ly của khu vực mở được xác định bằng công thức:\n\n${D}_{mở}=\\sqrt[4]{\\frac{{K}_{ca}{P}_{p}{G}_{1}{σ}_{mt}{D}_{nh}^{2}}{4πΔ{f}_{thu}{γ}_{thu}F\\left(β,ε\\right)ρ}}$\n\nTrong điều kiện, nếu tổ hợp được triển khai ở trận địa thì thời gian chuyển sang sẵn sàng sử dụng chiến đấu được xác định bằng công thức:\n\n$${T}_{ss}={t}_{nguồn}+{t}_{kcn}$$\n\nỞ đây:\n\n${t}_{nguồn}$ – Là thời gian mở các phương tiện cấp điện\n\n${t}_{kcn}$ – Là thời gian kiểm tra chức năng tổ hợp TLPK.\n\nThời gian chuyển tổ hợp TLPK từ trạng thái hành quân sang trạng thái chiến đấu được xác định bằng công thức.\n\n${T}_{cđ}={t}_{cL}+{t}_{tk}+{t}_{định hướng}+{t}_{nguồn}+{t}_{cbcd}$\n\nỞ đây:\n\n${t}_{cL}$ – Là thời gian chiếm lĩnh trận địa."
+    },
+    {
+      "id": "so-tay-003",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 3,
+      "start_block": 50,
+      "end_block": 70,
+      "text": "${t}_{cL}$ – Là thời gian chiếm lĩnh trận địa.\n\n${t}_{tk}$ – Là thời gian triển khai tổ hợp TLPK ở trận địa.\n\n${t}_{dh}$ – Là thời gian định hướng.\n\n${t}_{cbcd}$ – Là thời gian kiểm tra các tham số và kiểm tra chức năng của tiểu đoàn tên lửa phòng không.\n\nThời gian chuyển tổ hợp TLPK từ tư thế chiến đấu sang tư thế hành quân:\n\nLà thời gian kể từ khi bắt đầu truyền lệnh chuyển tổ hợp tên lửa phòng không sang trạng thái hành quân cho đến khi các bộ phận của tổ hợp đó xếp vào hàng xong để chuẩn bị hành quân.\n\n${T}_{HQ}={t}_{th}+{t}_{đh}$\n\nỞ đây:\n\n${t}_{th}$ – Là thời gian thu hồi tổ hợp TLPK.\n\n${t}_{đh}$ – Là thời gian xếp vào hàng hành quân (xếp đội hình).\n\n4.2.2 Sai Số Điều Khiển tên Lửa\n\nSai số ngẫu nhiên:\n\nLà các sai số mà trong mỗi lần phóng tên lửa có thể có những giá trị và dấu khác nhau và không biết trước. Các sai số này gây ra độ lệch ngẫu nhiên của các điểm giao nhau giữa các quỹ đạo thực tế với mặt phẳng ảnh so với tâm tản mạn.\n\nCó thể coi sai số ngẫu nhiên khi dẫn tên lửa phụ thuộc vào quy luật phân bố chính tắc, tức là được diễn đạt bằng mật độ xác suất dưới dạng.\n\n$$f\\left(y,z\\right)=\\frac{1}{2π{σ}_{y}{σ}_{z}}{e}^{-\\left[\\frac{{\\left(y-{y}_{o}\\right)}^{2}}{2{σ}_{y}^{2}}+\\frac{{\\left(z-{z}_{o}\\right)}^{2}}{2{σ}_{z}^{2}}\\right]}$$\n\nỞ đây:\n\n$Y,Z$ là những trị số lệch của tên lửa PK có điều khiển so với mục tiêu ở mặt phẳng điều khiển tương ứng.\n\n${σ}_{y}$ và ${σ}_{z}$ là những sai số quân phương của các độ lệch.\n\nSai số quân phương là đặc tính tản mát của trị số ngẫu nhiên xung quanh kỳ vọng toán học của nó. Bình phương sai số quân phương được gọi là phương sai.\n\n$${σ}^{2}\\left(x\\right)=M\\left[{\\left(x-{m}_{x}\\right)}^{2}\\right]$$"
+    },
+    {
+      "id": "so-tay-004",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 4,
+      "start_block": 70,
+      "end_block": 100,
+      "text": "$${σ}^{2}\\left(x\\right)=M\\left[{\\left(x-{m}_{x}\\right)}^{2}\\right]$$\n\nỞ đây:\n\n$X$ – Là trị số ngẫu nhiên.\n\n${m}_{x}$ – Là kỳ vọng toán học của trị số ngẫu nhiên.\n\n$M\\left[{\\left(x-{m}_{x}\\right)}^{2}\\right]$ – Là kỳ vọng toán học của độ lệch trị số ngẫu nhiên so với giá trị trung bình của nó.\n\nPhương sai thống kê của trị số ngẫu nhiên được tính theo công thức\n\n$${σ}_{tk}^{2}\\left[x\\right]=\\frac{\\sum_{i=1}^{n} {\\left({x}_{i}-{x}_{tb}\\right)}^{2}}{n-1}$$\n\nỞ đây:\n\n${x}_{i}$ – là giá trị quan sát được của trị số ngẫu nhiên.\n\n${x}_{tb}$ – Là giá trị thống kê trung bình của trị số ngẫu nhiên.\n\n*Khi bắn mục tiêu không cơ động:\n\n$${h}_{đ}=\\frac{{W}_{kn}}{{K}_{o}}$$\n\nỞ đây:\n\n${W}_{kn}$ là gia tốc pháp tuyến của tên lửa chuyển động theo quỹ đạo yêu cầu.\n\n${K}_{o}$ là hệ số khuếch đại của vòng điều khiển hở.\n\nLượng bù trừ thường được xác định dưới dạng:\n\n$${h}_{đε}={X}_{1}\\left(t\\right){\\overset{̇}{ε}}_{mt}$$\n\n$${h}_{đβ}={X}_{2}\\left(t\\right){\\overset{̇}{β}}_{mt}{sin ε}_{mt}$$\n\nỞ đây:\n\n${x}_{1}\\left(t\\right),{x}_{2}\\left(t\\right)$ là các hàm số thời gian;\n\n${\\overset{̇}{ε}}_{mt}$ và ${\\overset{̇}{β}}_{mt}$ là những đạo hàm bậc một của góc tà và phương vị hoặc tốc độ góc của đường TL - MT.\n\nLượng bù trừ cho thành phần pháp tuyến\n\n${h}_{đβ}=\\frac{g\\cdot cos θ}{{K}_{o}}$\n\nđược đưa vào một hoặc cả 2 rãnh điều khiển tùy thuộc vào hướng các cánh trong khi bay và nguyên tắc ổn định tên lửa theo chiều nghiêng.\n\nGia tốc dọc của tên lửa tự dẫn làm xê dịch liên tục vị trí điểm gặp tức thời và do đó làm xuất hiện thành phần bổ sung cho tốc độ góc của đường ngắm mục tiêu\n\n$${\\overset{̇}{φ}}_{W}=\\frac{{n}_{{x}_{l}}g}{2\\overset{̇}{D}}{φ}_{đ}$$\n\nỞ đây:"
+    },
+    {
+      "id": "so-tay-005",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 5,
+      "start_block": 100,
+      "end_block": 120,
+      "text": "Ở đây:\n\n${n}_{{x}_{l}}$ là quá tải dọc của tên lửa.\n\n$\\overset{̇}{D}$ là tốc độ thay đổi cự ly TL - MT.\n\n${φ}_{đ}$ là góc đón.\n\nĐiểm trong không gian mà ở đó lẽ ra tên lửa sẽ gặp mục tiêu nếu bắt đầu từ thời điểm đó tên lửa và mục tiêu đều chuyển động thẳng đều, được gọi là điểm gặp tức thời. Nếu ở thời điểm mất tự dẫn, véc tơ tốc độ của tên lửa hướng vào điểm gặp tức thời (véc tơ tốc độ tương đối của tên lửa trùng với đường TL—MT) thì tên lửa sẽ đâm trúng vào mục tiêu. Sai số về vị trí của véc tơ tốc độ so với điểm gặp tức thời làm trượt tên lửa Phòng không có điều khiển. Trị số của độ trượt bằng:\n\n$τ=\\frac{{D}^{*2}\\overset{̇}{φ}}{{V}_{tđ}}\\approx \\frac{{D}^{*2}\\overset{̇}{φ}}{\\overset{̇}{D}}$\n\nỞ đây:\n\n${D}^{*}$ là khoảng cách TL–MT ở thời điểm mất tự dẫn của tên lửa Phòng không có điều khiển.\n\n$\\overset{̇}{φ}=\\frac{{V}_{tđ}sin μ}{{D}^{*}}$ là tốc độ góc quay của đường TL–MT.\n\n${V}_{tđ}=\\sqrt{{V}_{tl}^{2}+{V}_{mt}^{2}-2{V}_{tl}{V}_{mt}cos \\left({V}_{tl},{V}_{mt}\\right)}$\n\nThí dụ tìm trị số trượt của tên lửa nếu nó mất tự dẫn trong những điều kiện sau:\n\nKhoảng cách giữa tên lửa và mục tiêu $D=500m$, tốc độ góc của đường TL–MT $\\overset{̇}{φ}={5}^{∘}/s$, tốc độ tương đối của tên lửa ${V}_{tđ}=500m/s$, ở thời điểm mất tự dẫn tên lửa chuyển động với quá tải bình thường $n=3$.\n\nGiải:\n\n$τ=\\frac{{D}^{*2}\\overset{̇}{φ}}{{V}_{tđ}}=\\frac{{500}^{2}\\cdot 5}{1500\\cdot 57,3}\\approx 14,5m$\n\nLượng sửa $Δτ$ ở đoạn chuyển động theo đường cong của tên lửa Phòng không có điều khiển (với quá tải $n=3$) sau khi mất tự dẫn:\n\n$Δτ=\\frac{{W}_{n}{t}_{tc}^{2}}{2}$\n\nỞ đây:\n\n${W}_{n}=ng$ - Là gia tốc pháp tuyến của tên lửa.\n\n${t}_{tc}=\\frac{{D}^{*2}}{{V}_{tđ}}$ - Là thời gian tên lửa tiếp cận mục tiêu."
+    },
+    {
+      "id": "so-tay-006",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 6,
+      "start_block": 120,
+      "end_block": 142,
+      "text": "${t}_{tc}=\\frac{{D}^{*2}}{{V}_{tđ}}$ - Là thời gian tên lửa tiếp cận mục tiêu.\n\n$Δτ=\\frac{{W}_{n}{\\left(\\frac{{D}^{*}}{{V}_{tc}}\\right)}^{2}}{2}=\\frac{3\\cdot 9,81}{2}\\cdot {\\left(\\frac{500}{1500}\\right)}^{2}\\approx 1,6m$\n\nNhư vậy độ trượt của tên lửa bằng $14,5-1,6\\approx 13m$.\n\ncó điều khiển, xác xuất rơi của tên lửa vào vòng có bán kính R cho trước được tính như sau:\n\nTrường hợp thứ nhất: Không có sai số hệ thống dẫn tên lửa (${Y}_{o}={Z}_{o}=0$), các sai số dẫn phụ thuộc vào định luật vòng (${σ}_{y}={σ}_{z}=σ$):\n\n$P\\left(r\\le R\\right)=1-{e}^{-n}$\n\nỞ đây $n=\\frac{{R}^{2}}{2{σ}^{2}}$\n\nCông thức (4.21) cho phép giải cả bài toán ngược lại, tức là xác định sai số quân phương $σ$ theo xác suất rơi cho trước vào vòng có bán kính cho trước.\n\nThí dụ: Giả sử ${Y}_{o}={Z}_{o}=0$, ${σ}_{y}={σ}_{z}=10m$. Xác định xác suất nếu khi dẫn tên lửa vào mục tiêu nó lệch khỏi mục tiêu không quá $25m$.\n\nGiải:\n\n$b=\\frac{{R}^{2}}{2}=\\frac{{25}^{2}}{2\\cdot {10}^{2}}\\approx 3,12$\n\n$P\\left(r\\le 25\\right)=1-{e}^{-n}=1-{e}^{-3,12}=0,95.$\n\n$${P}_{1}=\\int_{-\\infty }^{+\\infty } \\int_{-\\infty }^{+\\infty } f\\left(y,z\\right){f}_{2}\\left(y,z\\right){G}_{o}\\left(y,z\\right) dy dz$$\n\nỞ đây:\n\n$f\\left(y,z\\right)$ là định luật sai số điều khiển tên lửa tới mục tiêu.\n\n${f}_{2}\\left(y,z\\right)$ là sự phụ thuộc của xác suất làm việc của ngòi nổ không chạm nổ vào sai số điều khiển.\n\n${G}_{o}\\left(y,z\\right)$ là định luật tọa độ quy ước sát thương mục tiêu.\n\nNó đặc trưng cho sự phân bố tọa độ nổ của đầu đạn ở khu vực điểm gặp:\n\n$$ω\\left(x,y,z\\right)={f}_{1}\\left(\\frac{x}{y,z}\\right){f}_{2}\\left(y,z\\right)$$\n\nỞ đây:\n\n${f}_{1}\\left(\\frac{x}{y,z}\\right)$ – là mật độ phân bố tọa độ làm việc $x$ của ngòi nổ với sai số điều khiển $y$, $z$) cho trước."
+    },
+    {
+      "id": "so-tay-007",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 7,
+      "start_block": 142,
+      "end_block": 166,
+      "text": "${f}_{1}\\left(\\frac{x}{y,z}\\right)$ – là mật độ phân bố tọa độ làm việc $x$ của ngòi nổ với sai số điều khiển $y$, $z$) cho trước.\n\nBán kính làm việc của ngòi nổ không chạm nổ không bị hạn chế\n\n${P}_{1}=1-\\frac{\\sqrt{2}{δ}_{o}}{σ}{K}_{1}\\left(\\frac{\\sqrt{2}{δ}_{o}}{σ}\\right)$\n\nỞ đây: ${K}_{1}\\left(χ\\right)$ là hàm số có giá trị được liệt kê trong bảng.\n\n$${P}_{lv}=1-\\prod_{i=1}^{k} {\\left({P}_{tc}{P}_{thu}{P}_{hq}\\right)}_{i}$$\n\nỞ đây:\n\n$k$ là hệ rãnh bị ảnh hưởng của nhiễu vô tuyến điện tử trong quá trình điều khiển tên lửa phòng không có điều khiển và khi nổ cạnh mục tiêu.\n\n${P}_{tc}$ là xác suất biểu thị khả năng có gây nhiễu.\n\n${P}_{thu}$ là xác suất nhiễu rơi vào thiết bị thu của rãnh bị chế áp thuộc tổ hợp tên lửa phòng không.\n\n${P}_{hq}$ là xác suất khi công suất nhiễu đủ mạnh để cản trở sự hoạt động bình thường của vòng điều khiển.\n\nVị trí giới hạn xa khu vực sát thương xác định cự ly hoạt động cần thiết của đài điều khiển tên lửa.\n\n$${d}_{ycdđk}={d}_{x}+{V}_{mt}\\left({t}_{u}+{t}_{bay xa}\\right)$$\n\nỞ đây:\n\n${d}_{x}$ – Là cự ly ngang tới giới hạn xa của khu vực sát thương.\n\n${t}_{u}$ – Là thời gian làm việc (thời gian thực hiện các động tác từ khi đài điều khiển tên lửa bắt đầu sục sạo mục tiêu tới khi phóng tên lửa).\n\n${t}_{bay xa}$ – Là thời gian bay của tên lửa tới giới hạn xa của khu vực sát thương.\n\nCác giới hạn của khu vực này được xác định bằng điều kiện:\n\n$${t}_{b}={t}_{mt.yc}$$\n\nỞ đây:\n\n${t}_{b}$ là thời gian bay tới điểm gặp.\n\n${t}_{mt.yc}$ là thời gian cần thiết cho mục tiêu ra khỏi giới hạn khu vực sát thương bằng cách cơ động đột ngột, ở một điểm của khu vực phóng bảo đảm ${t}_{b}\\ge {t}_{mt.yc}$\n\nTính toán cự ly cần thiết phát hiện mục tiêu của đài điều khiển tên lửa khi thay đổi vị trí điểm gặp trong toàn bộ chiều sâu khu vực sát thương (từ ${d}_{g}$ đến ${d}_{x}$) tại các giá trị cho trước của thời gian làm việc của tổ hợp tên lửa phòng không và tốc độ mục tiêu:"
+    },
+    {
+      "id": "so-tay-008",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 8,
+      "start_block": 166,
+      "end_block": 187,
+      "text": "Tính toán cự ly cần thiết phát hiện mục tiêu của đài điều khiển tên lửa khi thay đổi vị trí điểm gặp trong toàn bộ chiều sâu khu vực sát thương (từ ${d}_{g}$ đến ${d}_{x}$) tại các giá trị cho trước của thời gian làm việc của tổ hợp tên lửa phòng không và tốc độ mục tiêu:\n\n$${d}_{Ph.yc}={d}_{gặp}+{V}_{mt}\\left({t}_{tt}+{t}_{gặp}\\right)$$\n\nỞ đây:\n\n${d}_{gặp}$ là cự ly tới điểm gặp.\n\n${t}_{bay}$ là thời gian bay của tên lửa tới điểm gặp\n\nChu kì bắn: Là toàn bộ công tác chiến đấu của tổ hợp tên lửa Phòng không và của kíp chiến đấu mà phân đội cần thực hiện khi bắn một mục tiêu. Thời gian bắn được đặc trưng bằng thời gian làm việc của rãnh mục tiêu trong bộ tổ hợp khi thực hiện một lần bắn mục tiêu bằng tên lửa. Thời gian ${T}_{CK}$ này bao gồm thời gian trực tiếp chuẩn bị bắn (${T}_{tt}$) và thời gian cần thiết để bắn mục tiêu (${t}_{bắn}$).\n\n$${T}_{CK}={T}_{u}+{T}_{bắn}$$\n\nỞ đây:\n\n$${T}_{bắn}={T}_{bay}+τ\\left(n-1\\right)+{T}_{đg}$$\n\n$τ$ – là giãn cách thời gian giữa những lần phóng tên lửa trong loạt phóng.\n\n$n$ – là số lượng tên lửa trong loạt.\n\n${T}_{đg}$ là thời gian đánh giá kết quả bắn.\n\nThời gian nạp và chuẩn bị tên lửa để phóng T nạp ảnh hưởng tới khả năng bắn liên tục đối với rãnh mục tiêu nếu:\n\n${T}_{nạp}\\ge \\frac{{N}_{tl}}{n}{T}_{ck}$\n\nỞ đây: ${N}_{tl}$ là số tên lửa trên bệ đối với rãnh mục tiêu đó.\n\nKhả năng của rãnh mục tiêu trong tổ hợp tên lửa Phòng không bắn lại chính mục tiêu đó bằng n tên lửa được xác định theo điều kiện sau:\n\n${T}_{bắn}+τ\\left(n-1\\right)\\le {T}_{lưu ph}$\n\nỞ đây: ${T}_{lưu ph}$ là thời gian lưu của mục tiêu trong khu vực phóng\n\nHiệu suất hỏa lực của THTLPK là số lần bắn trong một đơn vị thời gian. Nó xác định khả năng mật độ hỏa lực của phân đội TLPK khi đánh trả tập kích của địch trên không trung (${M}_{hl}$)"
+    },
+    {
+      "id": "so-tay-009",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 9,
+      "start_block": 187,
+      "end_block": 209,
+      "text": "Hiệu suất hỏa lực của THTLPK là số lần bắn trong một đơn vị thời gian. Nó xác định khả năng mật độ hỏa lực của phân đội TLPK khi đánh trả tập kích của địch trên không trung (${M}_{hl}$)\n\n${M}_{hl}=\\left\\{\\begin{matrix}\\frac{1}{{T}_{ck}}-Đối với tổ hợp có 1 rãnh mục tiêu \\\\ \\frac{K}{{T}_{ck}}-Đối với tổ hợp có k rãnh mục tiêu\\end{matrix}\\right)$\n\nỞ đây: $K$ là số rãnh mục tiêu của tổ hợp.\n\nNếu quá trình chiến đấu của tổ hợp tên lửa phòng không nhiều rãnh mục tiêu bao gồm các động tác liên tiếp cùng với sự sử dụng tối đa mỗi rãnh mục tiêu ${t}_{lt}=\\frac{{T}_{ck}}{K}$, thì\n\n${M}_{hl}=\\frac{1}{{t}_{lt}}$\n\n$${d}_{ctg}={d}_{g}+{V}_{mt}\\left({T}_{tt}+{T}_{bay gần}\\right)$$\n\nỞ đây:\n\n${d}_{x}\\left({d}_{g}\\right)$ là cự ly tới giới hạn xa (gần) của khu vực sát thương.\n\n${T}_{tt}$ là thời gian thao tác của phân đội.\n\n${T}_{bay xa (gần)}$ là thời gian bay tới giới hạn xa (gần) của khu vực sát thương.\n\nCự ly phát hiện mục tiêu của ra da trinh sát là:\n\n$${D}_{phgc}={d}_{ck}+{V}_{mt}\\left({t}_{sch}+{t}_{gc}\\right)$$\n\nỞ đây:\n\n${t}_{sch}$ là thời gian làm việc của sở chỉ huy để chỉ huy hỏa lực các phân đội.\n\n${t}_{gc}$ là thời gian giữ chậm thông báo mục tiêu tính từ thời điểm đài trinh sát phát hiện và chỉ thị mục tiêu tới thời điểm thể hiện được thông báo ở sở chỉ huy.\n\nLà điểm cắt chéo giữa đường ngắm và mặt phẳng ảnh, khoảng cách của điểm a3 tính từ tâm ngắm là\n\n$${r}_{3}=R\\cdot {sin q}_{nh}$$\n\nỞ đây:\n\n$R$ là bán kính của vòng ngắm.\n\n${q}_{nh}$ là góc đường bay trong không gian (góc nhìn mục tiêu)\n\n4.3.4 Chuẩn bị và thực hành bắn các mục tiêu trên không\n\nĐể bắn được ở giới hạn xa của khu vực bán COH phải phát hiện được mục tiêu ở cự ly yêu cầu sau:"
+    },
+    {
+      "id": "so-tay-010",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 10,
+      "start_block": 209,
+      "end_block": 229,
+      "text": "Để bắn được ở giới hạn xa của khu vực bán COH phải phát hiện được mục tiêu ở cự ly yêu cầu sau:\n\n$${d}_{phy.c}={R}_{bắn}+{V}_{mt}\\left({t}_{tt}+{τ}_{xa}\\right)$$\n\nỞ đây:\n\n${R}_{bắn}$ là bán kính của vùng mặt phẳng xạ kích.\n\n${t}_{tt}$ là thời gian làm việc tổng hợp của đại đội (của xe pháo phòng không) để chuẩn bị bắn.\n\n${τ}_{xa}$ là thời gian bay của đạn tới giới hạn xa khu vực bắn.\n\nXác định độ sai lệch tổng hợp tốc độ ban đầu của đạn so với tiêu chuẩn theo công thức\n\n$$Δ{V}_{o tổng}=Δ{V}_{slt}+Δ{V}_{slm}+Δ{V}_{slkk}+Δ{V}_{slđ}$$\n\nỞ đây:\n\n$Δ{V}_{slt}$ Là độ sai lệch của sơ tốc đạn so với tiêu chuẩn do có sai lệch về nhiệt độ thuốc nổ so với tiêu chuẩn.\n\n${Δ}_{slm}$ Là độ sai lệch sơ tốc đạn tại đại đội so với tiêu chuẩn do độ mòn rãnh lòng pháo.\n\n$Δ{V}_{slkk}$ Là độ sai lệch sơ tốc đạn so với tiêu chuẩn ứng với độ sai lệch mật độ không khí trên đường đạn ($Δ{P}_{kk}$).\n\n$Δ{V}_{slđ}$ Là độ sai lệch sơ tốc đạn so với tiêu chuẩn phù hợp từng đặc điểm, hình dạng của đạn pháo.\n\nĐộ sai lệch tổng hợp mật độ không khí trên đường đạn so với tiêu chuẩn được xác định bằng biểu thức:\n\n$$Δ{P}_{tổng}=Δ{P}_{kk}+Δ{P}_{t}{}_{​}^{o}{​}+Δ{P}_{H}+Δ{P}_{đ}+Δ{P}_{dư}$$\n\nỞ đây:\n\n$Δ{P}_{kk}$ Là độ sai lệch mật độ không khí trên đường đạn so với tiêu chuẩn ở độ cao của đài khí tượng.\n\n$Δ{P}_{t}{}_{​}^{o}{​}$ Là độ sai lệch mật độ không khí trên đường đạn ứng với sự thay đổi mức độ co dãn của không khí khi nhiệt độ của nó sai lệch so với bảng.\n\n$Δ{P}_{H}$ Là độ sai lệch mật độ không khí trên đường đạn tương ứng với hiệu số giữa độ cao của trận địa hỏa lực của đại đội và độ cao của đài khí tượng.\n\n$Δ{P}_{dư}$ Là độ sai lệch mật độ không khí trên đường đạn tương ứng với số dư khi làm tròn."
+    },
+    {
+      "id": "so-tay-011",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 11,
+      "start_block": 229,
+      "end_block": 248,
+      "text": "$Δ{P}_{dư}$ Là độ sai lệch mật độ không khí trên đường đạn tương ứng với số dư khi làm tròn.\n\n$Δ{P}_{đ}$ Là độ sai lệch mật độ không khí trên đường đạn tương ứng với đặc điểm hình dạng đạn pháo.\n\nTa hiểu tuyến hoàn thành nhiệm vụ của dịch trên không là tuyến mà đến đó máy bay của dịch có thể sát thương mục tiêu bằng các phương tiện không bị tên lửa P.K diệt hoặc bị diệt với hiệu quả không cao. Về thực chất, tuyến này cũng là tuyến hoàn thành nhiệm vụ của cụm phương tiện phòng không (Hình 4.32). Khoảng cách từ tuyến này tới mục tiêu (đơn vị bộ đội) phải bảo vệ được xác định bằng công thức.\n\n$${R}_{htnv}={r}_{yd}+{R}_{bm}+A$$\n\nỞ đây:\n\n${R}_{yd}$ là bán kính của mục tiêu phải bảo vệ.\n\n${R}_{bm}$ là bán kính hoạt động có hiệu quả của phương tiện sát thương của địch.\n\n$A$ là cự ly quăng bom hoặc cự ly phóng tên lửa (hoặc bom có điều khiển)\n\n$$A={V}_{mt}{t}_{rơi}-Δ$$\n\nỞ đây:\n\n${t}_{rơi}$ Là thời gian rơi của bom.\n\n$Δ$ là độ lùi của bom so với máy bay mang bom.\n\nKhi đánh giá khả năng hỏa lực, thông thường người ta tính toán giá trị tối đa của chúng ${M}_{o}$ và giá trị có thể thực hiện được trong điều kiện tình huống cụ thể đó ${M}_{tt}$.\n\n$${M}_{o}={N}_{đv1}{N}_{bắn1}{P}_{n1}+…+{N}_{đvj}{N}_{bắnj}{P}_{nj}+…$$\n\n$${M}_{u}={K}_{u1}{N}_{đv1}{N}_{bắn1}{P}_{n1}+…+{K}_{uj}{N}_{đvj}{N}_{bắnj}{P}_{nj}+…$$\n\nỞ đây:\n\n${N}_{đvj}$ là số đơn vị hỏa lực loại $j$.\n\n${B}_{bắnj}$ là số lần bắn mà một đơn vị hỏa lực loại $j$ đã thực hiện trong thời gian tập kích cho trước hoặc khi tiêu thụ hết lượng tên lửa dự trữ.\n\n${P}_{j}$ là xác suất sát thương mục tiêu trên không của một đơn vị hỏa lực loại $j$ trong một lần bắn.\n\nMức độ có thể thực hiện khả năng hỏa lực trong những điều kiện tình huống cụ thể được xác định theo công thức."
+    },
+    {
+      "id": "so-tay-012",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 12,
+      "start_block": 248,
+      "end_block": 272,
+      "text": "Mức độ có thể thực hiện khả năng hỏa lực trong những điều kiện tình huống cụ thể được xác định theo công thức.\n\n$${K}_{uj}={K}_{cdj}{K}_{nhj}{K}_{nhj}{K}_{thápj}{K}_{ckj}$$\n\nỞ đây:\n\n${K}_{tgj}$ – là hệ số đặc trưng cho mức độ có thể tham gia của các đơn vị hỏa lực loại $j$ trong việc đánh trả tập kích.\n\n${K}_{cđj}$ là hệ số sẵn sàng chiến đấu của các đơn vị hỏa lực loại $j$.\n\n${K}_{chj}$ là hệ số hiệu quả chỉ huy $j$.\n\n${K}_{nhj}$, ${K}_{thấpj}$ Là các hệ số tính toán ảnh hưởng có thể của nhiễu do địch gây ra và của độ cao thấp tới số lần bắn và hiệu quả bắn.\n\nHệ số thực tế của khả năng hỏa lực phụ thuộc nhiều vào chất lượng hoạt động có mục đích của người chỉ huy và cơ quan tham mưu khi chuẩn bị và thực hành chiến đấu.\n\nKhi đánh giá khả năng hỏa lực theo lượng dự trữ tên lửa (một cơ số v.v...) biểu thức (4.83) có thể dẫn tới dạng:\n\n$${M}_{u}={K}_{đv1}{N}_{đv1}+…+{K}_{đvj}{N}_{đvj}$$\n\nỞ đây ${K}_{đvj}={K}_{uj}{N}_{bắnj}{P}_{nj}$\n\nTiến hành đánh giá khả năng hỏa lực của phân đội (binh đội) tên lửa P.K theo các hướng và các dải độ cao.\n\nSố lần bắn của một bộ khí tài tên lửa P.K một rãnh mục tiêu:\n\nTheo thời gian tập kích:\n\n$${N}_{bắn}=1+\\frac{{t}_{đp}+{T}_{lưu}}{{T}_{cktb}}$$\n\nTheo lượng tên lửa dự trữ\n\n$${N}_{bắn}=\\frac{Q}{N}$$\n\nỞ đây:\n\n${T}_{lưu}$ là thời gian mục tiêu lưu lại trong khu vực phóng.\n\n${t}_{đp}$ – thời gian đánh phá (thời gian đội hình bay)\n\n${T}_{cktb}$ – là thời gian trung bình của chu kỳ bắn.\n\n$Q$ – là lượng dự trữ tên lửa.\n\n$N$ – là lượng tên lửa tiêu thụ trong một lần bắn.\n\nTrị số góc $φ$ chẳng những phụ thuộc vào cự ly bắn của tổ hợp tên lửa P.K (${d}_{xa}$) mà còn phụ thuộc vào khoảng cách từ trận địa tới mục tiêu phải bảo vệ. Chúng ta ký hiệu giá trị lớn nhất có thể của góc bảo vệ bằng $2{φ}_{max}$ khi bội số chồng của khu vực sát thương là 1 thì chỉ số khả năng bảo vệ của phân đội (binh đội) sẽ là:"
+    },
+    {
+      "id": "so-tay-013",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 13,
+      "start_block": 272,
+      "end_block": 286,
+      "text": "Trị số góc $φ$ chẳng những phụ thuộc vào cự ly bắn của tổ hợp tên lửa P.K (${d}_{xa}$) mà còn phụ thuộc vào khoảng cách từ trận địa tới mục tiêu phải bảo vệ. Chúng ta ký hiệu giá trị lớn nhất có thể của góc bảo vệ bằng $2{φ}_{max}$ khi bội số chồng của khu vực sát thương là 1 thì chỉ số khả năng bảo vệ của phân đội (binh đội) sẽ là:\n\n${ψ}_{j}'={K}_{kj}\\cdot 2{φ}_{max j}$\n\nỞ đây: ${K}_{kj}$ là số lượng tổ hợp tên lửa P.K loại $j$ của phân đội (binh đội)\n\nKhoảng cách xác định từ trận địa tên lửa phòng không tới tâm mục tiêu bảo vệ (${R}_{td}$) hoàn toàn phù hợp với giá trị của góc $2{φ}_{max}$.\n\nCách đánh giá góc bảo vệ tối đa không thay đổi, nếu đặt điều kiện nhất định cho trị số cực tiểu di chuyển khu vực sát thương ra ngoài tuyến thực hiện nhiệm vụ. Trong trường hợp này trong các công thức tính toán, phải tăng bán kính ${R}_{htnv}$ lên một trị số tương ứng.\n\nChiều dài của tuyến bảo vệ dày đặc.\n\n${L}_{bvj}=\\sum_{i=1}^{{K}_{hj}} {\\left(2{P}_{ghj}^{*}\\right)}_{i}$\n\nTính bền vững đồng đều của tuyến này theo số lần bắn được đảm bảo khi:\n\n${P}_{ghj}^{*}=\\frac{{P}_{{N}_{0}j}+{P}_{ghj}}{2}$\n\nỞ đây: ${P}_{{N}_{0}j}$ là giá trị giới hạn của tham số khu vực sát thương mà vẫn đảm bảo được số lần bắn mục tiêu như khi tham số bằng 0\n\nTheo thời gian yêu cầu để bắn mục tiêu ở giới hạn xa của khu vực sát thương\n\n${T}_{yc}={t}_{pứ}-{t}_{xa}$\n\nỞ đây ${t}_{xa}$ là thời gian bay tới giới hạn xa khu vực sát thương.\n\nMật độ hảo lực tên lửa phòng không là số lần bắn trong một phút mà phân đội có thể thực hiện được khi đánh trả tập kích của địch trên không. Nó thường được tính toán theo các hướng và các độ cao.\n\n$${M}_{hl}=\\sum_{i=1}^{{K}_{tg}} {M}_{hl i}$$"
+    },
+    {
+      "id": "so-tay-014",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 14,
+      "start_block": 286,
+      "end_block": 310,
+      "text": "$${M}_{hl}=\\sum_{i=1}^{{K}_{tg}} {M}_{hl i}$$\n\nỞ đây:\n\n${M}_{hl}$ là mật độ hỏa lực do cụm tên lửa phòng không tạo ra.\n\n${K}_{tg}$ là số tổ hợp tên lửa phòng không tham gia đánh trả tập kích của địch trên không ở hướng đó và dải độ cao đó.\n\n${M}_{hl i}$ là mật độ hỏa lực của bộ khí tài tên lửa phòng không loại $i$.\n\nSố lần bắn trước khi mục tiêu bay tới tuyến cho trước được đánh giá theo các hướng và các độ cao.\n\nPhân đội có thể bắn được lần thứ 3 nếu\n\n$$\\frac{{h}_{i}}{{V}_{mt}}\\ge {T}_{cki2}+{T}_{cki3}$$\n\nỞ đây:\n\n${T}_{cki2}={T}_{ui}+{T}_{bayi2}$ và ${T}_{cki3}={T}_{ui}+{T}_{bayi3}$\n\n${T}_{ui}$ là thời gian chuẩn bị bắn (thời gian làm việc) của phân đội $i$.\n\n${T}_{bayi2},{T}_{bayi3}$ là thời gian bay của tên lửa tới điểm gặp khi bắn lần thứ 2 và lần thứ 3.\n\nKhi thời gian tập kích ${t}_{đp}\\ne 0$ thì số lần bắn\n\n$${N}_{bắn i}=1+\\frac{{t}_{đp}+{T}_{lưu i}}{{T}_{cktbi}}\\le \\frac{{Q}_{i}}{{n}_{i}}$$\n\nỞ đây\n\n${T}_{lưu i}$ là thời gian lưu của mục tiêu trong khu vực phóng của tổ hợp tên lửa phòng không $i$. ${T}_{cktbi}$ là giá trị trung bình của chu kỳ bắn.\n\n${Q}_{i}$ là số lượng tên lửa mà phân đội có thể tiêu thụ khi đánh trả tập kích của phân đội $i$.\n\n${n}_{i}$ là số lượng tên lửa tiêu thụ trong một lần bắn của phân đội $i$.\n\ncách sử dụng máy bay tác chiến điện tử.\n\nGiải tần của trướng ra da được xác định bằng khả năng chống nhiễu của nó.\n\n$${K}_{ut}=\\frac{\\sum_{i=1}^{n} 2Δ{f}_{i}}{\\sum_{j=1}^{m} 2Δ{f}_{j}}$$\n\nỞ đây:\n\n${K}_{ut}$ là hệ số ưu thế tần số của cụm phương tiện trinh sát.\n\n$2Δ{f}_{i}$ là dải thông tần của phương tiện trinh sát $i$ (gồm tất cả $n$ phương tiện).\n\n$2Δ{f}_{j}$ là dải gây nhiễu của phương tiện $j$ của địch (tất cả có $m$ phương tiện)."
+    },
+    {
+      "id": "so-tay-015",
+      "document_id": "so-tay",
+      "document_title": "Sổ Tay",
+      "index": 15,
+      "start_block": 310,
+      "end_block": 325,
+      "text": "$2Δ{f}_{j}$ là dải gây nhiễu của phương tiện $j$ của địch (tất cả có $m$ phương tiện).\n\nĐộ cao và tốc độ bay của mục tiêu mà ở đó đảm bảo chỉ huy tập trung hỏa lực của các phân đội được xác định bằng cách so sánh cự ly phát hiện mục tiêu theo yêu cầu với cự ly phát hiện thực tế.\n\nChỉ huy tập trung hỏa lực ở độ cao bay đó của mục tiêu được đảm bảo nếu\n\n$${d}_{phy.c}\\le {d}_{ph.tt}$$\n\n$${d}_{phy.c}={d}_{xa}+{V}_{mt}\\left({t}_{}+{t}_{xa}+{t}_{SCH}+{t}_{đài 1}\\right)$$\n\nỞ đây:\n\n${t}_{u}$ là thời gian làm việc của phân đội hỏa lực, ${t}_{SCH}$ là thời gian làm việc của sở chỉ huy mà nó thực hiện việc chỉ huy hỏa lực phân đội.\n\n${t}_{đài 1}$ là thời gian làm việc của phân đội trinh sát mục tiêu trên không.\n\nSự đầy đủ, chính xác và tin cậy của thông báo phát ra có ảnh hưởng quan trọng tới hiệu quả chỉ huy hỏa lực.\n\nViệc truyền thông báo mục tiêu của hệ thống trinh sát chỉ được tiến hành sau khi đã nhận dạng tức là xác định rõ đó là máy bay của ai\n\ntheo điều kiện bảo vệ lẫn nhau giữa các phân đội (hình 4.40)\n\n$$J={d}_{xa}-\\left(R{'}_{htnv}+{V}_{mt}τ\\right)$$\n\nỞ đây:\n\n$R{'}_{htnv}$ là khoảng cách đến tuyến hoàn thành nhiệm vụ khi địch đánh vào trận địa hỏa lực.\n\n$τ$ là thời gian yêu cầu để phóng một số lượng tên lửa đã ấn định vào mục tiêu.\n\nKhi bảo vệ bộ đội, đội hình chiến đấu của các phân đội (binh đội) tên lửa phòng không được xây dựng sao cho bảo vệ được vững chắc những cụm lực lượng và phương tiện chủ yếu, các sở chỉ huy, các căn cứ hậu cần quan trọng nhất, các tuyến giao thông v.v..."
+    },
+    {
+      "id": "si-quan-cao-xa-001",
+      "document_id": "si-quan-cao-xa",
+      "document_title": "Sĩ Quan Cao Xạ",
+      "index": 1,
+      "start_block": 1,
+      "end_block": 35,
+      "text": "Mục 12 - CÔNG THỨC LY GIÁC VÀ CÁCH TÍNH ĐỔI ĐƠN VỊ ĐO GÓC.\n\n1. Công thức ly giác:\n\n$$l=\\frac{α\\cdot D}{1000}$$\n\nTrong công thức trên:\n\n$l$ - Chiều cao, chiều rộng của mục tiêu tính bằng mét.\n\n$α$ Góc kẹp của mục tiêu tính bằng ly giác.\n\n$D$ - Cự ly mục tiêu tính bằng mét.\n\nTừ công thức trên suy ra:\n\n$$α=\\frac{l\\cdot 1000}{D}; D=\\frac{l\\cdot 1000}{α}$$\n\n2. Đổi độ ra ly giác:\n\n$$y ly giác=α độ\\cdot 16,7$$\n\n3. Đổi ly giác ra độ:\n\n$$y độ=α ly giác\\cdot 0,06$$\n\nMục 13: CÔNG THỨC TÍNH CÁC THAM SỐ VẬN ĐỘNG CỦA MỤC TIÊU.\n\n1. Tính các tọa độ hiện tại: $D,H,ε$\n\n$$D=\\frac{H}{sin ε}\\to H=D\\cdot Sin ε$$\n\nd = $D. Cos ε$\n\nSin $ε=\\frac{H}{D}$ -> $ε=acrsin \\frac{H}{D}$\n\n2. Tinh các tham số vận động:\n\n-Tốc độ góc phương vị$(ωβ)$:\n\n$$ωβ=1000\\cdot \\frac{{V}_{r}\\cdot P}{{d}^{2}}$$\n\n${V}_{r}$ - Tốc độ mục tiêu trên mặt phẳng ngang:\n\nKhi bay bằng: ${V}_{r}={V}_{mt}$\n\nKhi cơ động, bổ nhào: ${V}_{r}={V}_{mt}\\cdot cos λ$\n\n$P$ - Khoảng cách gần nhất\n\n$d$ - Cự ly thăng bằng\n\nBảng quy luật biến đổi của $ωβ$ theo $d$, $P$ và ${V}_{mt}$:\n\n| d (m)P/Vmt​ | 1000 | 2000 | 3000 | 4000 | 5000 | 6000 | 7000 |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| 1000m / 200m/s | 2-00 | 0-50 | 0-22 | 0-13 | 0-08 | 0-06 | 0-05 |\n| 3000m / 200m/s |  |  | 0-67 | 0-38 | 0-24 | 0-17 | 0-12 |\n| 3000m / 250m/s |  |  | 0-83 | 0-47 | 0-30 | 0-21 | 0-16 |\n\nTốc độ góc tà ($ωε$):\n\nKhi $P=0$:\n\n$$ωε=1000\\cdot \\frac{{V}_{mt}\\cdot H}{{H}^{2}+{d}^{2}}$$\n\nKhi $P\\ne 0$:\n\n$$ωε=1000\\cdot \\frac{{V}_{mt}\\cdot H}{{H}^{2}+{d}^{2}}\\cdot \\frac{\\sqrt{{d}^{2}-{P}^{2}}}{d}$$\n\nBảng quy luật biến đổi của $ωε$ theo $d$, $P$ với $H 2000m$, ${V}_{mt} 200m/s$\n\n| d (m)P/Vmt​ | 0 | 1000 | 2000 | 3000 | 4000 | 5000 | 6000 | 7000 |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n|  |  | 0 | 0-43 | 0-29 | 0-19 | 0-15 | 0-10 | 0-0 |\n| 0 | 1-00 | 0-80 | 0-50 | 0-31 | 0-20 | 0-14 | 0-10 | 0-08 |"
+    },
+    {
+      "id": "si-quan-cao-xa-002",
+      "document_id": "si-quan-cao-xa",
+      "document_title": "Sĩ Quan Cao Xạ",
+      "index": 2,
+      "start_block": 35,
+      "end_block": 65,
+      "text": "| d (m)P/Vmt​ | 0 | 1000 | 2000 | 3000 | 4000 | 5000 | 6000 | 7000 |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n|  |  | 0 | 0-43 | 0-29 | 0-19 | 0-15 | 0-10 | 0-0 |\n| 0 | 1-00 | 0-80 | 0-50 | 0-31 | 0-20 | 0-14 | 0-10 | 0-08 |\n\nTốc độ cự ly tà (${V}_{D}$):\n\nKhi $P=0$:\n\n$${V}_{D}=\\frac{{V}_{mt}\\cdot \\sqrt{{D}^{2}-{H}^{2}}}{D}$$\n\nKhi $P\\ne 0$:\n\n$${V}_{D}=\\frac{{V}_{mt}\\cdot \\sqrt{{D}^{2}-{H}^{2}-{P}^{2}}}{D}$$\n\nBảng quy luật biến đổi của ${V}_{D}$ theo $D$, $P$ với $H 2000m$, ${V}_{mt} 200m/s$\n\n| D (m)P (m) | 2000 | 3000 | 4000 | 5000 | 6000 | 7000 | 8000 |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| 0 | 0 | 149 | 173 | 183 | 189 | 192 | 194 |\n| 1000 | 0 | 133 | 166 | 179 | 186 | 189 | 192 |\n\nMục 14 - CÁC PHƯƠNG PHÁP ĐỒ GIẢI ĐIỂM BẮN ĐÓN (${a}_{y}$)\n\n1. Đồ giải tìm ${a}_{y}$ khi máy bay bay bằng:\n\na) Xác định điều kiện bắn:\n\nVí dụ: $H 3000m$, ${V}_{mt} 200m/s$, $P 500m$, Pháo 57mm, ${d}_{b} 4000m$\n\nMục 15 - TÍNH KHẢ NĂNG BẮN\n\n1. Công thức tính thời gian bắn và số điểm xạ:\n\nThời gian bắn (${t}_{b}$):\n\nKhi $P\\ne 0$:\n\n$${t}_{b}=\\frac{\\sqrt{{d}_{y1}^{2}-{P}^{2}}}{{V}_{mt}}+\\left({t}_{1}-{t}_{c}\\right)$$\n\nTrong công thức trên:\n\n${t}_{1}$ - Thời gian đạn bay ứng với ${d}_{y1}$\n\n${t}_{c}$ - Thời gian đạn bay ứng với ${d}_{yc}$\n\nKhi $P=0$:\n\n$${t}_{b}=\\frac{{d}_{y1}-{d}_{yc}}{{V}_{mt}}+\\left({t}_{1}-{t}_{c}\\right)$$\n\nSố điểm xạ ($N$):\n\n$$N=\\frac{{t}_{b}-{t}_{đx}}{{t}_{gc}+{t}_{đx}}+1$$\n\n${t}_{đx}$ - Thời gian điểm xạ\n\n${t}_{gc}$ - Thời gian gián cách giữa 2 điểm xạ\n\n2. Tính khả năng bắn khi máy bay bay bằng:\n\na) Nội dung cần tính\n\nCự ly bắt mục tiêu (${D}_{2}$)\n\nCự ly hạ lệnh bắn (${D}_{1}$)\n\nCự ly bắn (${D}_{b}$)"
+    },
+    {
+      "id": "si-quan-cao-xa-003",
+      "document_id": "si-quan-cao-xa",
+      "document_title": "Sĩ Quan Cao Xạ",
+      "index": 3,
+      "start_block": 65,
+      "end_block": 91,
+      "text": "Cự ly bắn (${D}_{b}$)\n\n2. Công tác chuẩn bị:\n\na) Tính cự ly đặt vọng quan sát tín hiệu\n\nMuốn có thời cơ bắn và phần tử bắn tương đối chính xác, bố trí VQS phải đạt yêu cầu sau đây:\n\nCự ly đặt VQS phải bằng cự ly bắn đón tổng hợp:\n\nKhi $P=0$:\n\n$DVQS=dy+V\\left(ty+\\frac{1}{2}{t}_{b}+{t}_{hl}+{t}_{bc}+{t}_{tđ}\\right)$\n\nKhi $P\\ne 0$:\n\n$DVQS=\\sqrt{{P}^{2}+{\\left\\{V\\left(ty+\\frac{1}{2}{t}_{b}+{t}_{hl}+{t}_{bc}+{t}_{tđ}\\right)\\right\\}}^{2}}$\n\nTrong công thức trên:\n\n$P$ - Khoảng cách gần nhất,\n\n$V$ - Tốc độ mục tiêu,\n\n$Ty$ - Thời gian đạn bay,\n\n$\\frac{1}{2}{t}_{b}$ - Một nửa thời gian bắn,\n\n${t}_{hl}$ - Thời gian hạ lệnh bắn,\n\n${t}_{bc}$ - Thời gian báo cáo của chiến sĩ thông tin,\n\n${t}_{tđ}$ - Thời gian nghe tiếng động của VQS (theo công thức ${t}_{tđ}=\\frac{H}{a}$ trong đó $H$ là độ cao, $a$ là tốc độ âm thanh lấy chẵn $340m/s$).\n\nKhi bắn tập trung cả d (e) vào một điểm ay theo cùng một thời gian thì phải lấy ty của đại đội ở xa nhất để tính cự ly VQS và tính ra thời gian chờ cho các đại đội khác. Khi VQS phải đặt xa hơn cự ly đã tính toán thì phải căn cứ vào tốc độ mục tiêu và đoạn cự ly tăng thêm để tính ra thời gian chờ. Sau này khi nghe VQS báo mục tiêu đỉnh đầu thì sở chỉ huy d (e) phải chờ hết t chờ mới được hạ lệnh bắn.\n\nMục 33 - MỘT SỐ CÔNG THỨC VÀ BẢNG TÍNH NGẮN LIÊN QUAN CHỈ HUY BẮN.\n\n1. Cự ly chuyển cấp gần nhất của dx (e):\n\n$${d}_{ccgn}≅{d}_{phgn}+V\\cdot {t}_{tt}$$\n\nTrong đó:\n\n${d}_{phgn}$ - Cự ly phát hiện gần nhất đủ thời gian thao tác.\n\n$V$ - Tốc độ mục tiêu\n\n${t}_{tt}$ - Thời gian thao tác.\n\nLấy một số số liệu trung bình để tính ra ${d}_{ccgn}$ cho các loại pháo theo bảng sau:\n\n| PHẦN TỬ TÍNH \\ ĐẠI ĐỘI | 57mm | 37mm |\n| --- | --- | --- |\n| Cự ly phát hiện gần nhất | 15km | 10km |\n| Tốc độ mục tiêu | 250m/s | 250m/s |\n| Thời gian chậm của tình báo $9\\times 9$ | 180s | 180s |\n| Thời gian chuyển cấp (mở máy) | 180s | 30s |\n| Thời gian chỉ thị, sục sạo mục tiêu | 60s | 60s |\n| Toàn bộ thời gian thao tác (${t}_{tt}$) | 420s | 270s |\n| Cự ly chuyển cấp gần nhất (${d}_{ccgn}$) | 120km | 80s |"
+    },
+    {
+      "id": "si-quan-cao-xa-004",
+      "document_id": "si-quan-cao-xa",
+      "document_title": "Sĩ Quan Cao Xạ",
+      "index": 4,
+      "start_block": 92,
+      "end_block": 117,
+      "text": "2. Cự ly ra lệnh rada pháo mở máy:\n\n$$\\begin{aligned}d mở máy&={d}_{gnv}+V\\cdot t mở máy \\\\ &=40 km+250\\cdot 180s \\\\ &=85km\\end{aligned}$$\n\n3. Cự ly giao nhiệm vụ bắn cho các đại đội pháo:\n\n$${d}_{gnv}≅{d}_{yLn}+V\\cdot {t}_{th}$$\n\nTrong đó:\n\n${d}_{yLn}$ - Cự ly bắn lớn nhất của từng loại pháo.\n\n$V$ - Tốc độ mục tiêu.\n\n${t}_{th}$ - Thời gian tổng hợp (gồm thời gian bắn đón và thao tác).\n\nLấy một số số liệu trung bình để tính ra ${d}_{gnv}$ cho các loại pháo. Theo bảng sau đây:\n\n| PHẦN TỬ TÍNH \\ ĐẠI ĐỘI | 57mm | 37mm |\n| --- | --- | --- |\n| Cự ly bắn đón lớn nhất (${d}_{yLn}$) | 5500m | 3500m |\n| Tốc độ mục tiêu (m/s) | 250 | 250 |\n| Thời gian bắn đón lớn nhất ($t{y}_{Ln}$) | 13s | 9s |\n| Thời gian thao tác bắn | 22s | 10s |\n| Thời gian sục sạo mục tiêu | 60s | 60s |\n| Thời gian d (e) giao nhiệm vụ | 05s | 05s |\n| Thời gian chậm của tình báo $5\\times 5$ | 30s | 30s |\n| Toàn bộ thời gian tổng hợp (${t}_{th}$) | 130s | 114s |\n| Cự ly giao nhiệm vụ bắn (${d}_{gnv}$) | 38km | 32km |\n\n4. Thời gian di chuyển hỏa lực bắn tốp (chiếc) sau:\n\n$${T}_{dc}={t}_{1}+{t}_{2}$$\n\nTrong đó:\n\n${t}_{1}$ - Thời gian bắn tốp (chiếc) đầu.\n\n${t}_{2}$ - Thời gian thao tác tốp (chiếc) sau.\n\nMục 34: Một số tiêu chuẩn đường xá, cầu cống, bến lội bảo đảm hành quân và công thức tính toán thời gian hành quân\n\n4. Công thức tính thời gian hành quân:\n\n$${t}_{hq}=\\frac{S+L}{{V}_{tb}}+{t}_{n}$$\n\nTrong đó:\n\n${t}_{hq}$ - Thời gian hành quân.\n\n$S$ - Chiều dài đường hành quân\n\n$L$ - Chiều dài đội hình hành quân.\n\n${V}_{tb}$ - Tốc độ hành quân trung.\n\n${t}_{n}$ - Thời gian các lần nghỉ, qua phà.\n\nMục 35 - MỘT SỐ CÔNG THỨC TÍNH PHẦN TỬ NÉM BOM.\n\n1. Khi bay bằng ném bom:"
+    },
+    {
+      "id": "si-quan-cao-xa-005",
+      "document_id": "si-quan-cao-xa",
+      "document_title": "Sĩ Quan Cao Xạ",
+      "index": 5,
+      "start_block": 117,
+      "end_block": 148,
+      "text": "1. Khi bay bằng ném bom:\n\n$${d}_{cb}=V\\cdot \\sqrt{\\frac{2H}{g}-Δ}$$\n\nTrong công thức trên:\n\n$V$ - Tốc độ mục tiêu.\n\n$H$ - Độ cao cắt bom.\n\n$g$ - Gia tốc rơi tự do, lấy chẵn $10m/s$.\n\n$Δ$ - Lượng tụt hậu của bom tương đương $25%H$. Khi ${V}_{y}<300m/s$.\n\n2. Khi bổ nhào ném bom:\n\na) Độ cao cắt bom\n\n$${H}_{cb}={H}_{bn}-ΔH$$\n\nTrong đó $ΔH={V}_{Bsin}λ{t}_{cb}+\\frac{g{t}_{cb}^{2}}{2}$\n\nb) Cự ly cắt bom\n\n$${d}_{cb}=\\frac{-{V}_{cbsin}λ+\\sqrt{{{V}_{cbsin}}^{2}λ+2g{H}_{cb}}}{g}\\cdot {V}_{cbcos}λ$$\n\nc) Cự ly bổ nhào: ${d}_{bn}={d}_{cb}+Δd$\n\nTrong đó $Δd=ΔH\\cdot Cotgλ$\n\nd) Thời gian bom rơi\n\n$$T=\\frac{-{V}_{cbsin}λ+\\sqrt{{{V}_{2cbsin}}^{2}λ+2g{H}_{cb}}}{g}$$\n\ne) Tốc độ máy bay ở điểm cắt bom\n\n$${V}_{cb}={V}_{B}+gsin λ{t}_{cb}$$\n\ng) Tốc độ trung bình trên đường bổ nhào\n\n$${V}_{tb}=\\frac{{V}_{B}+{V}_{cb}}{2}$$\n\nhoặc,\n\n$${V}_{tb}={V}_{B}+gsin λ\\frac{{t}_{cb}}{2}$$\n\nh) Đoạn đường bổ nhào\n\n$${S}_{bn}={V}_{B}\\cdot t+gsin λ\\frac{{t}^{2}}{2}$$\n\nTrong công thức trên, $t$ có thể là thời gian cắt bom, thời gian bổ nhào hoặc thời gian tự chọn để tính đoạn bổ nhào theo ý định tính toán.\n\n3. Bán kính lượng vòng:\n\n$${R}_{LV}=\\frac{{V}^{2}}{g\\cdot tan θ}$$\n\nTrong công thức trên:\n\n$V$ - Tốc độ mục tiêu ($m/s$)\n\n$g$ - Gia tốc rơi tự do (lấy chẵn $10{m/s}^{2}$)\n\n$θ$ - Độ nghiêng cánh khi lượng vòng."
+    }
+  ]
+}

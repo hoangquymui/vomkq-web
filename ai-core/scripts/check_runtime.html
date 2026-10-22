@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<title>VECTOR AI · Runtime regression checks</title>
+<style>body{font:16px system-ui;margin:32px;background:#10191a;color:#dbeae6}li{margin:8px}#fixtures{height:1px;overflow:hidden}</style>
+<h1>Runtime regression checks</h1>
+<p id="status">Đang kiểm tra…</p><ol id="results"></ol><div id="fixtures"></div>
+<script type="module">
+import { lazyResource, createVisualRenderer } from "../src/visual-resources.js";
+import { createWorkspaceStorage } from "../src/workspace-storage.js";
+import { createConversationPersistence } from "../src/conversation-persistence.js";
+import { createWorkflowGraphEditor } from "../src/workflow-graph-editor.js";
+
+const tests = [];
+const test = (name, run) => tests.push({ name, run });
+const assert = (value, message = "Assertion failed") => { if (!value) throw new Error(message); };
+const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
+const fixtures = document.querySelector("#fixtures");
+let created = 0, destroyed = 0;
+const live = new Set();
+class Chart {
+  constructor(canvas) { this.canvas = canvas; created++; live.add(this); }
+  destroy() { assert(live.delete(this), "Chart destroyed twice"); destroyed++; }
+}
+function fixture() {
+  const root = document.createElement("div");
+  const element = document.createElement("div");
+  element.className = "chart-pending";
+  element.dataset.source = encodeURIComponent('{"type":"bar","data":{"labels":[],"datasets":[]}}');
+  element.append(document.createElement("canvas"));
+  root.append(element); fixtures.append(root);
+  return { root, element, canvas: element.firstChild };
+}
+
+test("Concurrent library loads initialize once; failed loads can retry", async () => {
+  const gate = deferred(); let count = 0;
+  const get = lazyResource(() => { count++; return gate.promise; });
+  const values = Array.from({length:20}, get);
+  gate.resolve(Chart);
+  assert((await Promise.all(values)).every(value => value === Chart));
+  assert(count === 1);
+  let attempts = 0;
+  const retry = lazyResource(() => { if (++attempts === 1) throw new Error("temporary"); return Chart; });
+  await retry().then(() => { throw new Error("Expected rejection"); }, () => {});
+  assert(await retry() === Chart && attempts === 2);
+});
+
+test("Concurrent rendering creates one chart per canvas", async () => {
+  const gate = deferred(), { root } = fixture();
+  const renderer = createVisualRenderer({ loadChart: () => gate.promise });
+  const before = created;
+  const first = renderer.hydrate(root), second = renderer.hydrate(root);
+  gate.resolve(Chart); await Promise.all([first, second]);
+  assert(created === before + 1);
+  renderer.dispose(root); root.remove();
+});
+
+test("Switching chat during import does not create a detached chart", async () => {
+  const gate = deferred(), { root, element } = fixture();
+  const renderer = createVisualRenderer({ loadChart: () => gate.promise });
+  const before = created, task = renderer.hydrate(root);
+  renderer.dispose(root); element.remove();
+  gate.resolve(Chart); await task;
+  assert(created === before);
+  root.remove();
+});
+
+test("Closing or changing preview invalidates an outstanding render", async () => {
+  const gate = deferred(), { root, canvas } = fixture();
+  let current = true;
+  const renderer = createVisualRenderer({ loadChart: () => gate.promise });
+  const before = created, task = renderer.renderChart(canvas, '{}', () => current);
+  current = false; gate.resolve(Chart); await task;
+  assert(created === before);
+  root.remove();
+});
+
+test("Diagrams share one render queue and skip previews closed while queued", async () => {
+  const gate = deferred(); let running = 0, peak = 0, calls = 0;
+  const renderer = createVisualRenderer({ loadMermaid: async () => ({ async run() {
+    calls++; running++; peak = Math.max(peak, running);
+    try { if (calls === 1) { await gate.promise; throw new Error("synthetic diagram failure"); } }
+    finally { running--; }
+  } }) });
+  const fixturesForDiagrams = [fixture(), fixture(), fixture()];
+  let current = true;
+  const first = renderer.renderDiagram(fixturesForDiagrams[0].element, "one").catch(() => {});
+  const second = renderer.renderDiagram(fixturesForDiagrams[1].element, "two", () => current);
+  const third = renderer.renderDiagram(fixturesForDiagrams[2].element, "three");
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert(calls === 1 && peak === 1, "Mermaid renders overlapped");
+  current = false; gate.resolve(); await Promise.all([first, second, third]);
+  assert(calls === 2 && peak === 1 && running === 0, "Queue did not recover or rendered a closed preview");
+  fixturesForDiagrams.forEach(({root}) => root.remove());
+});
+
+test("Failed visual import renders a fallback without rejecting the answer", async () => {
+  const { root, element } = fixture();
+  const renderer = createVisualRenderer({ loadChart: async () => { throw new Error("synthetic import failure"); } });
+  await renderer.hydrate(root);
+  assert(element.className === "visual-error" && element.textContent.includes("synthetic import failure"));
+  root.remove();
+});
+
+test("100 render/switch cycles retain zero chart instances", async () => {
+  const renderer = createVisualRenderer({ loadChart: async () => Chart });
+  for (let index = 0; index < 100; index++) {
+    const { root } = fixture();
+    await renderer.hydrate(root);
+    renderer.dispose(root); renderer.dispose(root); root.remove();
+  }
+  assert(live.size === 0 && created === destroyed);
+});
+
+test("Invalid chart config also releases a partially initialized instance", async () => {
+  const { root, element } = fixture();
+  let partial, cleaned = 0;
+  class BrokenChart {
+    constructor() { partial = { destroy() { cleaned++; partial = undefined; } }; throw new Error("invalid chart type"); }
+    static getChart() { return partial; }
+  }
+  const renderer = createVisualRenderer({ loadChart: async () => BrokenChart });
+  await renderer.hydrate(root);
+  assert(cleaned === 1 && !partial && element.className === "visual-error");
+  root.remove();
+});
+
+test("Workflow diagram edits, validates, saves and preserves drag offset", async () => {
+  const host = document.createElement("div");
+  host.style.cssText = "width:1000px;height:650px";
+  fixtures.append(host);
+  let revision = 0, putCount = 0, allowDiscard = false;
+  let current = {
+    id: "test-workflow", name: "Workflow thử nghiệm", revision,
+    nodes: [
+      { id:"start", kind:"start", label:"Bắt đầu", description:"", x:120, y:120, runtime_stage:"start" },
+      { id:"finish", kind:"end", label:"Kết thúc", description:"", x:700, y:400, runtime_stage:"finish" },
+    ],
+    edges: [{ id:"edge", source:"start", target:"finish", label:"" }],
+  };
+  const request = async (path, options = {}) => {
+    if (path === "/workflows") return { workflows:[{ id:current.id, name:current.name, node_count:2 }] };
+    if (options.method === "PUT") {
+      putCount++;
+      assert(options.body.revision === revision, "Editor sent a stale revision");
+      revision++;
+      const edits = new Map(options.body.nodes.map(node => [node.id, node]));
+      current = { ...current, revision, nodes:current.nodes.map(node => ({ ...node, ...edits.get(node.id) })) };
+      return { diagram:structuredClone(current) };
+    }
+    return { diagram:structuredClone(current) };
+  };
+  const editor = createWorkflowGraphEditor({ request, notify:()=>{}, confirmAction:async()=>allowDiscard });
+  try {
+    await editor.mount(host);
+    const canvas = host.querySelector("[data-canvas]");
+    canvas.getBoundingClientRect = () => ({ left:0, top:0, right:1000, bottom:570, width:1000, height:570 });
+    let start = host.querySelector('[data-node-id="start"]');
+    start.setPointerCapture = () => {};
+    start.hasPointerCapture = () => false;
+    start.dispatchEvent(new PointerEvent("pointerdown", { bubbles:true, button:0, pointerId:7, clientX:150, clientY:140 }));
+    start.dispatchEvent(new PointerEvent("pointermove", { bubbles:true, pointerId:7, clientX:180, clientY:160 }));
+    start.dispatchEvent(new PointerEvent("pointerup", { bubbles:true, button:0, pointerId:7, clientX:180, clientY:160 }));
+    assert(Math.abs(parseFloat(start.style.left) - 15) < .01, "Node jumped to the pointer instead of preserving the grab offset");
+    assert(editor.hasUnsaved(), "Dragging did not mark the diagram dirty");
+
+    start.click();
+    let label = host.querySelector("[data-node-label]");
+    label.focus(); label.value = "   "; label.dispatchEvent(new InputEvent("input", { bubbles:true, inputType:"insertText", data:" " }));
+    assert(label.getAttribute("aria-invalid") === "true", "Blank node label was not marked invalid");
+    assert(host.querySelector("[data-dirty]").textContent === "CẦN SỬA", "Invalid state is not visible in the toolbar");
+    host.querySelector("[data-save]").click();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert(putCount === 0, "Invalid blank label reached the backend");
+
+    label = host.querySelector("[data-node-label]");
+    label.focus(); label.value = "Nhận dữ liệu"; label.dispatchEvent(new InputEvent("input", { bubbles:true, inputType:"insertText", data:"Nhận dữ liệu" }));
+    host.querySelector("[data-save]").click();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert(putCount === 1 && revision === 1 && !editor.hasUnsaved(), "Valid diagram edit was not saved cleanly");
+
+    start = host.querySelector('[data-node-id="start"]');
+    start.dispatchEvent(new KeyboardEvent("keydown", { bubbles:true, key:"ArrowRight" }));
+    assert(await editor.confirmDiscard() === false, "Discard guard ignored cancellation");
+    allowDiscard = true;
+    assert(await editor.confirmDiscard() === true, "Discard guard did not accept confirmation");
+  } finally {
+    editor.dispose(); host.remove();
+  }
+});
+
+test("Workspace: one connection; ordered reads in one transaction; writes committed", async () => {
+  const name = `vector-runtime-test-${crypto.randomUUID()}`;
+  const connections = []; let opens = 0, transactions = 0;
+  const factory = { open(...args) {
+    opens++;
+    const request = indexedDB.open(...args);
+    request.addEventListener("success", () => {
+      const db = request.result;
+      connections.push(db);
+      const transaction = db.transaction.bind(db);
+      db.transaction = (...args) => { transactions++; return transaction(...args); };
+    });
+    return request;
+  } };
+  const store = createWorkspaceStorage(name, factory);
+  const start = performance.now();
+  try {
+    await Promise.all(Array.from({length:30}, (_, id) => store.put({id:String(id), workspaceId:"test", text:`record ${id}`})));
+    assert(opens === 1, "Concurrent operations opened multiple connections");
+    const before = transactions;
+    const ids = Array.from({length:30}, (_, id) => String(29-id));
+    const records = await store.getMany([...ids, "missing"]);
+    assert(transactions === before + 1, "Batch created multiple transactions");
+    assert(records.length === 31 && records[30] === undefined);
+    assert(records.slice(0,30).every((record,index) => record.id === ids[index]), "Read order changed");
+    await store.put({id:"persisted",workspaceId:"test"});
+    const independent = createWorkspaceStorage(name);
+    assert((await independent.getMany(["persisted"]))[0].id === "persisted", "put resolved before commit");
+    // Upgrade closes all cached connections through onversionchange; the page is the only owner.
+    await store.delete("persisted");
+    assert((await store.getMany(["persisted"]))[0] === undefined);
+    let rejected = false;
+    try { await store.replaceAll([{id:"new",workspaceId:"test"}, {workspaceId:"invalid"}]); }
+    catch { rejected = true; }
+    assert(rejected, "Expected invalid restore to abort");
+    assert((await store.getAll()).length === 30, "Failed restore did not roll back atomically");
+    await store.replaceAll([{id:"only",workspaceId:"test"}]);
+    assert((await store.getAll()).length === 1);
+    // deleteDatabase triggers versionchange on both instances, then permits reopening.
+    await new Promise((resolve,reject) => { const request=indexedDB.deleteDatabase(name); request.onsuccess=resolve; request.onerror=()=>reject(request.error); });
+    await store.put({id:"reopened",workspaceId:"test"});
+    assert(opens === 2 && (await store.getAll())[0].id === "reopened");
+    return `30 files: 1 connection, 1 batch read; ${Math.round(performance.now()-start)} ms for test sequence`;
+  } finally {
+    connections.forEach(db => db.close());
+    await new Promise((resolve,reject) => { const request=indexedDB.deleteDatabase(name); request.onsuccess=resolve; request.onerror=()=>reject(request.error); });
+  }
+});
+
+test("Conversation outbox survives IndexedDB reopening and lost acknowledgement", async () => {
+  const name = `vector-conversation-test-${crypto.randomUUID()}`;
+  let revision = 0, payload = null, operation = null, loseAck = false;
+  const api = { request: async (_path, options) => {
+    if (!options) return { revision, payload, operation_id: operation };
+    const body = options.body;
+    if (body.operation_id !== operation) {
+      assert(body.expected_revision === revision, "Wrong expected revision");
+      revision++; payload = body.payload; operation = body.operation_id;
+    }
+    if (loseAck) { loseAck = false; throw new Error("lost ack"); }
+    return { revision };
+  } };
+  const initial = { generalChats: [], workspaces: [], activeWorkspaceId: null };
+  try {
+    const first = createConversationPersistence({ api, journal: createWorkspaceStorage(name) });
+    await first.initialize(initial);
+    loseAck = true;
+    let failed = false;
+    try { await first.save({ ...initial, generalChats: [{ id:"persisted", messages:[] }] }); }
+    catch { failed = true; }
+    assert(failed && revision === 2);
+    const reopened = createConversationPersistence({ api, journal: createWorkspaceStorage(name) });
+    const saved = await reopened.initialize(payload);
+    assert(saved.generalChats[0].id === "persisted" && revision === 2);
+    assert((await reopened.recoveryRecords()).length === 0);
+  } finally {
+    await new Promise((resolve,reject) => { const request=indexedDB.deleteDatabase(name); request.onsuccess=resolve; request.onerror=()=>reject(request.error); });
+  }
+});
+
+let passed=0;
+for (const {name,run} of tests) {
+  const item=document.createElement("li");
+  document.querySelector("#results").append(item);
+  try { const detail=await run(); passed++; item.textContent=`PASS — ${name}${detail ? ` (${detail})` : ""}`; }
+  catch(error) { item.textContent=`FAIL — ${name}: ${error.stack || error}`; }
+}
+document.querySelector("#status").textContent = `${passed}/${tests.length} passed · ${created} charts created, ${destroyed} destroyed, ${live.size} retained`;
+document.title = passed===tests.length ? "PASS — VECTOR runtime checks" : "FAIL — VECTOR runtime checks";
+if (new URLSearchParams(location.search).has("report")) {
+  await fetch("/runtime-test-result", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({passed,total:tests.length,charts:{created,destroyed,retained:live.size},results:[...document.querySelectorAll("#results li")].map(item=>item.textContent)}) });
+}
+</script>
+</html>

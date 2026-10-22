@@ -15,6 +15,7 @@ import {
 } from '../src/services/vectorAiClient';
 
 let failures = 0;
+const runPayloads: Array<{ strict_sources?: unknown }> = [];
 function check(name: string, condition: boolean, detail: unknown) {
   const status = condition ? 'PASS' : 'FAIL';
   if (!condition) failures++;
@@ -49,6 +50,11 @@ function sseBody(scenario: string): string {
       ev('error', { type: 'error', message: 'model lỗi giữa luồng' })
     );
   }
+  if (scenario === 'eof') return ev('delta', { type: 'delta', data: { content: 'dang dở' } });
+  if (scenario === 'truncated') return ev('completed', { type: 'completed', data: { final_content: 'bị cắt', truncated: true } });
+  if (scenario === 'metadata') return ev('sources', { type: 'sources', data: { sources: [{ id: 'source-1' }] } })
+    + ev('usage', { type: 'usage', data: { total_tokens: 12 } })
+    + ev('completed', { type: 'completed', data: { final_content: 'có nguồn' } });
   return ev('completed', { type: 'completed', data: { final_content: '' } });
 }
 
@@ -73,12 +79,16 @@ const server = createServer((req, res) => {
     req.on('end', () => {
       let scenario = 'deltas-then-final';
       try {
-        const parsed = JSON.parse(body) as { mode?: string; scope?: unknown };
+        const parsed = JSON.parse(body) as { mode?: string; scope?: unknown; strict_sources?: unknown };
+        runPayloads.push(parsed);
         // Nhét kịch bản qua chính nội dung user message để test gọn
         const messages = (JSON.parse(body) as { messages?: Array<{ content?: string }> }).messages;
         const marker = messages?.[0]?.content ?? '';
         if (marker.includes('SCENARIO=deltas-only')) scenario = 'deltas-only';
         if (marker.includes('SCENARIO=stream-error')) scenario = 'stream-error';
+        if (marker.includes('SCENARIO=eof')) scenario = 'eof';
+        if (marker.includes('SCENARIO=truncated')) scenario = 'truncated';
+        if (marker.includes('SCENARIO=metadata')) scenario = 'metadata';
         void parsed;
       } catch {
         // ignore
@@ -134,6 +144,15 @@ try {
   });
   check('SSE hợp nhất final_content', first.ok && first.value.text === 'Xin chào thế giới', first.ok ? first.value : first.error);
   check('SSE trả run_id', first.ok && first.value.runId === 'run-deltas-then-final', first.ok ? first.value.runId : null);
+  check('Document requests default to strict_sources=true', runPayloads[0]?.strict_sources === true, runPayloads[0]);
+
+  const groundedCandidates = await askVectorAi({
+    model: 'qwen-test:latest',
+    messages: [{ role: 'user', content: 'SCENARIO=deltas-then-final' }],
+    strictSources: false,
+  });
+  check('GIS ranking opts into strict_sources=false per request',
+    groundedCandidates.ok && runPayloads[1]?.strict_sources === false, runPayloads[1]);
 
   // 3. SSE: chỉ có delta (final_content rỗng) -> ghép delta
   const second = await askVectorAi({
@@ -152,6 +171,12 @@ try {
     messages: [{ role: 'user', content: 'SCENARIO=stream-error' }],
   });
   check('event error -> kind=stream', !third.ok && third.error.kind === 'stream', third.ok ? 'unexpected ok' : third.error);
+  const eof = await askVectorAi({ model: 'test', messages: [{ role: 'user', content: 'SCENARIO=eof' }] });
+  check('EOF without completed is never success', !eof.ok && eof.error.kind === 'stream', eof);
+  const truncated = await askVectorAi({ model: 'test', messages: [{ role: 'user', content: 'SCENARIO=truncated' }] });
+  check('Truncation flag survives transport', truncated.ok && truncated.value.truncated === true, truncated);
+  const metadata = await askVectorAi({ model: 'test', messages: [{ role: 'user', content: 'SCENARIO=metadata' }] });
+  check('Sources and usage survive transport', metadata.ok && metadata.value.sources?.length === 1 && metadata.value.usage?.total_tokens === 12, metadata);
 
   // 5. Model rỗng -> lỗi 'parse', không ném
   const noModel = await askVectorAi({ model: '', messages: [{ role: 'user', content: 'x' }] });

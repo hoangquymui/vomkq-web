@@ -1,6 +1,7 @@
 import React from 'react';
 import { PlusCircle, X } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useShallow } from 'zustand/react/shallow';
 
 export const PlacementBanner: React.FC = () => {
   const {
@@ -10,7 +11,14 @@ export const PlacementBanner: React.FC = () => {
     setPendingTemplate,
     selectedInstanceId,
     instances,
-  } = useTacticalStore();
+  } = useTacticalStore(useShallow((state) => ({
+    activeTool: state.activeTool,
+    setActiveTool: state.setActiveTool,
+    pendingTemplate: state.pendingTemplate,
+    setPendingTemplate: state.setPendingTemplate,
+    selectedInstanceId: state.selectedInstanceId,
+    instances: state.instances,
+  })));
 
   const selectedInst = instances.find((i) => i.instanceId === selectedInstanceId);
 

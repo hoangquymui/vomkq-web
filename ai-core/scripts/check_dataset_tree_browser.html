@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<title>Dataset tree regression fixture</title>
+<style>
+  * { box-sizing: border-box; } body { margin:0; background:#080f13; color:#dbe6e3; font:14px system-ui; }
+  .fixture { height:100vh; padding:18px; display:flex; align-items:center; justify-content:center; }
+  .workflow-manager { background:#101b20; border:1px solid #294039; border-radius:20px; }
+  .workflow-manager h2 { margin:0 0 12px; font-size:25px; }
+  .workflow-manager p { margin:0 0 12px; color:#91a79d; font-size:12px; }
+</style>
+<div class="fixture modal-layer open"><div class="workflow-manager"><h2>Sơ đồ dataset</h2><p>Tài liệu → Chương → Mục → các lớp nội dung con</p><section data-content></section></div></div>
+<script type="module">
+import "../src/styles.css";
+import "../src/workflow-manager.css";
+import { createDatasetTreeEditor } from "../src/dataset-tree-editor.js";
+import "../src/design-system.css";
+
+const make = (id, title, parent_id, kind = "section", extra = {}) => ({ id, title, parent_id, kind, collapsed:false, chunk_id:null, description:"", ...extra });
+const fixture = {
+  document: { id:"fixture-handbook", version:1, title:"Sổ tay sĩ quan", enabled:true }, source_count:1,
+  tree: { document_id:"fixture-handbook", document_version:1, revision:0, source_revision:"fixture", nodes:[
+    make("root", "Sổ tay sĩ quan", null, "document"),
+    make("chapter", "Chương 1", "root", "chapter"),
+    make("section", "Mục 34 — Tiêu chuẩn đường xá và tính thời gian hành quân", "chapter"),
+    make("concept", "Khái niệm", "section", "concept"),
+    make("standard", "Tiêu chuẩn đường", "section", "standard"),
+    make("formula", "Công thức thời gian", "section", "formula"),
+    make("table", "Bảng", "section", "table"),
+    make("note", "Ghi chú", "section", "note"),
+    make("source", "Đoạn nguồn minh họa", "concept", "chunk", { chunk_id:"fixture-chunk" }),
+  ] },
+};
+let data = structuredClone(fixture), catalog = {revision:0, folders:[], documents:[]}, editor, conflict = false, allowDiscard = true, emptyKnowledge = false;
+const otherDocuments = [
+  {id:"second-book", version:1, title:"Sổ tay kỹ thuật", enabled:false},
+  {id:"third-book", version:1, title:"Tài liệu tham khảo", enabled:true},
+];
+const host = document.querySelector("[data-content]"), requests = [];
+const request = async (path, options = {}) => {
+  requests.push(path);
+  if (path === "/documents" || path.startsWith("/documents?state=")) {
+    const state = path.includes("?state=") ? path.split("?state=")[1] : "active";
+    return { documents:emptyKnowledge ? [] : [data.document, ...otherDocuments].filter((doc) => (doc.lifecycle || "active") === state) };
+  }
+  if (path === "/knowledge/storage") return {root:"C:/test/kho_kien_thuc", documents:[]};
+  if (path === "/knowledge/storage/open") return {path:"C:/test/kho_kien_thuc"};
+  if (path.endsWith("/lifecycle")) { data.document.lifecycle = options.body.state; return {ok:true}; }
+  if (path === "/knowledge/catalog") {
+    if (options.method === "PUT") catalog = {...structuredClone(options.body), revision:catalog.revision + 1};
+    return structuredClone(catalog);
+  }
+  const other = otherDocuments.find((d) => path.startsWith(`/documents/${d.id}/tree`));
+  if (other) return { document:other, source_count:0, tree:{document_id:other.id, document_version:other.version, revision:0, source_revision:"fixture", nodes:[make("root",other.title,null,"document")]} };
+  if (path.includes("/source/")) return { chunk: { text:"Nội dung nguồn thật.\n\n$$s=v*t$$\n\n| Tên | Giá trị |\n| --- | --- |\n| a | 12 |", page:12, metadata:{retrieval_eligible:false} } };
+  if (options.method === "PUT") {
+    if (conflict) throw new Error("409: Cây đã thay đổi ở phiên khác");
+    data.tree = { ...structuredClone(options.body), revision:data.tree.revision+1 };
+  }
+  return structuredClone(data);
+};
+const open = async (selectFirst = true) => {
+  editor?.dispose();
+  editor = createDatasetTreeEditor({ request, confirmAction:async () => allowDiscard, notify:() => {} });
+  await editor.mount(host);
+  if (selectFirst) { host.querySelector('[data-open-doc="0"]').click(); await new Promise((r) => setTimeout(r,25)); }
+  await new Promise(requestAnimationFrame);
+};
+const assert = (ok, message) => { if (!ok) throw new Error(message); };
+const click = (selector) => { const e=host.querySelector(selector); assert(e, `Missing ${selector}`); e.click(); };
+const change = (selector, value, event = "change") => { const e=host.querySelector(selector); e.value=value; e.dispatchEvent(new Event(event, {bubbles:true})); };
+const tick = () => new Promise((r) => setTimeout(r, 25));
+
+window.datasetTest = {
+  async run() {
+    const checks = [];
+    assert(host.querySelectorAll("[data-local-node]").length === 9, "Dataset topology not rendered");
+    assert(host.querySelectorAll('[data-kind="document"]').length === 3, "Other documents disappeared on expansion");
+    assert(host.querySelector('[data-kind="knowledge"] strong').textContent === "Kho Kiến Thức", "Knowledge root missing");
+    assert(!host.querySelector('[data-kind="knowledge"] [data-drag]'), "Knowledge root must not be draggable into a document");
+    checks.push("Shared knowledge root connects all documents; selected document expands inline");
+    assert(getComputedStyle(host.querySelector(".dataset-node")).position === "absolute", "CSS not loaded");
+    click('[data-select="section"]'); click("[data-template]");
+    assert(host.querySelectorAll("[data-local-node]").length === 14, "Five child template missing");
+    click('[data-select="section"]');
+    change('[data-content]', 'Dữ liệu nhập ngay trên mục.\n\n$$s=v\\cdot t$$', 'input');
+    assert(host.querySelector('[data-content-preview] .katex'), "Inline node data did not render");
+    checks.push("Five editable child types; direct node data editor with formula preview");
+    click('[data-select="formula"]'); click("[data-add]");
+    change("[data-title]", "Lớp con mới", "input");
+    change("[data-parent]", "note");
+    assert(host.querySelector("[data-parent]").value === "note", "Reparent failed");
+    click("[data-save]"); await tick();
+    assert(!editor.hasUnsaved(), "Save leaves dirty tree");
+    assert(!data.tree.nodes.some((n) => n.kind === "knowledge") && data.tree.nodes[0].parent_id === null, "Virtual root leaked into document save");
+    assert(data.tree.nodes.some((n) => n.title === "Lớp con mới" && n.parent_id === "note"), "Wrong persisted parent");
+    await open();
+    assert(host.querySelectorAll("[data-local-node]").length === 15, "Reload lost hierarchy");
+    checks.push("Nested editing, reparent, save/reopen");
+    click('[data-select="concept"]'); click("[data-remove]"); await tick();
+    click("[data-save]"); await tick();
+    assert(data.tree.nodes.find((n) => n.id === "source").parent_id === "section", "Delete lost child source");
+    click('[data-select="source"]'); await tick();
+    assert(host.querySelector("[data-source]").textContent.includes("Chưa đủ điều kiện"), "Unapproved source mislabeled");
+    assert(host.querySelector("[data-source] .katex") && host.querySelector("[data-source] table"), "Formula/table source still displayed as raw markup");
+    click('[data-expand-source]');
+    assert(document.querySelector('.knowledge-document-dialog[open] table'), "Expanded source viewer missing");
+    document.querySelector('.knowledge-document-dialog [data-close]').click();
+    assert(host.querySelector("[data-remove]").disabled, "Source deletion should be locked");
+    assert(!host.querySelector('select[data-kind]').disabled, "Source classification is still locked");
+    change('select[data-kind]', 'formula');
+    assert(host.querySelector('select[data-kind]').value === 'formula' && host.querySelector('[data-local-node="source"]').dataset.kind === 'formula', "Source type was not selectable");
+    checks.push("Deleting grouping retains source; source state is honest; source type is selectable");
+    click('[data-select="section"]');
+    change("[data-title]", "<img src=x onerror=alert(1)>", "input");
+    assert(!host.querySelector("img"), "Unescaped label");
+    click("[data-undo]");
+    assert(!host.querySelector("[data-title]").value.includes("<img"), "Undo failed");
+    click("[data-redo]"); assert(host.querySelector("[data-title]").value.includes("<img"), "Redo failed");
+    allowDiscard = false; assert(!await editor.confirmDiscard(), "Unsaved exit not protected");
+    click('[data-open-doc="1"]'); await tick();
+    assert(host.querySelector('[data-title]').value.includes("<img"), "Switching document discarded edits without confirmation");
+    click('[data-knowledge]');
+    assert(editor.hasUnsaved(), "Returning to knowledge root lost edits");
+    click('[data-open-doc="0"]'); await tick();
+    click('[data-select="section"]');
+    assert(host.querySelector('[data-title]').value.includes("<img"), "Returning to the same document lost edits");
+    allowDiscard=true;
+    conflict = true; click("[data-save]"); await tick();
+    assert(editor.hasUnsaved() && host.querySelector("[data-tree-status]").textContent.includes("409"), "Conflict erased pending edits");
+    conflict = false; checks.push("Escaping, undo/redo, discard guard, revision conflict");
+    click('[data-open-doc="1"]'); await tick();
+    assert(host.querySelector('[data-title]').value === "Sổ tay kỹ thuật", "Wrong document tree selected");
+    assert(host.querySelectorAll('[data-kind="document"]').length === 3, "Switching documents lost knowledge links");
+    emptyKnowledge = true; await open(false);
+    assert(host.querySelector('[data-kind="knowledge"]') && host.querySelectorAll('.dataset-node').length === 1, "Empty knowledge root should remain visible");
+    assert(host.querySelector('[data-save]').disabled, "Empty knowledge root must not save as a document");
+    assert(editor.addDocument({id:"blank-book", version:1, title:"SỔ TAY TRỐNG", enabled:true, chunk_count:0}), "Blank document was not accepted by the open catalog");
+    assert([...host.querySelectorAll('[data-kind="document"] strong')].some((node) => node.textContent === "SỔ TAY TRỐNG"), "New blank document did not appear without reloading the catalog");
+    assert(!editor.hasUnsaved(), "Adding a persisted blank document incorrectly dirtied the catalog");
+    emptyKnowledge = false;
+    checks.push("Knowledge navigation preserves dirty edits; document switching, empty state, and immediate blank-document insertion");
+    editor.dispose();
+    data = structuredClone(fixture); await open();
+    return checks;
+  },
+  async finishDrag() {
+    click("[data-save]"); await tick();
+    assert(data.tree.nodes.find((n) => n.id === "source").parent_id === "note", "Pointer drag did not move source under note");
+    return "Actual pointer drag reparents source without losing its ID";
+  },
+  async convenience() {
+    const checks = [];
+    data = structuredClone(fixture); catalog = {revision:0, folders:[], documents:[]}; await open();
+    const key = (key, options={}) => host.querySelector('[data-viewport]').dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true,...options}));
+    click('[data-select="section"]');
+    host.querySelector('[data-local-node="section"]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:300,clientY:300})); await tick();
+    assert(host.querySelector('[role="menu"] [data-context-action="add"]'), 'Right-click add action missing');
+    click('[data-context-action="add"]');
+    assert(host.querySelectorAll('[data-local-node]').length === 10, 'Context add did not create a child');
+    key('z',{ctrlKey:true}); assert(host.querySelectorAll('[data-local-node]').length === 9, 'Ctrl+Z did not undo child creation');
+    key('y',{ctrlKey:true}); assert(host.querySelectorAll('[data-local-node]').length === 10, 'Ctrl+Y did not redo child creation');
+    change('[data-title]', 'Thêm bằng menu', 'input'); change('select[data-kind]', 'part'); key('s',{ctrlKey:true}); await tick();
+    assert(data.tree.nodes.some((node) => node.title === 'Thêm bằng menu' && node.kind === 'part'), 'Ctrl+S failed to persist the Phần kind');
+    key('F2'); assert(document.activeElement === host.querySelector('[data-title]'), 'F2 did not focus rename');
+    key('Delete'); await tick(); assert(host.querySelectorAll('[data-local-node]').length === 9, 'Delete did not remove selected child');
+    key('z',{ctrlKey:true}); assert(host.querySelectorAll('[data-local-node]').length === 10, 'Deleted child not undoable');
+    checks.push('Context add, Ctrl+S, Ctrl+Z, Ctrl+Y, F2, Delete and undo of deletion');
+    key('F11'); await tick();
+    const rect = host.querySelector('[data-viewport]').getBoundingClientRect();
+    assert(rect.left === 0 && rect.top === 0 && rect.width >= innerWidth-2 && rect.height >= innerHeight-2, 'The diagram itself did not fill the viewport');
+    assert(getComputedStyle(host.querySelector('.dataset-toolbar')).display === 'none', 'Management toolbar still occupies diagram space');
+    assert(getComputedStyle(host.querySelector('[data-inspector]')).display === 'none', 'Inspector should be hidden when diagram expands');
+    click('[data-focus-inspector]');
+    assert(getComputedStyle(host.querySelector('[data-inspector]')).display !== 'none', 'Inspector cannot be opened in expanded diagram');
+    change('[data-title]', 'Sửa trong sơ đồ mở rộng', 'input'); click('[data-focus-save]'); await tick();
+    assert(data.tree.nodes.some((node) => node.title === 'Sửa trong sơ đồ mở rộng' && node.kind === 'part'), 'Expanded diagram could not save edits');
+    click('[data-focus-inspector]');
+    assert(host.querySelector('[data-viewport]').getBoundingClientRect().width >= innerWidth-2, 'Inspector toggle changed the canvas extent');
+    key('Escape'); assert(!document.querySelector('.dataset-fullscreen'), 'Escape did not exit fullscreen');
+    assert(getComputedStyle(host.querySelector('[data-inspector]')).display !== 'none', 'Normal inspector did not return after exiting');
+    assert(host.querySelector('[data-title]').value === 'Sửa trong sơ đồ mở rộng', 'Exiting expanded view lost the edited selection');
+    checks.push('Phần kind persists; diagram alone fills viewport; optional overlay inspector edits and saves; Escape restores layout');
+    click('[data-select="root"]'); click('[data-document-archive]'); await tick(); await tick();
+    assert(data.document.lifecycle === 'archived', 'Document archive action failed');
+    assert(!host.querySelector('[data-local-node]'), 'Archived document still expanded in active catalog');
+    click('[data-storage]'); await tick();
+    let dialog = document.querySelector('.knowledge-storage-dialog');
+    assert(dialog.querySelector('[data-restore]'), 'Archived document not listed for restore');
+    dialog.querySelector('[data-restore]').click(); await tick(); await tick();
+    assert(data.document.lifecycle === 'active', 'Archive restore failed');
+    dialog.querySelector('[data-close]').click();
+    click('[data-open-doc="0"]'); await tick(); click('[data-document-trash]'); await tick(); await tick();
+    assert(data.document.lifecycle === 'trashed', 'Delete document did not move to trash');
+    click('[data-storage]'); await tick(); dialog = document.querySelector('.knowledge-storage-dialog');
+    dialog.querySelector('[data-state="trashed"]').click(); await tick();
+    assert(dialog.querySelector('[data-restore]'), 'Trashed document unavailable for restore');
+    dialog.querySelector('[data-restore]').click(); await tick(); await tick(); dialog.querySelector('[data-close]').click();
+    checks.push('Archive and trash hide documents from the tree; restoring returns them');
+    data = structuredClone(fixture); await open();
+    return checks;
+  },
+  async reset() { data = structuredClone(fixture); await open(); },
+  async prepareCatalogDrag() {
+    data = structuredClone(fixture); catalog = {revision:0, folders:[], documents:[]}; await open(false);
+    click('[data-add-folder]'); change('[data-folder-title]', 'SỔ TAY', 'input'); click('[data-save]'); await tick();
+    assert(host.querySelector('[data-kind="folder"] strong').textContent === 'SỔ TAY', 'Folder was not created');
+  },
+  async finishCatalogDrag() {
+    click('[data-save]'); await tick();
+    assert(catalog.documents.some((item) => item.document_id === 'fixture-handbook' && item.parent_id === catalog.folders[0].id), 'Document was not moved into folder');
+    return 'Knowledge-level folder accepts a document through actual pointer drag';
+  },
+  async overview() { data = structuredClone(fixture); await open(false); },
+};
+await open(); window.datasetReady = true;
+</script>
+</html>

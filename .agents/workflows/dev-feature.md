@@ -70,7 +70,7 @@ Mỗi mục phải ghi:
 Không tự bịa giá trị hoặc đơn vị.
 Chỉ ghi những thông số có trong code, tài liệu dự án hoặc được người dùng xác nhận.
 
-### Bước 6 - Báo cáo cuối
+### Bước 6 - Báo cáo cuối & Checkpoint
 Sau khi hoàn thành, báo cáo:
 1. Đã thay đổi gì
 2. File nào đã thay đổi
@@ -78,3 +78,4 @@ Sau khi hoàn thành, báo cáo:
 4. Đã kiểm tra những gì
 5. Còn vấn đề nào chưa xác minh
 6. Không thực hiện git commit/push
+7. Tạo file checkpoint tại `docs/checkpoints/` và gửi kèm clickable markdown link tới file checkpoint trong phản hồi.

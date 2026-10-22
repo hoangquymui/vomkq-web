@@ -1,0 +1,16 @@
+.knowledge-storage-dialog { width: min(850px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 24px; border: 1px solid #355c50; border-radius: 18px; color: #d8e9e2; background: #0d1a1c; font: 14px/1.5 "Segoe UI", sans-serif; }
+.knowledge-storage-dialog::backdrop { background: #000a; }
+.knowledge-storage-dialog header, .knowledge-storage-dialog nav, .knowledge-storage-dialog article { display: flex; align-items: center; gap: 10px; }
+.knowledge-storage-dialog header { justify-content: space-between; }
+.knowledge-storage-dialog h2 { font-size: 23px; margin: 0 0 15px; }
+.knowledge-storage-dialog p { color: #9db7ac; overflow-wrap: anywhere; }
+.knowledge-storage-dialog button { padding: 9px 13px; background: #17342c; color: #c6f4e4; border: 1px solid #395c50; border-radius: 8px; cursor: pointer; font: inherit; }
+.knowledge-storage-dialog button[aria-pressed='true'] { background: #2b6550; }
+.knowledge-storage-dialog [data-items] { max-height: 55dvh; overflow: auto; }
+.knowledge-storage-dialog article { flex-wrap: wrap; padding: 13px 0; border-bottom: 1px solid #29463c; }
+.knowledge-storage-dialog article > div { flex: 1; min-width: 180px; }
+.knowledge-storage-dialog small { display: block; color: #8ba59a; }
+.knowledge-storage-dialog footer details { margin-top: 16px; }
+.knowledge-storage-dialog summary { cursor: pointer; margin-bottom: 10px; }
+.knowledge-storage-dialog label { display: block; margin: 10px 0; }
+.knowledge-storage-dialog input { display: block; box-sizing: border-box; width: 100%; margin-top: 6px; padding: 10px; color: #dcf2e8; background: #091511; border: 1px solid #375549; border-radius: 8px; font: inherit; }

@@ -1,0 +1,35 @@
+{
+  "format": "vomkq-ai-model-pack-v1",
+  "implementationState": "unprepared",
+  "platform": "windows-x64",
+  "artifacts": [
+    {
+      "role": "generation",
+      "provider": "ollama-local",
+      "modelId": null,
+      "path": null,
+      "sha256": null,
+      "license": null
+    },
+    {
+      "role": "embedding",
+      "optional": true,
+      "provider": "sentence-transformers-local",
+      "profileId": null,
+      "generationId": null,
+      "dimensions": null,
+      "path": null,
+      "sha256": null,
+      "license": null
+    },
+    {
+      "role": "ocr",
+      "optional": true,
+      "provider": null,
+      "path": null,
+      "sha256": null,
+      "license": null
+    }
+  ]
+}
+

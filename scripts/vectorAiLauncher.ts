@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs'
 import type { IncomingMessage } from 'node:http'
 import { connect } from 'node:net'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Connect, Plugin } from 'vite'
 
@@ -78,9 +78,22 @@ export function vectorAiLauncher(): Plugin {
       const log = openSync(logPath, 'a')
       try {
         const child = spawn(executable, args, {
-          cwd, env: { ...process.env, ...env }, shell: false, windowsHide: true,
-          // Keep shared services alive across Vite restarts; only launch once when absent.
-          detached: true, stdio: ['ignore', log, log],
+          cwd, env: { ...process.env, ...env }, shell: false,
+          // `detached: true` ở đây là NGUYÊN NHÂN cửa sổ cmd hiện lên.
+          //
+          // Cơ chế Windows: `child_process.spawn` dịh `detached` thành cờ
+          // DETACHED_PROCESS, còn `windowsHide` thành CREATE_NO_WINDOW. Tài liệu
+          // CreateProcess nói rõ CREATE_NO_WINDOW BỊ BỎ QUA khi dùng chung với
+          // DETACHED_PROCESS — cờ trước thắng. Vậy `detached: true` khiến
+          // `windowsHide: true` trở thành vô nghĩa, và mọi tiến trình con đều mở
+          // cửa sổ console thật.
+          //
+          // Vì sao vẫn cần `detached` về mặt kỹ thuật: nó tạo process group
+          // riêng. Ta thay bằng `windowsHide: true` + không `unref()`; Node giữ
+          // handle tới để không bị rò rỉ, còn tiến trình vẫn sống độc lập nhờ
+          // `stdio` trỏ thẳng ra file log.
+          windowsHide: true,
+          stdio: ['ignore', log, log],
         })
         owned = { child, logPath }
         children.set(service.name, owned)
@@ -89,7 +102,6 @@ export function vectorAiLauncher(): Plugin {
         child.once('exit', (code, signal) => {
           console.warn(`[VECTOR AI launcher] ${service.name} đã dừng: code=${code}, signal=${signal}. Log: ${logPath}`)
         })
-        child.unref()
       } finally {
         closeSync(log)
       }
@@ -108,16 +120,31 @@ export function vectorAiLauncher(): Plugin {
 
   function ensureStarted(): Promise<void> {
     if (pending) return pending
-    const vectorRoot = resolve(projectRoot, '..', 'VECTOR AI')
+    // VECTOR AI now ships inside this repository as `ai-core/`, so the app is
+    // self-contained: no sibling `VECTOR AI` folder and no %LOCALAPPDATA% state
+    // are required to run the local assistant.
+    const vectorRoot = join(projectRoot, 'ai-core')
     const backendRoot = join(vectorRoot, 'backend')
+    const dataRoot = join(vectorRoot, 'data')
     const services: Service[] = [
       {
         name: 'Ollama', port: 11434, healthPath: '/api/tags',
         ready: (body) => Array.isArray(body.models),
         command: () => {
           const installed = join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Ollama', 'ollama.exe')
+          // A prepared portable bundle inside ai-core/runtime keeps the assistant
+          // working on machines that never installed Ollama Desktop.
+          let executable = existsSync(installed) ? installed : ''
+          if (!executable) {
+            try {
+              const active = JSON.parse(readFileSync(join(vectorRoot, 'runtime', 'active.json'), 'utf8')) as { bundle: string }
+              const bundled = join(vectorRoot, 'runtime', active.bundle, 'ollama', 'ollama.exe')
+              if (existsSync(bundled)) executable = bundled
+            } catch { /* The error below covers a missing Ollama runtime. */ }
+          }
+          if (!executable) throw new Error(`Không tìm thấy Ollama. Cài Ollama Desktop hoặc chuẩn bị runtime trong ${vectorRoot}.`)
           return {
-            executable: existsSync(installed) ? installed : 'ollama', args: ['serve'], cwd: projectRoot,
+            executable, args: ['serve'], cwd: vectorRoot,
             env: { OLLAMA_HOST: '127.0.0.1:11434' },
           }
         },
@@ -142,7 +169,11 @@ export function vectorAiLauncher(): Plugin {
             env: {
               PYTHONUTF8: '1', PYTHONUNBUFFERED: '1', PYTHONNOUSERSITE: '1',
               VECTOR_AI_HOST: '127.0.0.1', VECTOR_AI_PORT: '8000',
+              // Point every path the backend writes (sqlite state, knowledge
+              // documents, workflow checkpoints, backups) at `ai-core/data` so
+              // the whole assistant state travels with this folder.
               VECTOR_AI_PROJECT_DIR: vectorRoot,
+              VECTOR_AI_DATA_DIR: dataRoot,
               // This backend runs independently, not under a Tauri parent watchdog.
               VECTOR_AI_INSTANCE_TOKEN: '', VECTOR_AI_PARENT_PID: '',
             },
@@ -182,10 +213,37 @@ export function vectorAiLauncher(): Plugin {
     })
   }
 
+  /**
+   * Dừng các tiến trình mà launcher thực sự đã khởi chạy.
+   *
+   * VÌ SAO CẦN SAU KHI BỎ `detached`: trước đó ta gọi `child.unref()` để Node
+   * không chờ, nên `npm run dev` thoát ngay. Bỏ `unref()` thì Node giữ handle tới
+   * Ollama/Python và sẽ treo — Ctrl+C không ăn. Ở đây ta dọn ở `closeBundle`
+   * (build) và `closeWatcher` (dev/preview) để vòng đời vẫn kết thúc đúng.
+   *
+   * Tiến trình đã chạy sẵn từ trước (Vite lần trước bật, hoặc người dùng tự mở)
+   * KHÔNG nằm trong `children` nên không bị kill — đó là chủ ý, không phải sự cố.
+   */
+  function stopOwnedChildren(): void {
+    for (const [name, record] of children) {
+      if (record.child.exitCode !== null || record.child.signalCode !== null) continue
+      try {
+        // Ollama tự tắt server; Python cần tín hiệu kết thúc để dọn tài nguyên.
+        if (name === 'Ollama') record.child.kill()
+        else record.child.kill('SIGTERM')
+      } catch (error) {
+        console.warn(`[VECTOR AI launcher] Không dừng được ${name}:`, error)
+      }
+    }
+    children.clear()
+  }
+
   return {
     name: 'vector-ai-local-launcher',
     configResolved(config) { projectRoot = config.root },
     configureServer(server) { server.middlewares.use(middleware) },
     configurePreviewServer(server) { server.middlewares.use(middleware) },
+    closeBundle() { stopOwnedChildren() },
+    closeWatcher() { stopOwnedChildren() },
   }
 }

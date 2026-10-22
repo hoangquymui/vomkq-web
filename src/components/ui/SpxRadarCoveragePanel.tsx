@@ -9,6 +9,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useShallow } from 'zustand/react/shallow';
 import type { SpxTargetHeightTier } from '../../types/spxRadarCoverage';
 
 export const SpxRadarCoveragePanel: React.FC = () => {
@@ -25,7 +26,20 @@ export const SpxRadarCoveragePanel: React.FC = () => {
     addEquipment,
     selectEquipment,
     triggerFlyTo,
-  } = useTacticalStore();
+  } = useTacticalStore(useShallow((state) => ({
+    showSpxPanel: state.showSpxPanel,
+    setShowSpxPanel: state.setShowSpxPanel,
+    spxConfig: state.spxConfig,
+    updateSpxConfig: state.updateSpxConfig,
+    spxResults: state.spxResults,
+    isCalculatingSpx: state.isCalculatingSpx,
+    instances: state.instances,
+    selectedInstanceId: state.selectedInstanceId,
+    updateEquipment: state.updateEquipment,
+    addEquipment: state.addEquipment,
+    selectEquipment: state.selectEquipment,
+    triggerFlyTo: state.triggerFlyTo,
+  })));
 
   const [posFormat, setPosFormat] = useState<'dms' | 'decimal'>('dms');
   const [isMinimized, setIsMinimized] = useState<boolean>(false);

@@ -1,0 +1,87 @@
+.workspace-switcher { position: relative; margin-top: 14px; }
+.workspace-switcher > button {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255,255,255,.018);
+  text-align: left;
+  cursor: pointer;
+}
+.workspace-switcher > button:hover { border-color: rgba(168,255,220,.2); background: rgba(168,255,220,.04); }
+.workspace-icon {
+  width: 31px;
+  height: 31px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: linear-gradient(145deg,rgba(168,255,220,.14),rgba(168,255,220,.04));
+  color: var(--accent);
+  font: 600 12px Cambria,serif;
+}
+.workspace-switcher > button > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.workspace-switcher > button small { color: #536069; font-size: 7px; letter-spacing: .13em; }
+.workspace-switcher > button b { overflow: hidden; color: #cfd8d7; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-switcher > button em { margin-left: auto; color: #647079; font-style: normal; }
+.workspace-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: none;
+  padding: 7px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  background: rgba(14,20,27,.99);
+  box-shadow: 0 18px 55px rgba(0,0,0,.6);
+}
+.workspace-menu.open { display: block; animation: workspace-in .16s ease; }
+#workspaceList { max-height: 220px; overflow-y: auto; scrollbar-width: thin; }
+#workspaceList > button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
+#workspaceList > button:hover,#workspaceList > button.active { background: rgba(168,255,220,.065); }
+#workspaceList i { width: 27px; height: 27px; flex: none; display: grid; place-items: center; border-radius: 7px; background: #131c1b; color: var(--accent); font-style: normal; font-size: 10px; }
+#workspaceList span { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 2px; overflow: hidden; color: #d4dcda; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+#workspaceList small { color: #5d6972; font-size: 7px; }
+#workspaceList em { display: none; color: var(--accent); font-style: normal; }
+#workspaceList .active em { display: block; }
+.workspace-label { margin: 8px 7px 4px; color: #4d5962; font-size: 7px; font-weight: 700; letter-spacing: .15em; }
+.workspace-empty { padding: 10px 8px; color: #56616a; font-size: 8px; text-align: center; }
+#workspaceList > button.general { border-bottom: 1px solid rgba(255,255,255,.055); border-radius: 8px 8px 3px 3px; }
+.workspace-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 6px; padding-top: 7px; border-top: 1px solid var(--line); }
+.workspace-actions button { min-height: 30px; padding: 6px; border: 0; border-radius: 7px; background: rgba(255,255,255,.025); color: #77838c; font-size: 8px; cursor: pointer; }
+.workspace-actions button:first-child { grid-column: 1 / -1; color: var(--accent); }
+.workspace-actions button:hover { background: rgba(168,255,220,.08); color: #dce5e3; }
+.workspace-actions button:disabled { opacity: .3; cursor: not-allowed; }
+.workspace-actions button:disabled:hover { background: rgba(255,255,255,.025); color: #77838c; }
+.workspace-switcher + .new-chat { margin-top: 12px; }
+@keyframes workspace-in { from { opacity: 0; transform: translateY(-4px); } }
+
+.workspace-files { margin-top: 13px; padding: 9px; border: 1px solid rgba(168,255,220,.08); border-radius: 10px; background: rgba(168,255,220,.018); }
+.workspace-files[hidden] { display: none; }
+.workspace-files-head { display: flex; align-items: center; margin-bottom: 7px; color: #536069; font-size: 7px; font-weight: 700; letter-spacing: .12em; }
+.workspace-files-head button { width: 23px; height: 23px; margin-left: auto; display: grid; place-items: center; border: 1px solid rgba(168,255,220,.1); border-radius: 6px; background: rgba(168,255,220,.045); color: var(--accent); cursor: pointer; }
+.workspace-files-head button:hover { background: rgba(168,255,220,.1); }
+.strict-reference { display: flex; align-items: center; gap: 8px; margin: 1px 0 8px; padding: 7px 6px; border: 1px solid rgba(255,255,255,.055); border-radius: 8px; background: rgba(0,0,0,.11); cursor: pointer; }
+.strict-reference > span { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 2px; }
+.strict-reference b { color: #9aa7a2; font-size: 8px; }
+.strict-reference small { color: #50605a; font-size: 7px; }
+.strict-reference input { position: absolute; opacity: 0; pointer-events: none; }
+.strict-reference > i { position: relative; width: 28px; height: 16px; flex: none; border-radius: 20px; background: #27312f; transition: .2s; }
+.strict-reference > i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 10px; height: 10px; border-radius: 50%; background: #6b7773; transition: .2s; }
+.strict-reference input:checked + i { background: rgba(78,211,171,.3); box-shadow: inset 0 0 0 1px rgba(112,233,189,.22); }
+.strict-reference input:checked + i::after { transform: translateX(12px); background: #8cf0d0; box-shadow: 0 0 8px rgba(112,233,189,.45); }
+#workspaceFileList { max-height: 118px; overflow-y: auto; scrollbar-width: thin; }
+.workspace-file { min-height: 29px; display: flex; align-items: center; gap: 7px; padding: 4px 3px; border-radius: 6px; }
+.workspace-file:hover { background: rgba(255,255,255,.025); }
+.workspace-file i { width: 25px; flex: none; color: #75998c; font-size: 6px; font-style: normal; text-align: center; }
+.workspace-file span { min-width: 0; flex: 1; overflow: hidden; color: #89958f; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-file button { width: 20px; height: 20px; border: 0; border-radius: 5px; opacity: 0; background: transparent; color: #647079; cursor: pointer; }
+.workspace-file:hover button { opacity: 1; }
+.workspace-file button:hover { color: var(--danger); background: rgba(255,123,136,.08); }
+.workspace-files-empty { padding: 8px 3px; color: #46515a; font-size: 8px; text-align: center; }

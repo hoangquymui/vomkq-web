@@ -1,0 +1,25 @@
+# Generated/large machine-specific assets
+runtime/bin/
+runtime/python/
+runtime/node/
+runtime/ollama/
+runtime/qdrant/
+models/weights/
+knowledge/documents/*
+!knowledge/documents/README.md
+knowledge/indexes/*
+!knowledge/indexes/README.md
+state/
+logs/
+.cache/
+.venv/
+__pycache__/
+*.pyc
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+.env
+.env.*

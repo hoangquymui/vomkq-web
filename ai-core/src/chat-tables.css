@@ -1,0 +1,42 @@
+.knowledge-table-scroll.chat-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  margin: 16px 0;
+  border: 1px solid #30473f;
+  border-radius: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: #47685b #101b18;
+}
+.chat-table-scroll:focus-visible { outline: 2px solid #80dcb9; outline-offset: 3px; }
+.knowledge-table-scroll.chat-table-scroll table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  border-collapse: separate;
+  border-spacing: 0;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.knowledge-table-scroll.chat-table-scroll th,
+.knowledge-table-scroll.chat-table-scroll td {
+  min-width: 70px;
+  max-width: 230px;
+  padding: 12px 15px;
+  border-right: 1px solid #293d35;
+  border-bottom: 1px solid #293d35;
+  vertical-align: middle;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.knowledge-table-scroll.chat-table-scroll th { color: #c5efdf; background: #193129; font-weight: 600; }
+.knowledge-table-scroll.chat-table-scroll td { color: #d9e5df; background: #101d19; }
+.knowledge-table-scroll.chat-table-scroll tr:nth-child(even) td { background: #15251f; }
+.knowledge-table-scroll.chat-table-scroll tbody tr:hover td { background: #1b3027; }
+.chat-table-scroll tr > :last-child { border-right: 0; }
+.chat-table-scroll tbody tr:last-child td { border-bottom: 0; }
+.chat-table-scroll .knowledge-inline-math { white-space: nowrap; }
+@media (max-width: 600px) {
+  .knowledge-table-scroll.chat-table-scroll th, .knowledge-table-scroll.chat-table-scroll td { padding: 10px 12px; max-width: 180px; }
+}

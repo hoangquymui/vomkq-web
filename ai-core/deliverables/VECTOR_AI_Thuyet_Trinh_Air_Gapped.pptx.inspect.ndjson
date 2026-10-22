@@ -1,0 +1,308 @@
+{"kind":"deck","id":"pr/yifl9v","name":"Deck"}
+{"kind":"layout","layoutId":"94ba035c-09f1-4788-8184-a4bf062bd3af","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"5e43f527-5576-439f-8b38-8a9c88ca6374","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/e076a1","slide":1,"title":"VECTOR AI","textShapes":6}
+{"kind":"textbox","id":"sh/g3218rqp","slide":1,"text":"VECTOR AI","textPreview":"VECTOR AI","textChars":9,"textLines":1,"bbox":[60,48,300,28]}
+{"kind":"textbox","id":"sh/f2tkzm94","slide":1,"text":"Nền tảng suy luận\nvà mô phỏng ngoại tuyến","textPreview":"Nền tảng suy luận | và mô phỏng ngoại tuyến","textChars":41,"textLines":2,"bbox":[60,168,690,190]}
+{"kind":"textbox","id":"sh/e1kj6h8j","slide":1,"text":"Định hướng nghiên cứu, huấn luyện, hậu cần và hỗ trợ quyết định trong môi trường dữ liệu nhạy cảm","textPreview":"Định hướng nghiên cứu, huấn luyện, hậu cần và hỗ trợ quyết định trong môi trường dữ liệu nhạy cảm","textChars":97,"textLines":1,"bbox":[60,390,640,90]}
+{"kind":"textbox","id":"sh/p8v25wr6","slide":1,"text":"BẢN ĐỀ XUẤT  /  24.08.2026","textPreview":"BẢN ĐỀ XUẤT  /  24.08.2026","textChars":26,"textLines":1,"bbox":[60,622,360,24]}
+{"kind":"shape","id":"sh/o7mlcrq1","slide":1,"bbox":[810,70,390,560]}
+{"kind":"shape","id":"sh/254jah8v","slide":1,"bbox":[850,450,310,2]}
+{"kind":"textbox","id":"sh/5cr2tsr2","slide":1,"text":"LOCAL-FIRST","textPreview":"LOCAL-FIRST","textChars":11,"textLines":1,"bbox":[850,478,310,32]}
+{"kind":"textbox","id":"sh/4bi107qh","slide":1,"text":"Lộ trình hướng tới air-gap tuyệt đối","textPreview":"Lộ trình hướng tới air-gap tuyệt đối","textChars":36,"textLines":1,"bbox":[850,525,310,48]}
+{"kind":"image","id":"im/e1cb6pcf","slide":1,"name":"","alt":"Biểu tượng VECTOR AI","bbox":[885,165,240,240]}
+{"kind":"notes","id":"nt/e076a1","slide":1,"text":"Mở đầu bằng giá trị cốt lõi: suy luận trên thiết bị để dữ liệu nhạy cảm không phải rời khỏi vùng kiểm soát.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/README.md\n- C:/code/du_an/python/VECTOR AI/src-tauri/icons/icon.png\n[/Sources]"}
+{"kind":"slide","id":"sl/zbkb4i","slide":2,"title":"VECTOR AI  /  OFFLINE COMPUTE","textShapes":16}
+{"kind":"textbox","id":"sh/cv65cbex","slide":2,"text":"VECTOR AI  /  OFFLINE COMPUTE","textPreview":"VECTOR AI  /  OFFLINE COMPUTE","textChars":29,"textLines":1,"bbox":[60,34,500,22]}
+{"kind":"textbox","id":"sh/bux4j6xc","slide":2,"text":"Dữ liệu nhạy cảm phải ở lại trong vùng kiểm soát","textPreview":"Dữ liệu nhạy cảm phải ở lại trong vùng kiểm soát","textChars":48,"textLines":1,"bbox":[60,70,1160,86]}
+{"kind":"textbox","id":"sh/atona1wr","slide":2,"text":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textPreview":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textChars":32,"textLines":1,"bbox":[60,676,500,18]}
+{"kind":"textbox","id":"sh/lkzmpgfe","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1170,672,50,22]}
+{"kind":"textbox","id":"sh/kjq5gbe9","slide":2,"text":"Giá trị của VECTOR AI không nằm ở việc gọi một mô hình từ xa. Giá trị nằm ở khả năng tính toán, tra cứu và tạo kết quả ngay trên thiết bị.","textPreview":"Giá trị của VECTOR AI không nằm ở việc gọi một mô hình từ xa. Giá trị nằm ở khả năng tính toán, tra cứu và tạo kết quả ngay trên thiết bị.","textChars":138,"textLines":1,"bbox":[60,190,620,190]}
+{"kind":"shape","id":"sh/zix4nqxo","slide":2,"bbox":[60,425,620,3]}
+{"kind":"textbox","id":"sh/yhonelw3","slide":2,"text":"Mục tiêu vận hành","textPreview":"Mục tiêu vận hành","textChars":17,"textLines":1,"bbox":[60,455,190,28]}
+{"kind":"textbox","id":"sh/9oz6t0fq","slide":2,"text":"Không phụ thuộc đám mây · Không gửi dữ liệu ra ngoài · Có thể kiểm soát toàn bộ chuỗi xử lý","textPreview":"Không phụ thuộc đám mây · Không gửi dữ liệu ra ngoài · Có thể kiểm soát toàn bộ chuỗi xử lý","textChars":91,"textLines":1,"bbox":[60,490,620,74]}
+{"kind":"textbox","id":"sh/8nq5kve5","slide":2,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[750,188,64,38]}
+{"kind":"textbox","id":"sh/e14vads3","slide":2,"text":"Bí mật","textPreview":"Bí mật","textChars":6,"textLines":1,"bbox":[822,188,388,34]}
+{"kind":"textbox","id":"sh/f2dcjit8","slide":2,"text":"Nội dung hội thoại và tài liệu không phải rời khỏi máy vận hành.","textPreview":"Nội dung hội thoại và tài liệu không phải rời khỏi máy vận hành.","textChars":64,"textLines":1,"bbox":[822,230,388,72]}
+{"kind":"shape","id":"sh/03mdcnat","slide":2,"bbox":[750,320,460,1]}
+{"kind":"textbox","id":"sh/14fulsbe","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[750,345,64,38]}
+{"kind":"textbox","id":"sh/25ovexsz","slide":2,"text":"Khả dụng","textPreview":"Khả dụng","textChars":8,"textLines":1,"bbox":[822,345,388,34]}
+{"kind":"textbox","id":"sh/n6xcn2tk","slide":2,"text":"Có thể làm việc tại nơi không có kết nối hoặc chủ động ngắt mạng.","textPreview":"Có thể làm việc tại nơi không có kết nối hoặc chủ động ngắt mạng.","textChars":65,"textLines":1,"bbox":[822,387,388,72]}
+{"kind":"shape","id":"sh/o76dgna5","slide":2,"bbox":[750,477,460,1]}
+{"kind":"textbox","id":"sh/p8fepsbq","slide":2,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[750,502,64,38]}
+{"kind":"textbox","id":"sh/i9kv2tcv","slide":2,"text":"Chủ quyền","textPreview":"Chủ quyền","textChars":9,"textLines":1,"bbox":[822,502,388,34]}
+{"kind":"textbox","id":"sh/3atcbytg","slide":2,"text":"Model, dữ liệu, log và bản cập nhật đều có thể được quản lý nội bộ.","textPreview":"Model, dữ liệu, log và bản cập nhật đều có thể được quản lý nội bộ.","textChars":67,"textLines":1,"bbox":[822,544,388,72]}
+{"kind":"notes","id":"nt/zbkb4i","slide":2,"text":"Định vị bài toán theo ba lợi ích: bí mật, khả dụng và chủ quyền công nghệ. Đây là mục tiêu thiết kế, không phải tuyên bố chứng nhận bảo mật.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/README.md\n- C:/code/du_an/python/VECTOR AI/src-tauri/tauri.conf.json\n[/Sources]"}
+{"kind":"slide","id":"sl/bdfqzf","slide":3,"title":"VECTOR AI  /  OFFLINE COMPUTE","textShapes":13}
+{"kind":"textbox","id":"sh/re9gvu18","slide":3,"text":"VECTOR AI  /  OFFLINE COMPUTE","textPreview":"VECTOR AI  /  OFFLINE COMPUTE","textChars":29,"textLines":1,"bbox":[60,34,500,22]}
+{"kind":"textbox","id":"sh/sfixoz2t","slide":3,"text":"Sản phẩm hiện tại đã là một ứng dụng desktop chạy cục bộ","textPreview":"Sản phẩm hiện tại đã là một ứng dụng desktop chạy cục bộ","textChars":56,"textLines":1,"bbox":[60,70,1160,96]}
+{"kind":"textbox","id":"sh/tgbyx4je","slide":3,"text":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textPreview":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textChars":32,"textLines":1,"bbox":[60,676,500,18]}
+{"kind":"textbox","id":"sh/ehkfq9kj","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1170,672,50,22]}
+{"kind":"textbox","id":"sh/gj2xsz2p","slide":3,"text":"Ứng dụng","textPreview":"Ứng dụng","textChars":8,"textLines":1,"bbox":[60,184,145,24]}
+{"kind":"textbox","id":"sh/1kby14ja","slide":3,"text":"Tauri 2 / Windows","textPreview":"Tauri 2 / Windows","textChars":17,"textLines":1,"bbox":[60,213,400,38]}
+{"kind":"shape","id":"sh/25kzu9kv","slide":3,"bbox":[60,270,410,1]}
+{"kind":"textbox","id":"sh/36tg3e1g","slide":3,"text":"Mô hình","textPreview":"Mô hình","textChars":7,"textLines":1,"bbox":[60,292,145,24]}
+{"kind":"textbox","id":"sh/ny1gr2ps","slide":3,"text":"Qwen3.5 9B · Q5_K_M","textPreview":"Qwen3.5 9B · Q5_K_M","textChars":19,"textLines":1,"bbox":[60,321,420,38]}
+{"kind":"shape","id":"sh/mxszix87","slide":3,"bbox":[60,378,410,1]}
+{"kind":"textbox","id":"sh/90jytc7y","slide":3,"text":"Máy chủ suy luận","textPreview":"Máy chủ suy luận","textChars":16,"textLines":1,"bbox":[60,400,175,24]}
+{"kind":"textbox","id":"sh/8zahk7qd","slide":3,"text":"Ollama · 127.0.0.1","textPreview":"Ollama · 127.0.0.1","textChars":18,"textLines":1,"bbox":[60,429,420,38]}
+{"kind":"shape","id":"sh/zahgn2pw","slide":3,"bbox":[60,486,410,1]}
+{"kind":"textbox","id":"sh/y98zex8b","slide":3,"text":"Dữ liệu","textPreview":"Dữ liệu","textChars":7,"textLines":1,"bbox":[60,508,145,24]}
+{"kind":"textbox","id":"sh/lwjyps72","slide":3,"text":"Chat + workspace cục bộ","textPreview":"Chat + workspace cục bộ","textChars":23,"textLines":1,"bbox":[60,537,440,38]}
+{"kind":"textbox","id":"sh/0bahg7qh","slide":3,"text":"Ảnh chụp giao diện từ bản đang chạy trong dự án","textPreview":"Ảnh chụp giao diện từ bản đang chạy trong dự án","textChars":47,"textLines":1,"bbox":[540,580,680,24]}
+{"kind":"image","id":"im/ex0byxwz","slide":3,"name":"","geometry":"roundRect","alt":"Giao diện thực tế của VECTOR AI","bbox":[540,178,680,382]}
+{"kind":"notes","id":"nt/bdfqzf","slide":3,"text":"Nhấn mạnh rằng đây không còn là ý tưởng: mã nguồn đã tạo một ứng dụng desktop có UI, model manager, workspace, chat và chế độ xử lý cục bộ.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/README.md\n- C:/code/du_an/python/VECTOR AI/package.json\n- C:/code/du_an/python/VECTOR AI/src-tauri/tauri.conf.json\n- C:/code/du_an/python/VECTOR AI/src-tauri/src/lib.rs\n- C:/code/du_an/python/VECTOR AI/.codex-build/vector-ai-deck/assets/vector-ui.png\n[/Sources]"}
+{"kind":"slide","id":"sl/rceibi","slide":4,"title":"VECTOR AI  /  OFFLINE COMPUTE","textShapes":20}
+{"kind":"textbox","id":"sh/i1s3m5cr","slide":4,"text":"VECTOR AI  /  OFFLINE COMPUTE","textPreview":"VECTOR AI  /  OFFLINE COMPUTE","textChars":29,"textLines":1,"bbox":[60,34,500,22]}
+{"kind":"textbox","id":"sh/54j2xkvi","slide":4,"text":"Một vòng xử lý local nối dữ liệu đầu vào với kết quả","textPreview":"Một vòng xử lý local nối dữ liệu đầu vào với kết quả","textChars":52,"textLines":1,"bbox":[60,70,1160,86]}
+{"kind":"textbox","id":"sh/43alofux","slide":4,"text":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textPreview":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textChars":32,"textLines":1,"bbox":[60,676,500,18]}
+{"kind":"textbox","id":"sh/vyhkradg","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1170,672,50,22]}
+{"kind":"textbox","id":"sh/ax83i5cv","slide":4,"text":"Kiến trúc hiện tại — luồng vận hành","textPreview":"Kiến trúc hiện tại — luồng vận hành","textChars":35,"textLines":1,"bbox":[60,148,700,26]}
+{"kind":"shape","id":"sh/h0j2t0v6","slide":4,"bbox":[262,336,42,28]}
+{"kind":"shape","id":"sh/wzqlkfu1","slide":4,"bbox":[515,336,42,28]}
+{"kind":"shape","id":"sh/nuhknqd4","slide":4,"bbox":[944,336,42,28]}
+{"kind":"shape","id":"sh/m98jelcj","slide":4,"bbox":[60,262,200,178]}
+{"kind":"textbox","id":"sh/snyhkz6x","slide":4,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[82,284,48,30]}
+{"kind":"textbox","id":"sh/toryd4ni","slide":4,"text":"Đầu vào","textPreview":"Đầu vào","textChars":7,"textLines":1,"bbox":[82,322,150,32]}
+{"kind":"textbox","id":"sh/6lgzipor","slide":4,"text":"Câu hỏi\nDOCX / văn bản\nHình ảnh","textPreview":"Câu hỏi | DOCX / văn bản | Hình ảnh","textChars":31,"textLines":3,"bbox":[82,366,150,62]}
+{"kind":"shape","id":"sh/7mpgbu5c","slide":4,"bbox":[305,262,210,178]}
+{"kind":"textbox","id":"sh/kjyhgz61","slide":4,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[327,284,48,30]}
+{"kind":"textbox","id":"sh/5k7y94n6","slide":4,"text":"Tauri UI","textPreview":"Tauri UI","textChars":8,"textLines":1,"bbox":[327,322,165,32]}
+{"kind":"textbox","id":"sh/ixgzepov","slide":4,"text":"Chat / workspace\nLịch sử cục bộ\nArtifact & export","textPreview":"Chat / workspace | Lịch sử cục bộ | Artifact & export","textChars":49,"textLines":3,"bbox":[327,366,165,62]}
+{"kind":"shape","id":"sh/jipg7u5g","slide":4,"bbox":[558,214,386,276]}
+{"kind":"textbox","id":"sh/4fihsj65","slide":4,"text":"03  LÕI XỬ LÝ CỤC BỘ","textPreview":"03  LÕI XỬ LÝ CỤC BỘ","textChars":20,"textLines":1,"bbox":[585,237,330,26]}
+{"kind":"shape","id":"sh/pgbilonq","slide":4,"bbox":[585,282,332,52]}
+{"kind":"textbox","id":"sh/dc7y5ofu","slide":4,"text":"Ollama + Qwen3.5 9B","textPreview":"Ollama + Qwen3.5 9B","textChars":19,"textLines":1,"bbox":[605,295,294,28]}
+{"kind":"shape","id":"sh/cbyhwjy9","slide":4,"bbox":[585,347,332,52]}
+{"kind":"textbox","id":"sh/bapg3exo","slide":4,"text":"MathJS · kiểm tra kết quả","textPreview":"MathJS · kiểm tra kết quả","textChars":25,"textLines":1,"bbox":[605,360,294,28]}
+{"kind":"shape","id":"sh/q9wzu9g3","slide":4,"bbox":[585,412,332,52]}
+{"kind":"textbox","id":"sh/p8ny14fy","slide":4,"text":"Embedding · tham chiếu local","textPreview":"Embedding · tham chiếu local","textChars":28,"textLines":1,"bbox":[605,425,294,28]}
+{"kind":"shape","id":"sh/o7ehszyd","slide":4,"bbox":[986,262,234,178]}
+{"kind":"textbox","id":"sh/365gzexs","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1008,284,48,30]}
+{"kind":"textbox","id":"sh/25wzq9g7","slide":4,"text":"Kết quả","textPreview":"Kết quả","textChars":7,"textLines":1,"bbox":[1008,322,185,32]}
+{"kind":"textbox","id":"sh/14nyx4fm","slide":4,"text":"Markdown / LaTeX\nSơ đồ / biểu đồ\nDOCX / ZIP","textPreview":"Markdown / LaTeX | Sơ đồ / biểu đồ | DOCX / ZIP","textChars":43,"textLines":3,"bbox":[1008,366,185,62]}
+{"kind":"shape","id":"sh/g3ehozy1","slide":4,"bbox":[60,548,1160,72]}
+{"kind":"textbox","id":"sh/69svy5wz","slide":4,"text":"LUỒNG VẬN HÀNH KHÔNG CẦN ĐÁM MÂY","textPreview":"LUỒNG VẬN HÀNH KHÔNG CẦN ĐÁM MÂY","textChars":32,"textLines":1,"bbox":[84,567,540,30]}
+{"kind":"textbox","id":"sh/ra1w7adk","slide":4,"text":"CSP chỉ mở IPC và 127.0.0.1:11434","textPreview":"CSP chỉ mở IPC và 127.0.0.1:11434","textChars":33,"textLines":1,"bbox":[660,570,530,28]}
+{"kind":"notes","id":"nt/rceibi","slide":4,"text":"Giải thích luồng từ trái sang phải. Khối lõi gom model, kiểm tra toán và truy xuất tài liệu; kết quả được render và xuất hoàn toàn trong ứng dụng.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/src-tauri/tauri.conf.json\n- C:/code/du_an/python/VECTOR AI/src-tauri/src/lib.rs\n- C:/code/du_an/python/VECTOR AI/src/main.js\n- C:/code/du_an/python/VECTOR AI/package.json\n[/Sources]"}
+{"kind":"slide","id":"sl/cx51oa","slide":5,"title":"VECTOR AI  /  OFFLINE COMPUTE","textShapes":14}
+{"kind":"textbox","id":"sh/5kzypcb6","slide":5,"text":"VECTOR AI  /  OFFLINE COMPUTE","textPreview":"VECTOR AI  /  OFFLINE COMPUTE","textChars":29,"textLines":1,"bbox":[60,34,500,22]}
+{"kind":"textbox","id":"sh/ihozuxsv","slide":5,"text":"Năng lực hiện tại trải rộng từ suy luận đến tạo artifact","textPreview":"Năng lực hiện tại trải rộng từ suy luận đến tạo artifact","textChars":56,"textLines":1,"bbox":[60,70,1160,86]}
+{"kind":"textbox","id":"sh/jixgn2t0","slide":5,"text":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textPreview":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textChars":32,"textLines":1,"bbox":[60,676,500,18]}
+{"kind":"textbox","id":"sh/wf6hs7ap","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1170,672,50,22]}
+{"kind":"textbox","id":"sh/xgfylcba","slide":5,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[60,178,80,54]}
+{"kind":"textbox","id":"sh/atozqxsj","slide":5,"text":"Suy luận & tính toán","textPreview":"Suy luận & tính toán","textChars":20,"textLines":1,"bbox":[60,246,340,34]}
+{"kind":"textbox","id":"sh/vuxgj2t4","slide":5,"text":"• Hướng dẫn giải toán và vật lý\n• Hai chế độ ngữ cảnh\n• Phản hồi dạng streaming\n• Giữ nhất quán đơn vị và điều kiện biên","textPreview":"• Hướng dẫn giải toán và vật lý | • Hai chế độ ngữ cảnh | • Phản hồi dạng streaming | • Giữ nhất quán đơn vị và điều kiện biên","textChars":120,"textLines":4,"bbox":[60,302,330,180]}
+{"kind":"shape","id":"sh/8rmhonad","slide":5,"bbox":[420,178,1,390]}
+{"kind":"textbox","id":"sh/9svyhsby","slide":5,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[455,178,80,54]}
+{"kind":"textbox","id":"sh/d4zml0vu","slide":5,"text":"Kiểm tra & trình bày","textPreview":"Kiểm tra & trình bày","textChars":20,"textLines":1,"bbox":[455,246,340,34]}
+{"kind":"textbox","id":"sh/c3qlcve9","slide":5,"text":"• MathJS kiểm tra biểu thức\n• KaTeX hiển thị công thức\n• Mermaid dựng sơ đồ\n• Chart.js dựng biểu đồ\n• Khối kết quả có cấu trúc","textPreview":"• MathJS kiểm tra biểu thức | • KaTeX hiển thị công thức | • Mermaid dựng sơ đồ | • Chart.js dựng biểu đồ | • Khối kết quả có cấu trúc","textChars":126,"textLines":5,"bbox":[455,302,330,200]}
+{"kind":"shape","id":"sh/r2h4jqdo","slide":5,"bbox":[815,178,1,390]}
+{"kind":"textbox","id":"sh/q1o3a5w3","slide":5,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[850,178,80,54]}
+{"kind":"textbox","id":"sh/p0fmh0vy","slide":5,"text":"Tri thức & tài liệu","textPreview":"Tri thức & tài liệu","textChars":19,"textLines":1,"bbox":[850,246,340,34]}
+{"kind":"textbox","id":"sh/4z6l8ved","slide":5,"text":"• Nhập DOCX, văn bản và ảnh\n• Workspace tham chiếu cục bộ\n• Embedding và tìm đoạn liên quan\n• Xuất DOCX\n• Sao lưu / khôi phục ZIP","textPreview":"• Nhập DOCX, văn bản và ảnh | • Workspace tham chiếu cục bộ | • Embedding và tìm đoạn liên quan | • Xuất DOCX | • Sao lưu / khôi phục ZIP","textChars":129,"textLines":5,"bbox":[850,302,340,200]}
+{"kind":"shape","id":"sh/3yx4fqds","slide":5,"bbox":[60,570,1130,58]}
+{"kind":"textbox","id":"sh/2xo36lw7","slide":5,"text":"Bề rộng tính năng đã có; bước tiếp theo là đo độ đúng, độ lặp lại và độ an toàn.","textPreview":"Bề rộng tính năng đã có; bước tiếp theo là đo độ đúng, độ lặp lại và độ an toàn.","textChars":80,"textLines":1,"bbox":[82,586,1086,28]}
+{"kind":"notes","id":"nt/cx51oa","slide":5,"text":"Trình bày năng lực theo ba lớp: suy luận, kiểm tra/trình bày và quản lý tri thức. Không dùng cụm 'mọi phép toán' khi chưa có benchmark.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/package.json\n- C:/code/du_an/python/VECTOR AI/src-tauri/src/lib.rs\n- C:/code/du_an/python/VECTOR AI/src/main.js\n[/Sources]"}
+{"kind":"slide","id":"sl/n48vo2","slide":6,"title":"VECTOR AI  /  OFFLINE COMPUTE","textShapes":21}
+{"kind":"textbox","id":"sh/donyhczm","slide":6,"text":"VECTOR AI  /  OFFLINE COMPUTE","textPreview":"VECTOR AI  /  OFFLINE COMPUTE","textChars":29,"textLines":1,"bbox":[60,34,500,22]}
+{"kind":"textbox","id":"sh/qlwfmx0v","slide":6,"text":"Dữ liệu đi qua năm bước và không cần rời khỏi thiết bị","textPreview":"Dữ liệu đi qua năm bước và không cần rời khỏi thiết bị","textChars":54,"textLines":1,"bbox":[60,70,1160,86]}
+{"kind":"textbox","id":"sh/rm5gf2hg","slide":6,"text":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textPreview":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textChars":32,"textLines":1,"bbox":[60,676,500,18]}
+{"kind":"textbox","id":"sh/0ryxsryx","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1170,672,50,22]}
+{"kind":"textbox","id":"sh/1s7ylwzi","slide":6,"text":"LUỒNG DỮ LIỆU KHI VẬN HÀNH","textPreview":"LUỒNG DỮ LIỆU KHI VẬN HÀNH","textChars":26,"textLines":1,"bbox":[60,160,480,24]}
+{"kind":"shape","id":"sh/epgfqhgr","slide":6,"bbox":[105,334,1020,2]}
+{"kind":"shape","id":"sh/fqpgjmhc","slide":6,"bbox":[1120,324,48,22]}
+{"kind":"textbox","id":"sh/gvuxgnit","slide":6,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[70,214,160,44]}
+{"kind":"textbox","id":"sh/hw3e9sze","slide":6,"text":"Nạp dữ liệu","textPreview":"Nạp dữ liệu","textChars":11,"textLines":1,"bbox":[70,266,190,34]}
+{"kind":"shape","id":"sh/9k7ad8z6","slide":6,"bbox":[104,324,22,22]}
+{"kind":"textbox","id":"sh/8jyt43il","slide":6,"text":"Câu hỏi, tài liệu và ảnh được đọc vào bộ nhớ cục bộ.","textPreview":"Câu hỏi, tài liệu và ảnh được đọc vào bộ nhớ cục bộ.","textChars":52,"textLines":1,"bbox":[70,382,190,120]}
+{"kind":"textbox","id":"sh/7ypsbyh0","slide":6,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[305,214,160,44]}
+{"kind":"textbox","id":"sh/mxgb2t0v","slide":6,"text":"Chọn ngữ cảnh","textPreview":"Chọn ngữ cảnh","textChars":13,"textLines":1,"bbox":[305,266,190,34]}
+{"kind":"shape","id":"sh/horuh8zi","slide":6,"bbox":[339,324,22,22]}
+{"kind":"textbox","id":"sh/wnit83ix","slide":6,"text":"Chat hoặc workspace xác định phạm vi tham chiếu.","textPreview":"Chat hoặc workspace xác định phạm vi tham chiếu.","textChars":48,"textLines":1,"bbox":[305,382,190,120]}
+{"kind":"textbox","id":"sh/vm9sfihc","slide":6,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[540,214,160,44]}
+{"kind":"textbox","id":"sh/ulgb6d0r","slide":6,"text":"Truy xuất local","textPreview":"Truy xuất local","textChars":15,"textLines":1,"bbox":[540,266,190,34]}
+{"kind":"shape","id":"sh/5srulsze","slide":6,"bbox":[574,324,22,22]}
+{"kind":"textbox","id":"sh/4ritcnit","slide":6,"text":"Embedding tìm các đoạn liên quan ngay trên máy.","textPreview":"Embedding tìm các đoạn liên quan ngay trên máy.","textChars":47,"textLines":1,"bbox":[540,382,190,120]}
+{"kind":"textbox","id":"sh/4vqd8r65","slide":6,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[775,214,160,44]}
+{"kind":"textbox","id":"sh/pwzehw7q","slide":6,"text":"Suy luận & kiểm","textPreview":"Suy luận & kiểm","textChars":15,"textLines":1,"bbox":[775,266,190,34]}
+{"kind":"shape","id":"sh/2t8v61oz","slide":6,"bbox":[809,324,22,22]}
+{"kind":"textbox","id":"sh/3uhwfmpk","slide":6,"text":"Qwen tạo đáp án; MathJS hỗ trợ kiểm tra số học.","textPreview":"Qwen tạo đáp án; MathJS hỗ trợ kiểm tra số học.","textChars":47,"textLines":1,"bbox":[775,382,190,120]}
+{"kind":"textbox","id":"sh/czadcb61","slide":6,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1010,214,160,44]}
+{"kind":"textbox","id":"sh/d0jelg7m","slide":6,"text":"Render & xuất","textPreview":"Render & xuất","textChars":13,"textLines":1,"bbox":[1010,266,190,34]}
+{"kind":"shape","id":"sh/qxsva1ob","slide":6,"bbox":[1044,324,22,22]}
+{"kind":"textbox","id":"sh/ry1wj6pg","slide":6,"text":"KaTeX, Mermaid, biểu đồ, DOCX hoặc backup ZIP.","textPreview":"KaTeX, Mermaid, biểu đồ, DOCX hoặc backup ZIP.","textChars":46,"textLines":1,"bbox":[1010,382,190,120]}
+{"kind":"shape","id":"sh/s36d07qx","slide":6,"bbox":[70,552,1100,62]}
+{"kind":"textbox","id":"sh/t4fu9c7i","slide":6,"text":"Điểm kiểm soát: không có bước nào cần gửi nội dung sang API đám mây trong chế độ vận hành.","textPreview":"Điểm kiểm soát: không có bước nào cần gửi nội dung sang API đám mây trong chế độ vận hành.","textChars":90,"textLines":1,"bbox":[92,570,1056,26]}
+{"kind":"notes","id":"nt/n48vo2","slide":6,"text":"Mô tả chuỗi dữ liệu. Lưu ý rằng việc cài đặt/model provisioning hiện tại là một luồng khác và vẫn cần Internet.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/README.md\n- C:/code/du_an/python/VECTOR AI/src-tauri/src/lib.rs\n- C:/code/du_an/python/VECTOR AI/src/main.js\n- C:/code/du_an/python/VECTOR AI/src-tauri/tauri.conf.json\n[/Sources]"}
+{"kind":"slide","id":"sl/d5c3jk","slide":7,"title":"VECTOR AI  /  OFFLINE COMPUTE","textShapes":25}
+{"kind":"textbox","id":"sh/0v298z2h","slide":7,"text":"VECTOR AI  /  OFFLINE COMPUTE","textPreview":"VECTOR AI  /  OFFLINE COMPUTE","textChars":29,"textLines":1,"bbox":[60,34,500,22]}
+{"kind":"textbox","id":"sh/zut8zelw","slide":7,"text":"Private-by-design hôm nay; air-gapped tuyệt đối vẫn là mục tiêu","textPreview":"Private-by-design hôm nay; air-gapped tuyệt đối vẫn là mục tiêu","textChars":63,"textLines":1,"bbox":[60,70,1160,86]}
+{"kind":"textbox","id":"sh/ytkr69kb","slide":7,"text":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textPreview":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textChars":32,"textLines":1,"bbox":[60,676,500,18]}
+{"kind":"textbox","id":"sh/9kva5o3y","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1170,672,50,22]}
+{"kind":"textbox","id":"sh/8jm9cj2d","slide":7,"text":"ĐIỂM ĐÃ CÓ","textPreview":"ĐIỂM ĐÃ CÓ","textChars":10,"textLines":1,"bbox":[60,170,520,28]}
+{"kind":"shape","id":"sh/nids3els","slide":7,"bbox":[60,214,540,332]}
+{"kind":"textbox","id":"sh/mx4ra9kn","slide":7,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[88,244,64,38]}
+{"kind":"textbox","id":"sh/xofa9o3a","slide":7,"text":"Kết nối loopback","textPreview":"Kết nối loopback","textChars":16,"textLines":1,"bbox":[160,244,408,34]}
+{"kind":"textbox","id":"sh/wn69gj2p","slide":7,"text":"CSP chỉ cho phép IPC và 127.0.0.1:11434.","textPreview":"CSP chỉ cho phép IPC và 127.0.0.1:11434.","textChars":40,"textLines":1,"bbox":[160,286,408,48]}
+{"kind":"textbox","id":"sh/6hc7y9sj","slide":7,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[88,338,64,38]}
+{"kind":"textbox","id":"sh/ril8re94","slide":7,"text":"Quyền ứng dụng tối thiểu","textPreview":"Quyền ứng dụng tối thiểu","textChars":24,"textLines":1,"bbox":[160,338,408,34]}
+{"kind":"textbox","id":"sh/sjup0ja9","slide":7,"text":"Capability hiện tại chỉ khai báo core:default.","textPreview":"Capability hiện tại chỉ khai báo core:default.","textChars":46,"textLines":1,"bbox":[160,380,408,48]}
+{"kind":"textbox","id":"sh/tknqtoru","slide":7,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[88,432,64,38]}
+{"kind":"textbox","id":"sh/elwr2tsf","slide":7,"text":"Dữ liệu cục bộ","textPreview":"Dữ liệu cục bộ","textChars":14,"textLines":1,"bbox":[160,432,408,34]}
+{"kind":"textbox","id":"sh/fm58ve90","slide":7,"text":"Chat, workspace, embedding và artifact được xử lý trên máy.","textPreview":"Chat, workspace, embedding và artifact được xử lý trên máy.","textChars":59,"textLines":1,"bbox":[160,474,408,48]}
+{"kind":"textbox","id":"sh/gne94jal","slide":7,"text":"KHOẢNG TRỐNG PHẢI ĐÓNG","textPreview":"KHOẢNG TRỐNG PHẢI ĐÓNG","textChars":22,"textLines":1,"bbox":[660,170,560,28]}
+{"kind":"shape","id":"sh/1onqxor6","slide":7,"bbox":[660,214,560,332]}
+{"kind":"textbox","id":"sh/ups7qpsb","slide":7,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[688,244,64,38]}
+{"kind":"textbox","id":"sh/vq18ju9w","slide":7,"text":"Provisioning còn online","textPreview":"Provisioning còn online","textChars":23,"textLines":1,"bbox":[760,244,428,34]}
+{"kind":"textbox","id":"sh/zuh4rqpo","slide":7,"text":"Installer và chức năng pull model vẫn tải từ Internet.","textPreview":"Installer và chức năng pull model vẫn tải từ Internet.","textChars":54,"textLines":1,"bbox":[760,286,428,48]}
+{"kind":"textbox","id":"sh/yt8nyl83","slide":7,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[688,338,64,38]}
+{"kind":"textbox","id":"sh/lwz6t07e","slide":7,"text":"Chưa có bảo vệ cấp quân sự","textPreview":"Chưa có bảo vệ cấp quân sự","textChars":26,"textLines":1,"bbox":[760,338,428,34]}
+{"kind":"textbox","id":"sh/kvq50vq9","slide":7,"text":"Cần mã hóa dữ liệu, backup, RBAC và log chống sửa đổi.","textPreview":"Cần mã hóa dữ liệu, backup, RBAC và log chống sửa đổi.","textChars":54,"textLines":1,"bbox":[760,380,428,48]}
+{"kind":"textbox","id":"sh/b6x4n6pc","slide":7,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[688,432,64,38]}
+{"kind":"textbox","id":"sh/a5onul8r","slide":7,"text":"Chuỗi cập nhật chưa air-gap","textPreview":"Chuỗi cập nhật chưa air-gap","textChars":27,"textLines":1,"bbox":[760,432,428,34]}
+{"kind":"textbox","id":"sh/xsfmpg7i","slide":7,"text":"Cần gói ký số, hash, SBOM và cổng kiểm duyệt phương tiện.","textPreview":"Cần gói ký số, hash, SBOM và cổng kiểm duyệt phương tiện.","textChars":57,"textLines":1,"bbox":[760,474,428,48]}
+{"kind":"textbox","id":"sh/cr65wbqx","slide":7,"text":"Không nên dùng tuyên bố “air-gapped tuyệt đối” cho đến khi cả cài đặt, model và cập nhật đều được đóng gói ngoại tuyến.","textPreview":"Không nên dùng tuyên bố “air-gapped tuyệt đối” cho đến khi cả cài đặt, model và cập nhật đều được đóng gói ngoại tuyến.","textChars":119,"textLines":1,"bbox":[60,580,1160,48]}
+{"kind":"notes","id":"nt/d5c3jk","slide":7,"text":"Đây là đánh giá dựa trên mã nguồn hiện tại. Tách rõ bảo mật khi runtime với chuỗi cung ứng cài đặt/cập nhật.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/src-tauri/tauri.conf.json\n- C:/code/du_an/python/VECTOR AI/src-tauri/capabilities/default.json\n- C:/code/du_an/python/VECTOR AI/src-tauri/src/lib.rs\n- C:/code/du_an/python/VECTOR AI/src/main.js\n- C:/code/du_an/python/VECTOR AI/src-tauri/windows/hooks.nsh\n[/Sources]"}
+{"kind":"slide","id":"sl/iflzy4","slide":8,"title":"VECTOR AI  /  OFFLINE COMPUTE","textShapes":17}
+{"kind":"textbox","id":"sh/ahwv29sv","slide":8,"text":"VECTOR AI  /  OFFLINE COMPUTE","textPreview":"VECTOR AI  /  OFFLINE COMPUTE","textChars":29,"textLines":1,"bbox":[60,34,500,22]}
+{"kind":"textbox","id":"sh/x47exob6","slide":8,"text":"Tuyên bố năng lực phải chuyển từ cảm nhận sang bằng chứng","textPreview":"Tuyên bố năng lực phải chuyển từ cảm nhận sang bằng chứng","textChars":57,"textLines":1,"bbox":[60,70,1160,86]}
+{"kind":"textbox","id":"sh/wjed4jal","slide":8,"text":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textPreview":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textChars":32,"textLines":1,"bbox":[60,676,500,18]}
+{"kind":"textbox","id":"sh/ne5cret4","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1170,672,50,22]}
+{"kind":"textbox","id":"sh/mdwvy9sj","slide":8,"text":"“Dường như làm được mọi phép toán và vật lý” là một giả thuyết tốt để bắt đầu — không phải tiêu chuẩn nghiệm thu.","textPreview":"“Dường như làm được mọi phép toán và vật lý” là một giả thuyết tốt để bắt đầu — không phải tiêu chuẩn nghiệm thu.","textChars":113,"textLines":1,"bbox":[60,168,1160,64]}
+{"kind":"shape","id":"sh/9gnet4ba","slide":8,"bbox":[80,504,270,92]}
+{"kind":"shape","id":"sh/8fed0jap","slide":8,"bbox":[350,424,270,172]}
+{"kind":"shape","id":"sh/zalcnuts","slide":8,"bbox":[620,344,270,252]}
+{"kind":"shape","id":"sh/y9cvupsn","slide":8,"bbox":[890,264,310,332]}
+{"kind":"textbox","id":"sh/4bmhgzyp","slide":8,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[104,526,60,28]}
+{"kind":"textbox","id":"sh/pcvi9kza","slide":8,"text":"Kiểm thử nền","textPreview":"Kiểm thử nền","textChars":12,"textLines":1,"bbox":[104,558,220,28]}
+{"kind":"textbox","id":"sh/294zepgz","slide":8,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[374,447,60,28]}
+{"kind":"textbox","id":"sh/3ad07uhk","slide":8,"text":"Benchmark chuẩn","textPreview":"Benchmark chuẩn","textChars":15,"textLines":1,"bbox":[374,480,220,28]}
+{"kind":"textbox","id":"sh/gn2hcfyt","slide":8,"text":"Đại số · giải tích\nđơn vị · cơ học","textPreview":"Đại số · giải tích | đơn vị · cơ học","textChars":34,"textLines":2,"bbox":[374,522,220,56]}
+{"kind":"textbox","id":"sh/h8vi5kze","slide":8,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[644,367,60,28]}
+{"kind":"textbox","id":"sh/ulkza5gn","slide":8,"text":"Kiểm thử đối\nkháng","textPreview":"Kiểm thử đối | kháng","textChars":18,"textLines":2,"bbox":[644,400,220,58]}
+{"kind":"textbox","id":"sh/fmt0jah8","slide":8,"text":"Dữ kiện thiếu\nmâu thuẫn · nhiễu\nđộ không chắc chắn","textPreview":"Dữ kiện thiếu | mâu thuẫn · nhiễu | độ không chắc chắn","textChars":50,"textLines":3,"bbox":[644,472,220,78]}
+{"kind":"textbox","id":"sh/0j61ojyx","slide":8,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[916,288,60,28]}
+{"kind":"textbox","id":"sh/14fih4zi","slide":8,"text":"Nghiệm thu miền","textPreview":"Nghiệm thu miền","textChars":15,"textLines":1,"bbox":[916,322,250,28]}
+{"kind":"textbox","id":"sh/90bi14rm","slide":8,"text":"Bộ dữ liệu được duyệt\nchuyên gia phản biện\nngưỡng đạt định lượng\ncon người phê duyệt","textPreview":"Bộ dữ liệu được duyệt | chuyên gia phản biện | ngưỡng đạt định lượng | con người phê duyệt","textChars":84,"textLines":4,"bbox":[916,366,250,118]}
+{"kind":"textbox","id":"sh/8z2h8zq1","slide":8,"text":"Chỉ tuyên bố những gì vượt qua ngưỡng kiểm chứng và có thể lặp lại.","textPreview":"Chỉ tuyên bố những gì vượt qua ngưỡng kiểm chứng và có thể lặp lại.","textChars":67,"textLines":1,"bbox":[80,624,1120,28]}
+{"kind":"notes","id":"nt/iflzy4","slide":8,"text":"Đề xuất chương trình kiểm chứng bốn tầng. Hệ thống đã có MathJS hỗ trợ kiểm tra một phần, nhưng chưa thay thế benchmark và nghiệm thu miền.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/src-tauri/src/lib.rs\n- C:/code/du_an/python/VECTOR AI/src/main.js\n[/Sources]"}
+{"kind":"slide","id":"sl/wxn29z","slide":9,"title":"VECTOR AI  /  OFFLINE COMPUTE","textShapes":16}
+{"kind":"textbox","id":"sh/a54v2x4b","slide":9,"text":"VECTOR AI  /  OFFLINE COMPUTE","textPreview":"VECTOR AI  /  OFFLINE COMPUTE","textChars":29,"textLines":1,"bbox":[60,34,500,22]}
+{"kind":"textbox","id":"sh/xsvexcn2","slide":9,"text":"Quy trình hai vùng giữ nhịp phát triển mà vẫn bảo vệ bí mật","textPreview":"Quy trình hai vùng giữ nhịp phát triển mà vẫn bảo vệ bí mật","textChars":59,"textLines":1,"bbox":[60,70,1160,86]}
+{"kind":"textbox","id":"sh/w7md47mh","slide":9,"text":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textPreview":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textChars":32,"textLines":1,"bbox":[60,676,500,18]}
+{"kind":"textbox","id":"sh/n2twr250","slide":9,"text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1170,672,50,22]}
+{"kind":"shape","id":"sh/m1kvyx4f","slide":9,"bbox":[430,342,92,38]}
+{"kind":"shape","id":"sh/94vetsnq","slide":9,"bbox":[758,342,92,38]}
+{"kind":"shape","id":"sh/o3md07m5","slide":9,"bbox":[870,552,290,2]}
+{"kind":"shape","id":"sh/7yxw3m54","slide":9,"bbox":[800,542,72,24]}
+{"kind":"shape","id":"sh/6xofah4j","slide":9,"bbox":[60,190,370,360]}
+{"kind":"textbox","id":"sh/sz2h4fyl","slide":9,"text":"VÙNG A","textPreview":"VÙNG A","textChars":6,"textLines":1,"bbox":[88,216,120,26]}
+{"kind":"textbox","id":"sh/t0vydkz6","slide":9,"text":"Phát triển kết nối","textPreview":"Phát triển kết nối","textChars":18,"textLines":1,"bbox":[88,252,300,36]}
+{"kind":"textbox","id":"sh/6xkz25gv","slide":9,"text":"Không dùng dữ liệu mật","textPreview":"Không dùng dữ liệu mật","textChars":22,"textLines":1,"bbox":[88,298,300,28]}
+{"kind":"textbox","id":"sh/7ytgbah0","slide":9,"text":"• Phát triển UI và lõi chung\n• Dữ liệu giả lập / công khai\n• Kiểm thử tự động\n• Build tái lập\n• Chuẩn bị SBOM","textPreview":"• Phát triển UI và lõi chung | • Dữ liệu giả lập / công khai | • Kiểm thử tự động | • Build tái lập | • Chuẩn bị SBOM","textChars":109,"textLines":5,"bbox":[88,350,300,150]}
+{"kind":"shape","id":"sh/kv2h0fyp","slide":9,"bbox":[520,236,240,270]}
+{"kind":"textbox","id":"sh/5wby90za","slide":9,"text":"CỔNG CHUYỂN","textPreview":"CỔNG CHUYỂN","textChars":11,"textLines":1,"bbox":[546,262,190,26]}
+{"kind":"textbox","id":"sh/itkzy5gj","slide":9,"text":"Ký + kiểm duyệt","textPreview":"Ký + kiểm duyệt","textChars":15,"textLines":1,"bbox":[546,305,190,60]}
+{"kind":"textbox","id":"sh/jutg7ah4","slide":9,"text":"Hash\nQuét mã độc\nPhê duyệt con người\nPhương tiện kiểm soát","textPreview":"Hash | Quét mã độc | Phê duyệt con người | Phương tiện kiểm soát","textChars":58,"textLines":4,"bbox":[546,382,190,104]}
+{"kind":"shape","id":"sh/wrihwvyd","slide":9,"bbox":[850,190,370,360]}
+{"kind":"textbox","id":"sh/xsby50zy","slide":9,"text":"VÙNG B","textPreview":"VÙNG B","textChars":6,"textLines":1,"bbox":[878,216,120,26]}
+{"kind":"textbox","id":"sh/xo3e9wr2","slide":9,"text":"Đánh giá air-gapped","textPreview":"Đánh giá air-gapped","textChars":19,"textLines":1,"bbox":[878,252,300,36]}
+{"kind":"textbox","id":"sh/cnax0rqh","slide":9,"text":"Dữ liệu mật ở lại enclave","textPreview":"Dữ liệu mật ở lại enclave","textChars":25,"textLines":1,"bbox":[878,298,300,28]}
+{"kind":"textbox","id":"sh/bm1w7m9w","slide":9,"text":"• Nạp bộ dữ liệu được duyệt\n• Chạy benchmark miền\n• Ghi log cục bộ đã ký\n• Nghiệm thu chuyên gia\n• Không xuất dữ liệu thô","textPreview":"• Nạp bộ dữ liệu được duyệt | • Chạy benchmark miền | • Ghi log cục bộ đã ký | • Nghiệm thu chuyên gia | • Không xuất dữ liệu thô","textChars":121,"textLines":5,"bbox":[878,350,300,150]}
+{"kind":"textbox","id":"sh/alsfyh8b","slide":9,"text":"Chỉ trả về chỉ số đã khử nhạy cảm và danh sách lỗi","textPreview":"Chỉ trả về chỉ số đã khử nhạy cảm và danh sách lỗi","textChars":50,"textLines":1,"bbox":[874,566,330,42]}
+{"kind":"notes","id":"nt/wxn29z","slide":9,"text":"Đề xuất quy trình hai vùng để không phải đưa toàn bộ phát triển vào môi trường kín. Vùng kết nối chỉ dùng dữ liệu không mật; vùng air-gap giữ dữ liệu thật.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/package.json\n- C:/code/du_an/python/VECTOR AI/src-tauri/windows/hooks.nsh\n- C:/code/du_an/python/VECTOR AI/src-tauri/src/lib.rs\n[/Sources]"}
+{"kind":"slide","id":"sl/43yf59","slide":10,"title":"VECTOR AI  /  OFFLINE COMPUTE","textShapes":21}
+{"kind":"textbox","id":"sh/69ov654n","slide":10,"text":"VECTOR AI  /  OFFLINE COMPUTE","textPreview":"VECTOR AI  /  OFFLINE COMPUTE","textChars":29,"textLines":1,"bbox":[60,34,500,22]}
+{"kind":"textbox","id":"sh/twze1k3e","slide":10,"text":"Kiến trúc mục tiêu khóa model, dữ liệu và cập nhật trong enclave","textPreview":"Kiến trúc mục tiêu khóa model, dữ liệu và cập nhật trong enclave","textChars":64,"textLines":1,"bbox":[60,70,1160,96]}
+{"kind":"textbox","id":"sh/sbqd8fmt","slide":10,"text":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textPreview":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textChars":32,"textLines":1,"bbox":[60,676,500,18]}
+{"kind":"textbox","id":"sh/fyhw3al4","slide":10,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1170,672,50,22]}
+{"kind":"shape","id":"sh/ex8vap4j","slide":10,"bbox":[250,344,50,28]}
+{"kind":"shape","id":"sh/10ze5k3a","slide":10,"bbox":[505,344,50,28]}
+{"kind":"shape","id":"sh/gzqdcfmp","slide":10,"bbox":[760,344,50,28]}
+{"kind":"shape","id":"sh/v2xcrql0","slide":10,"bbox":[1015,344,50,28]}
+{"kind":"shape","id":"sh/a14vyl4f","slide":10,"bbox":[530,184,690,382]}
+{"kind":"textbox","id":"sh/cfe5gn2x","slide":10,"text":"ENCLAVE KHÔNG CÓ TUYẾN MẠNG RA NGOÀI","textPreview":"ENCLAVE KHÔNG CÓ TUYẾN MẠNG RA NGOÀI","textChars":36,"textLines":1,"bbox":[560,198,620,22]}
+{"kind":"shape","id":"sh/xgn69s3i","slide":10,"bbox":[60,266,190,204]}
+{"kind":"textbox","id":"sh/adwnedkr","slide":10,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[80,286,45,28]}
+{"kind":"textbox","id":"sh/be5o7ilc","slide":10,"text":"Gói offline đã ký","textPreview":"Gói offline đã ký","textChars":17,"textLines":1,"bbox":[80,326,150,52]}
+{"kind":"textbox","id":"sh/kjy5kn29","slide":10,"text":"Ứng dụng\nmodel\ndependency\nmanifest + hash","textPreview":"Ứng dụng | model | dependency | manifest + hash","textChars":41,"textLines":4,"bbox":[80,390,150,76]}
+{"kind":"shape","id":"sh/lk76ds3u","slide":10,"bbox":[300,266,190,204]}
+{"kind":"textbox","id":"sh/yhwnixk3","slide":10,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[320,286,45,28]}
+{"kind":"textbox","id":"sh/zipobilo","slide":10,"text":"Trạm kiểm soát","textPreview":"Trạm kiểm soát","textChars":14,"textLines":1,"bbox":[320,326,150,52]}
+{"kind":"textbox","id":"sh/0nu5832p","slide":10,"text":"Quét mã độc\nkiểm chữ ký\nnhật ký phương tiện","textPreview":"Quét mã độc | kiểm chữ ký | nhật ký phương tiện","textChars":43,"textLines":3,"bbox":[320,390,150,76]}
+{"kind":"shape","id":"sh/1o3m183a","slide":10,"bbox":[555,266,190,204]}
+{"kind":"textbox","id":"sh/hsbup0r2","slide":10,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[575,286,45,28]}
+{"kind":"textbox","id":"sh/gr2tgvah","slide":10,"text":"Runtime cô lập","textPreview":"Runtime cô lập","textChars":14,"textLines":1,"bbox":[575,326,150,52]}
+{"kind":"textbox","id":"sh/v6tcnq9w","slide":10,"text":"Tauri\nOllama\nQwen local","textPreview":"Tauri | Ollama | Qwen local","textChars":23,"textLines":3,"bbox":[575,390,150,76]}
+{"kind":"shape","id":"sh/u5kbelsb","slide":10,"bbox":[810,266,190,204]}
+{"kind":"textbox","id":"sh/5wvut0ry","slide":10,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[830,286,45,28]}
+{"kind":"textbox","id":"sh/4vmdkfad","slide":10,"text":"Kho mã hóa","textPreview":"Kho mã hóa","textChars":10,"textLines":1,"bbox":[830,326,150,52]}
+{"kind":"textbox","id":"sh/3udcra9s","slide":10,"text":"Workspace\nlog\nbackup\nkhóa truy cập","textPreview":"Workspace | log | backup | khóa truy cập","textChars":34,"textLines":4,"bbox":[830,390,150,76]}
+{"kind":"shape","id":"sh/itkvi5sn","slide":10,"bbox":[1065,266,190,204]}
+{"kind":"textbox","id":"sh/d0vuxkra","slide":10,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1085,286,45,28]}
+{"kind":"textbox","id":"sh/szmdofqp","slide":10,"text":"Người vận hành","textPreview":"Người vận hành","textChars":14,"textLines":1,"bbox":[1085,326,150,52]}
+{"kind":"textbox","id":"sh/a5grih87","slide":10,"text":"Xem xét\nphê duyệt\nxuất kết quả đã ký","textPreview":"Xem xét | phê duyệt | xuất kết quả đã ký","textChars":36,"textLines":3,"bbox":[1085,390,150,76]}
+{"kind":"shape","id":"sh/b6psrmps","slide":10,"bbox":[60,594,1160,42]}
+{"kind":"textbox","id":"sh/c7y9krqx","slide":10,"text":"Cập nhật chỉ đi vào qua cổng kiểm duyệt; dữ liệu mật không đi ngược ra ngoài.","textPreview":"Cập nhật chỉ đi vào qua cổng kiểm duyệt; dữ liệu mật không đi ngược ra ngoài.","textChars":77,"textLines":1,"bbox":[82,604,1116,24]}
+{"kind":"notes","id":"nt/43yf59","slide":10,"text":"Kiến trúc mục tiêu bổ sung gói ký số, trạm nhập liệu kiểm soát, kho mã hóa và người vận hành phê duyệt kết quả.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/src-tauri/tauri.conf.json\n- C:/code/du_an/python/VECTOR AI/src-tauri/capabilities/default.json\n- C:/code/du_an/python/VECTOR AI/src-tauri/src/lib.rs\n- C:/code/du_an/python/VECTOR AI/src-tauri/windows/hooks.nsh\n- C:/code/du_an/python/VECTOR AI/src/main.js\n[/Sources]"}
+{"kind":"slide","id":"sl/dh0ewq","slide":11,"title":"VECTOR AI  /  OFFLINE COMPUTE","textShapes":19}
+{"kind":"textbox","id":"sh/r61ojqpc","slide":11,"text":"VECTOR AI  /  OFFLINE COMPUTE","textPreview":"VECTOR AI  /  OFFLINE COMPUTE","textChars":29,"textLines":1,"bbox":[60,34,500,22]}
+{"kind":"textbox","id":"sh/s7upsvqx","slide":11,"text":"Lộ trình 12 tháng ưu tiên độ tin cậy trước tốc độ","textPreview":"Lộ trình 12 tháng ưu tiên độ tin cậy trước tốc độ","textChars":49,"textLines":1,"bbox":[60,70,1160,86]}
+{"kind":"textbox","id":"sh/ds36l07i","slide":11,"text":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textPreview":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textChars":32,"textLines":1,"bbox":[60,676,500,18]}
+{"kind":"textbox","id":"sh/etc7u58n","slide":11,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[1170,672,50,22]}
+{"kind":"shape","id":"sh/fulonap8","slide":11,"bbox":[92,558,1050,2]}
+{"kind":"shape","id":"sh/0vupwfqt","slide":11,"bbox":[92,548,22,22]}
+{"kind":"shape","id":"sh/1w36p07e","slide":11,"bbox":[492,548,22,22]}
+{"kind":"shape","id":"sh/2xc7y58z","slide":11,"bbox":[892,548,22,22]}
+{"kind":"shape","id":"sh/ny5orapk","slide":11,"bbox":[60,188,340,326]}
+{"kind":"textbox","id":"sh/but47u50","slide":11,"text":"GIAI ĐOẠN 1","textPreview":"GIAI ĐOẠN 1","textChars":11,"textLines":1,"bbox":[88,214,284,24]}
+{"kind":"textbox","id":"sh/atknep4v","slide":11,"text":"Khóa air-gap","textPreview":"Khóa air-gap","textChars":12,"textLines":1,"bbox":[88,254,284,40]}
+{"kind":"textbox","id":"sh/xwbm94n6","slide":11,"text":"0–3 tháng","textPreview":"0–3 tháng","textChars":9,"textLines":1,"bbox":[88,307,284,28]}
+{"kind":"shape","id":"sh/cv25gzml","slide":11,"bbox":[88,352,284,1]}
+{"kind":"textbox","id":"sh/nq943u54","slide":11,"text":"• Offline installer + model pack\n• Loại đường tải khi vận hành\n• Hash, chữ ký và SBOM\n• Baseline cấu hình máy","textPreview":"• Offline installer + model pack | • Loại đường tải khi vận hành | • Hash, chữ ký và SBOM | • Baseline cấu hình máy","textChars":109,"textLines":4,"bbox":[88,376,284,116]}
+{"kind":"shape","id":"sh/2p0napoj","slide":11,"bbox":[460,188,340,326]}
+{"kind":"textbox","id":"sh/psbm54na","slide":11,"text":"GIAI ĐOẠN 2","textPreview":"GIAI ĐOẠN 2","textChars":11,"textLines":1,"bbox":[488,214,284,24]}
+{"kind":"textbox","id":"sh/ori5czmp","slide":11,"text":"Hardening","textPreview":"Hardening","textChars":9,"textLines":1,"bbox":[488,254,284,40]}
+{"kind":"textbox","id":"sh/7mdofe58","slide":11,"text":"3–6 tháng","textPreview":"3–6 tháng","textChars":9,"textLines":1,"bbox":[488,307,284,28]}
+{"kind":"shape","id":"sh/ml4nmt4n","slide":11,"bbox":[488,352,284,1]}
+{"kind":"textbox","id":"sh/iho7edov","slide":11,"text":"• Mã hóa dữ liệu và backup\n• Danh tính + RBAC\n• Log chống sửa đổi\n• Quy trình cập nhật ngoại tuyến","textPreview":"• Mã hóa dữ liệu và backup | • Danh tính + RBAC | • Log chống sửa đổi | • Quy trình cập nhật ngoại tuyến","textChars":98,"textLines":4,"bbox":[488,376,284,116]}
+{"kind":"shape","id":"sh/3ix87ipg","slide":11,"bbox":[860,188,340,326]}
+{"kind":"textbox","id":"sh/4jqpgn61","slide":11,"text":"GIAI ĐOẠN 3","textPreview":"GIAI ĐOẠN 3","textChars":11,"textLines":1,"bbox":[888,214,284,24]}
+{"kind":"textbox","id":"sh/5kzq9s7m","slide":11,"text":"Kiểm chứng & pilot","textPreview":"Kiểm chứng & pilot","textChars":18,"textLines":1,"bbox":[888,254,284,40]}
+{"kind":"textbox","id":"sh/ql8rixo7","slide":11,"text":"6–12 tháng","textPreview":"6–12 tháng","textChars":10,"textLines":1,"bbox":[888,307,284,28]}
+{"kind":"shape","id":"sh/rmh8b2ps","slide":11,"bbox":[888,352,284,1]}
+{"kind":"textbox","id":"sh/snq9k76d","slide":11,"text":"• Benchmark toán / vật lý\n• Kiểm thử đối kháng\n• Nghiệm thu chuyên gia\n• Pilot tại một enclave","textPreview":"• Benchmark toán / vật lý | • Kiểm thử đối kháng | • Nghiệm thu chuyên gia | • Pilot tại một enclave","textChars":94,"textLines":4,"bbox":[888,376,284,116]}
+{"kind":"textbox","id":"sh/d8zqdc7y","slide":11,"text":"CỔNG 1","textPreview":"CỔNG 1","textChars":6,"textLines":1,"bbox":[72,588,130,24]}
+{"kind":"textbox","id":"sh/mp476to3","slide":11,"text":"CỔNG 2","textPreview":"CỔNG 2","textChars":6,"textLines":1,"bbox":[472,588,130,24]}
+{"kind":"textbox","id":"sh/7qd8zyp8","slide":11,"text":"NGHIỆM THU","textPreview":"NGHIỆM THU","textChars":10,"textLines":1,"bbox":[872,588,180,24]}
+{"kind":"notes","id":"nt/dh0ewq","slide":11,"text":"Lộ trình khuyến nghị gồm ba giai đoạn và các cổng nghiệm thu. Không chuyển sang pilot trước khi đóng đường mạng, bảo vệ dữ liệu và đạt benchmark.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/README.md\n- C:/code/du_an/python/VECTOR AI/src-tauri/src/lib.rs\n- C:/code/du_an/python/VECTOR AI/src/main.js\n- C:/code/du_an/python/VECTOR AI/src-tauri/windows/hooks.nsh\n[/Sources]"}
+{"kind":"slide","id":"sl/cod773","slide":12,"title":"VECTOR AI  /  OFFLINE COMPUTE","textShapes":18}
+{"kind":"textbox","id":"sh/ho7a5g3u","slide":12,"text":"VECTOR AI  /  OFFLINE COMPUTE","textPreview":"VECTOR AI  /  OFFLINE COMPUTE","textChars":29,"textLines":1,"bbox":[60,34,500,22]}
+{"kind":"textbox","id":"sh/ulwrulkj","slide":12,"text":"Quyết định tiếp theo: một pilot air-gapped có giới hạn","textPreview":"Quyết định tiếp theo: một pilot air-gapped có giới hạn","textChars":54,"textLines":1,"bbox":[60,70,1160,96]}
+{"kind":"textbox","id":"sh/vm583ql4","slide":12,"text":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textPreview":"VECTOR AI  /  ĐỀ XUẤT AIR-GAPPED","textChars":32,"textLines":1,"bbox":[60,676,500,18]}
+{"kind":"textbox","id":"sh/8je9sb2d","slide":12,"text":"12","textPreview":"12","textChars":2,"textLines":1,"bbox":[1170,672,50,22]}
+{"kind":"textbox","id":"sh/tknq1g3y","slide":12,"text":"Bốn việc cần phê duyệt","textPreview":"Bốn việc cần phê duyệt","textChars":22,"textLines":1,"bbox":[60,184,520,34]}
+{"kind":"shape","id":"sh/6hwrq1k7","slide":12,"bbox":[60,244,52,52]}
+{"kind":"textbox","id":"sh/7i58z6ls","slide":12,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[60,256,52,24]}
+{"kind":"textbox","id":"sh/cfy94v2h","slide":12,"text":"Đóng băng baseline v0.1 và phạm vi pilot","textPreview":"Đóng băng baseline v0.1 và phạm vi pilot","textChars":40,"textLines":1,"bbox":[138,250,500,48]}
+{"kind":"shape","id":"sh/dgrad032","slide":12,"bbox":[138,310,500,1]}
+{"kind":"shape","id":"sh/pg72x4b2","slide":12,"bbox":[60,330,52,52]}
+{"kind":"textbox","id":"sh/ofy1ozah","slide":12,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[60,342,52,24]}
+{"kind":"textbox","id":"sh/nepkvutw","slide":12,"text":"Tạo gói cài đặt + model ngoại tuyến đã ký","textPreview":"Tạo gói cài đặt + model ngoại tuyến đã ký","textChars":41,"textLines":1,"bbox":[138,336,500,48]}
+{"kind":"shape","id":"sh/2dgjmpsr","slide":12,"bbox":[138,396,500,1]}
+{"kind":"shape","id":"sh/1c72t4b6","slide":12,"bbox":[60,416,52,52]}
+{"kind":"textbox","id":"sh/0by1kzal","slide":12,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[60,428,52,24]}
+{"kind":"textbox","id":"sh/fapkrut0","slide":12,"text":"Mã hóa dữ liệu, backup và bổ sung audit","textPreview":"Mã hóa dữ liệu, backup và bổ sung audit","textChars":39,"textLines":1,"bbox":[138,422,500,48]}
+{"kind":"shape","id":"sh/e9wjipsf","slide":12,"bbox":[138,482,500,1]}
+{"kind":"shape","id":"sh/l8r25ora","slide":12,"bbox":[60,502,52,52]}
+{"kind":"textbox","id":"sh/k7ilwjap","slide":12,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[60,514,52,24]}
+{"kind":"textbox","id":"sh/4nadormd","slide":12,"text":"Xây benchmark; nghiệm thu bằng chuyên gia","textPreview":"Xây benchmark; nghiệm thu bằng chuyên gia","textChars":41,"textLines":1,"bbox":[138,508,500,48]}
+{"kind":"shape","id":"sh/5ojehw3i","slide":12,"bbox":[720,182,500,440]}
+{"kind":"textbox","id":"sh/i1svmh47","slide":12,"text":"ĐI CHẬM HƠN\nỞ KHÂU CHUYỂN GIAO.","textPreview":"ĐI CHẬM HƠN | Ở KHÂU CHUYỂN GIAO.","textChars":31,"textLines":2,"bbox":[760,232,420,104]}
+{"kind":"shape","id":"sh/321wfmls","slide":12,"bbox":[760,366,420,3]}
+{"kind":"textbox","id":"sh/gzadk7m1","slide":12,"text":"Nhanh hơn ở năng lực làm chủ, khả năng kiểm chứng và mức độ bảo vệ bí mật.","textPreview":"Nhanh hơn ở năng lực làm chủ, khả năng kiểm chứng và mức độ bảo vệ bí mật.","textChars":74,"textLines":1,"bbox":[760,402,420,104]}
+{"kind":"textbox","id":"sh/h0judc3m","slide":12,"text":"PHẠM VI AN TOÀN","textPreview":"PHẠM VI AN TOÀN","textChars":15,"textLines":1,"bbox":[760,532,180,20]}
+{"kind":"textbox","id":"sh/ux8vih4v","slide":12,"text":"Nghiên cứu · huấn luyện · hậu cần · mô phỏng vật lý · hỗ trợ quyết định có con người kiểm soát","textPreview":"Nghiên cứu · huấn luyện · hậu cần · mô phỏng vật lý · hỗ trợ quyết định có con người kiểm soát","textChars":94,"textLines":1,"bbox":[760,558,420,54]}
+{"kind":"textbox","id":"sh/vy1cbmlg","slide":12,"text":"Không tự động hóa quyết định sát thương; không sử dụng kết quả chưa được kiểm chứng.","textPreview":"Không tự động hóa quyết định sát thương; không sử dụng kết quả chưa được kiểm chứng.","textChars":84,"textLines":1,"bbox":[60,624,1160,28]}
+{"kind":"notes","id":"nt/cod773","slide":12,"text":"Kết thúc bằng một quyết định cụ thể: pilot có giới hạn, có benchmark và có người phê duyệt. Phạm vi loại trừ rõ ràng các quyết định sát thương tự động.\n\n[Sources]\n- C:/code/du_an/python/VECTOR AI/README.md\n- C:/code/du_an/python/VECTOR AI/src-tauri/src/lib.rs\n- C:/code/du_an/python/VECTOR AI/src/main.js\n- C:/code/du_an/python/VECTOR AI/src-tauri/windows/hooks.nsh\n[/Sources]"}

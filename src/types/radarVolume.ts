@@ -20,6 +20,15 @@ export interface AltitudeBandInfo {
   terrainLimitedPercent: number;
 }
 
+/** Physical MSL heights retained for terrain/LOS clipping between mesh vertices.
+ * Arrays are azimuth-major: azIndex * sampleDistances.length + distanceIndex. */
+export interface RadarTerrainGrid {
+  azimuthSamples: number[];
+  sampleDistances: number[];
+  terrainHeights: Float32Array;
+  minimumVisibleHeights: Float32Array;
+}
+
 export interface RadarCoverageVolume {
   radarId: string;
   radarName: string;
@@ -54,6 +63,7 @@ export interface RadarCoverageVolume {
 
   // Thông tin tổng hợp từng tầng độ cao để UI Inspector hiển thị nhanh
   bandInfos: AltitudeBandInfo[];
+  terrainGrid?: RadarTerrainGrid;
 
   // Trạng thái địa hình và tính toán
   terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error';
@@ -67,6 +77,7 @@ export interface RadarCoverageVolume {
 
 export interface VolumeCalculationParams {
   azimuthStepDeg?: number;    // Bước phương vị (mặc định 5°)
+  terrainAzimuthStepDeg?: number; // DEM/LOS step; defaults to min(azimuthStepDeg, 2°)
   radialStepMeters?: number;  // Bước lấy mẫu cự ly DEM (mặc định 2000m)
   kFactor?: number;           // Hệ số khúc xạ khí quyển (chuẩn 4/3 ~ 1.3333)
   customAltitudeBands?: number[]; // Cho phép truyền danh sách tầng độ cao riêng
@@ -78,4 +89,6 @@ export interface VolumeMeshOptions {
   showTopCap?: boolean;              // Đậy nắp trên ở trần độ cao H_max
   showBottomCap?: boolean;           // Đáy bám sát tầng độ cao thấp nhất
   selectedAltitudeM?: number | null; // Độ cao lát cắt ngang được chọn
+  verticalExaggeration?: number; // Display-only scaling; physical volume/LOS stays unchanged
+  verticalExaggerationRelativeHeight?: number;
 }

@@ -3,6 +3,7 @@ import path from 'path';
 import https from 'https';
 import zlib from 'zlib';
 import { fileURLToPath } from 'url';
+import { generateLocalTerrainManifest } from './scripts/generate-local-terrain-manifest.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -381,19 +382,22 @@ async function main() {
   layerConfig.tiles = ['{z}/{x}/{y}.terrain'];
   layerConfig.minzoom = 0;
   layerConfig.maxzoom = Math.max(13, regionConfig.maxZoom);
-  layerConfig.extensions = ['octvertexnormals', 'watermask', 'metadata'];
-
-  if (Array.isArray(layerConfig.available)) {
-    layerConfig.available = layerConfig.available.slice(0, layerConfig.maxzoom + 1);
-  }
+  layerConfig.extensions = ['octvertexnormals', 'watermask'];
+  // The remote index covers tiles that are not yet present in this local pack.
+  // Publish no availability until the local file scan can establish a complete
+  // parent chain. The binary meshes themselves are kept unchanged.
+  layerConfig.available = [];
+  delete layerConfig.metadataAvailability;
+  delete layerConfig.parentUrl;
 
   fs.mkdirSync(OUT_TERRAIN_DIR, { recursive: true });
-  fs.writeFileSync(
-    path.join(OUT_TERRAIN_DIR, 'layer.json'),
-    JSON.stringify(layerConfig, null, 2),
-    'utf8'
-  );
-  console.log(`   ✓ Đã cập nhật public/offline-terrain/layer.json (maxzoom: ${layerConfig.maxzoom})`);
+  const layerPath = path.join(OUT_TERRAIN_DIR, 'layer.json');
+  if (!fs.existsSync(layerPath)) {
+    fs.writeFileSync(layerPath, JSON.stringify(layerConfig, null, 2), 'utf8');
+    console.log(`   ✓ Đã tạo public/offline-terrain/layer.json (maxzoom: ${layerConfig.maxzoom})`);
+  } else {
+    console.log('   ✓ Giữ manifest địa hình cục bộ hiện có; cập nhật lại sau khi tải xong.');
+  }
 
   // 3. Lập danh sách tile terrain và tải tuần tự theo từng tầng Zoom (Level-by-Level)
   const bounds = regionConfig.bounds
@@ -407,6 +411,7 @@ async function main() {
   let grandSkipped = 0;
   let grandNotFound = 0;
   let grandFailed = 0;
+  let manifest;
 
   for (let z = regionConfig.minZoom; z <= regionConfig.maxZoom; z++) {
     const levelTiles = getTerrainTilesForBounds(bounds, z, z);
@@ -423,7 +428,14 @@ async function main() {
     grandFailed += result.failedCount;
 
     savePackInfo(regionConfig, z, result);
+    // Refresh after every completed level so an interrupted download does not
+    // leave all newly downloaded levels hidden until the entire region finishes.
+    // The generator replaces layer.json atomically and advertises actual files.
+    manifest = generateLocalTerrainManifest(OUT_TERRAIN_DIR);
   }
+
+  manifest ??= generateLocalTerrainManifest(OUT_TERRAIN_DIR);
+  console.log(`💾 Manifest địa hình cục bộ: ${manifest.tileCount} tile, ${manifest.rangeCount} vùng, zoom tối đa ${manifest.maxZoom}.`);
 
   console.log(`\n=====================================================================`);
   console.log(`🎉 HOÀN TẤT TẤT CẢ CÁC TẦNG ZOOM CHO ${regionConfig.name.toUpperCase()}!`);

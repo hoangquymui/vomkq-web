@@ -219,14 +219,11 @@ export function buildRadarCoverageFieldEntities(
 
     // 3. Khối vùng mù địa hình (Shadow) phía sau sườn núi
     if (showBlindZones && (cur.hasOcclusion || next.hasOcclusion)) {
-      const shadowColor = Cesium.Color.fromCssColorString('#ef4444').withAlpha(
-        isSelected ? 0.35 : 0.22
-      );
       const groundShadowColor = Cesium.Color.fromCssColorString('#dc2626').withAlpha(
         isSelected ? 0.45 : 0.3
       );
 
-      // A. Mảng bóng râm bám đất sườn núi (Clamp to Ground)
+      // A. Mảng bóng râm bám đất sườn núi (Clamp to Ground ôm sát địa hình)
       const gOcc1 = Cesium.Cartesian3.fromDegrees(cur.sOccLon, cur.sOccLat);
       const gEnd1 = Cesium.Cartesian3.fromDegrees(cur.sEndLon, cur.sEndLat);
       const gEnd2 = Cesium.Cartesian3.fromDegrees(next.sEndLon, next.sEndLat);
@@ -246,31 +243,6 @@ export function buildRadarCoverageFieldEntities(
               heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
               classificationType: Cesium.ClassificationType.TERRAIN,
               material: groundShadowColor,
-            },
-          })
-        );
-      }
-
-      // B. Khối nêm không gian vùng mù nối từ điểm cản ra cự ly xa nhất
-      if (
-        isValidCartesian(cur.pOuter) &&
-        isValidCartesian(cur.pShadowEnd) &&
-        isValidCartesian(next.pShadowEnd) &&
-        isValidCartesian(next.pOuter)
-      ) {
-        blindEntities.push(
-          new Cesium.Entity({
-            name: `Khối mù không gian (${cur.az}°-${next.az}°)`,
-            polygon: {
-              hierarchy: new Cesium.PolygonHierarchy([
-                cur.pOuter,
-                cur.pShadowEnd,
-                next.pShadowEnd,
-                next.pOuter,
-              ]),
-              perPositionHeight: true,
-              material: shadowColor,
-              outline: false,
             },
           })
         );

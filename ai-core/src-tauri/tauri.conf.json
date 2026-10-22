@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VECTOR AI",
+  "version": "0.1.0",
+  "identifier": "ai.vector.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:3000",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "VECTOR AI",
+        "width": 1180,
+        "height": 700,
+        "minWidth": 860,
+        "minHeight": 560,
+        "center": true,
+        "decorations": true,
+        "resizable": true,
+        "fullscreen": false,
+        "backgroundColor": "#080c10"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:8000 http://127.0.0.1:11434"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": false,
+    "shortDescription": "Trợ lý AI offline mạnh mẽ và riêng tư",
+    "longDescription": "VECTOR AI sử dụng Qwen3.5 9B qua Ollama để suy luận hoàn toàn trên thiết bị.",
+    "category": "Productivity",
+    "copyright": "Copyright © 2026 VECTOR AI",
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh",
+        "installMode": "currentUser",
+        "displayLanguageSelector": true,
+        "languages": ["Vietnamese", "English"]
+      }
+    }
+  }
+}

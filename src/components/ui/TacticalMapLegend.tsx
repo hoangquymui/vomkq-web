@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { Info, ChevronDown, ChevronUp, Layers, CircleDot, Activity, Shield } from 'lucide-react';
+import { useTacticalStore } from '../../store/useTacticalStore';
+import { VECTOR_LEGEND_ITEMS } from '../../types/vectorStyle';
 
 export const TacticalMapLegend: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const showVectorLayer = useTacticalStore((state) => state.showVectorLayer);
 
   return (
     <div className="absolute bottom-6 left-[336px] z-20 select-none pointer-events-auto max-w-sm">
@@ -37,6 +40,21 @@ export const TacticalMapLegend: React.FC = () => {
           </div>
 
           <div className="p-3.5 space-y-3.5 text-xs max-h-[380px] overflow-y-auto">
+            {showVectorLayer && (
+              <div>
+                <div className="text-[11px] font-semibold text-emerald-300 uppercase tracking-wider font-mono mb-2">
+                  Đối tượng vùng phủ (OSM)
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                  {VECTOR_LEGEND_ITEMS.map((item) => (
+                    <div key={item.kind} className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="text-slate-300">{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* 1. Dải màu SPx theo độ cao mục tiêu */}
             <div>
               <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-mono mb-2">

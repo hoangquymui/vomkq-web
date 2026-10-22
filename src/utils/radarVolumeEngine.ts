@@ -5,7 +5,9 @@ import type {
   VolumeCalculationParams,
   VolumeVisibilityState,
   AltitudeBandInfo,
+  RadarTerrainGrid,
 } from '../types/radarVolume';
+import type { SharedTerrainSlice } from '../types/radarCoverage';
 import {
   calculateConeOfSilenceRadiusKm,
   calculateEarthBulgeMeters,
@@ -20,6 +22,21 @@ import { sampleTerrainOptimized } from './terrainSampler';
 
 /** Cache lưu các Volume đã tính để tránh tính lại khi xoay/zoom bản đồ */
 const volumeCache = new Map<string, RadarCoverageVolume>();
+const terrainProviderIds = new WeakMap<Cesium.TerrainProvider, number>();
+let nextTerrainProviderId = 1;
+
+/** Keep a uniform, closed azimuth grid even when a requested step does not divide 360. */
+function getTerrainAzimuthStepDeg(params: VolumeCalculationParams): number {
+  const requestedAzStep = params.azimuthStepDeg;
+  const azStep = typeof requestedAzStep === 'number' && Number.isFinite(requestedAzStep) && requestedAzStep > 0
+    ? Math.min(360, requestedAzStep)
+    : 5;
+  const requestedTerrainStep = params.terrainAzimuthStepDeg;
+  const terrainStep = typeof requestedTerrainStep === 'number' && Number.isFinite(requestedTerrainStep) && requestedTerrainStep > 0
+    ? Math.min(360, requestedTerrainStep)
+    : Math.min(azStep, 2);
+  return 360 / Math.ceil(360 / terrainStep);
+}
 
 /**
  * Trích xuất danh sách các tầng độ cao (m) phù hợp nhất cho đài radar
@@ -136,16 +153,26 @@ export function calculateNominalRangeAtAltitude(
  */
 export function generateVolumeCacheKey(
   instance: EquipmentInstance,
-  params: VolumeCalculationParams
+  params: VolumeCalculationParams,
+  terrainProvider?: Cesium.TerrainProvider | null
 ): string {
-  const azStep = params.azimuthStepDeg || 5;
+  const azStep = getTerrainAzimuthStepDeg(params);
   const radStep = params.radialStepMeters || 2000;
   const k = (params.kFactor || DEFAULT_K_FACTOR).toFixed(3);
   const altKey = params.customAltitudeBands?.join(',') || 'auto';
   const profileKey = instance.coverageProfile?.points.map((p) => `${p.elevationDeg}:${p.maxRangeKm}`).join('-') || 'def';
   const elevKey = `${instance.minElevationDeg ?? 0}_${instance.maxElevationDeg ?? 30}`;
+  let terrainKey = 'no-terrain';
+  if (terrainProvider) {
+    let providerId = terrainProviderIds.get(terrainProvider);
+    if (providerId === undefined) {
+      providerId = nextTerrainProviderId++;
+      terrainProviderIds.set(terrainProvider, providerId);
+    }
+    terrainKey = `terrain-${providerId}`;
+  }
 
-  return `vol_${instance.instanceId}_${instance.latitude.toFixed(4)}_${instance.longitude.toFixed(4)}_${instance.altitude}_${instance.antennaHeightAGL}_${instance.rangeKm}_${instance.coverageHeightKm}_${elevKey}_${azStep}_${radStep}_${k}_${altKey}_${profileKey}`;
+  return `vol_v3_${terrainKey}_${instance.instanceId}_${instance.latitude.toFixed(4)}_${instance.longitude.toFixed(4)}_${instance.altitude}_${instance.antennaHeightAGL}_${instance.rangeKm}_${instance.coverageHeightKm}_${elevKey}_${azStep}_${radStep}_${k}_${altKey}_${profileKey}`;
 }
 
 /**
@@ -158,18 +185,18 @@ export async function computeRadarCoverageVolume(
   terrainProvider: Cesium.TerrainProvider | null,
   params: VolumeCalculationParams = {}
 ): Promise<RadarCoverageVolume> {
-  const cacheKey = generateVolumeCacheKey(instance, params);
+  const cacheKey = generateVolumeCacheKey(instance, params, terrainProvider);
   const cached = volumeCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
   const {
-    azimuthStepDeg = 5,
     radialStepMeters = 2000,
     kFactor = DEFAULT_K_FACTOR,
     customAltitudeBands,
   } = params;
+  const azimuthStepDeg = getTerrainAzimuthStepDeg(params);
 
   const radarLat = instance.latitude;
   const radarLon = instance.longitude;
@@ -187,8 +214,9 @@ export async function computeRadarCoverageVolume(
 
   // 2. Xác định trục Phương vị (Azimuth Samples)
   const azimuthSamples: number[] = [];
-  for (let az = 0; az < 360; az += azimuthStepDeg) {
-    azimuthSamples.push(az);
+  const azimuthCount = Math.round(360 / azimuthStepDeg);
+  for (let azIndex = 0; azIndex < azimuthCount; azIndex++) {
+    azimuthSamples.push(azIndex * azimuthStepDeg);
   }
 
   // 3. Tính toán trước bán kính nón mù đỉnh đầu (Cone of Silence) theo từng tầng độ cao:
@@ -205,7 +233,7 @@ export async function computeRadarCoverageVolume(
   });
 
   // 5 & 6. Lấy mẫu độ cao địa hình DEM và tính góc che chắn tích lũy
-  const { terrainMap, maxMaskInfoByAzDist, sampleDistances, terrainStatus } = await sampleTerrainGridAndMasks(
+  const { terrainMap, maxMaskInfoByAzDist, sampleDistances, terrainStatus, terrainGrid } = await sampleTerrainGridAndMasks(
     radarLat,
     radarLon,
     radarCenterAltM,
@@ -213,13 +241,12 @@ export async function computeRadarCoverageVolume(
     azimuthSamples,
     radialStepMeters,
     terrainProvider,
-    kFactor
+    kFactor,
+    nominalRangesByBand
   );
 
   // 7. Xây dựng ma trận nominalRanges, effectiveRanges, visibilityStates
   // Kích thước: [altitudeBands.length][azimuthSamples.length]
-  const minElevDeg = instance.minElevationDeg !== undefined ? instance.minElevationDeg : 0;
-  const tanMinElev = Math.tan((minElevDeg * Math.PI) / 180);
   const rEquiv = EARTH_RADIUS_METERS * kFactor;
   const aQuad = 1 / (2 * rEquiv);
 
@@ -245,6 +272,12 @@ export async function computeRadarCoverageVolume(
 
       nominalRow.push(nomRangeM);
 
+      if (terrainStatus !== 'loaded') {
+        effectiveRow.push(nomRangeM);
+        visibilityRow.push('NO_DATA');
+        continue;
+      }
+
       // Nếu cự ly danh nghĩa nhỏ hơn hoặc bằng nón mù đỉnh đầu -> ngoài búp sóng
       if (nomRangeM <= innerConeM) {
         effectiveRow.push(innerConeM);
@@ -255,40 +288,63 @@ export async function computeRadarCoverageVolume(
       // Tìm cự ly xa nhất dọc theo phương vị az mà mục tiêu ở độ cao altM không bị che khuất
       let effectiveDistM = nomRangeM;
       let isBlocked = false;
+      let previousDistM = 0;
+      let previousGroundAltM = radarGroundAltM;
 
       // Duyệt qua các mốc cự ly lấy mẫu
       for (const dist of sampleDistances) {
         if (dist > nomRangeM) break;
-        if (dist <= innerConeM) continue;
+        const groundAlt = terrainMap.get(`${az}_${dist}`) ?? 0;
+        if (dist <= innerConeM) {
+          previousDistM = dist;
+          previousGroundAltM = groundAlt;
+          continue;
+        }
 
         // Góc nhìn tới mục tiêu ở độ cao altM tại khoảng cách dist:
-        const groundAlt = terrainMap.get(`${az}_${dist}`) || 0;
         const deltaH = calculateEarthBulgeMeters(dist, kFactor);
         const tanTarget = (altM - radarCenterAltM - deltaH) / dist;
         const maskInfo = maxMaskInfoByAzDist.get(`${az}_${dist}`);
         const maxMaskTan = maskInfo ? maskInfo.maxTan : -Number.MAX_VALUE;
 
         // Bị chắn nếu mục tiêu nằm dưới mặt đất cục bộ hoặc bị khuất sau góc chắn của núi
-        if (altM < groundAlt || (maxMaskTan > tanMinElev && tanTarget < maxMaskTan)) {
+        // The terrain horizon can be below the antenna's horizontal plane.
+        // Beam elevation limits must not disable terrain occlusion in that case.
+        if (altM < groundAlt || tanTarget < maxMaskTan) {
           isBlocked = true;
           // Giải phương trình giao tuyến giải tích giữa tia quét và góc chắn núi
-          const bQuad = Math.max(tanMinElev, maxMaskTan);
           const cQuad = -(altM - radarCenterAltM);
-          const disc = bQuad * bQuad - 4 * aQuad * cQuad;
-          if (disc >= 0 && altM > radarCenterAltM) {
+          let cutoffM = previousDistM;
+          let hasShadowCutoff = false;
+          const previousMaskInfo = maxMaskInfoByAzDist.get(`${az}_${previousDistM}`);
+          for (const mask of [previousMaskInfo, maskInfo]) {
+            if (!mask) continue;
+            const bQuad = mask.maxTan;
+            const disc = bQuad * bQuad - 4 * aQuad * cQuad;
+            if (disc < 0) continue;
             const dCutoff = (-bQuad + Math.sqrt(disc)) / (2 * aQuad);
-            effectiveDistM = Math.min(dist, Math.max(innerConeM, dCutoff));
-          } else {
-            // Độ cao mục tiêu thấp hơn hoặc bằng cao độ anten/núi -> chắn tại sườn núi
-            effectiveDistM = Math.min(dist, Math.max(innerConeM, maskInfo ? maskInfo.peakDist : dist));
+            // A mountain cannot occlude foreground points before the mountain.
+            // A newly sampled peak must not project its shadow back to the radar.
+            if (dCutoff >= mask.peakDist) {
+              cutoffM = hasShadowCutoff ? Math.min(cutoffM, dCutoff) : dCutoff;
+              hasShadowCutoff = true;
+            }
           }
+          if (altM < groundAlt && previousGroundAltM <= altM && groundAlt > previousGroundAltM) {
+            const t = (altM - previousGroundAltM) / (groundAlt - previousGroundAltM);
+            const groundCutoffM = previousDistM + t * (dist - previousDistM);
+            cutoffM = hasShadowCutoff ? Math.min(cutoffM, groundCutoffM) : groundCutoffM;
+          }
+          effectiveDistM = Math.min(dist, Math.max(innerConeM, previousDistM, cutoffM));
           break;
         }
+        previousDistM = dist;
+        previousGroundAltM = groundAlt;
       }
 
       if (isBlocked) {
         terrainLimitedCount++;
-        effectiveRow.push(Math.round(effectiveDistM));
+        effectiveRow.push(Math.floor(effectiveDistM));
         visibilityRow.push('TERRAIN_LIMITED');
       } else {
         effectiveRow.push(Math.round(nomRangeM));
@@ -351,14 +407,16 @@ export async function computeRadarCoverageVolume(
     innerConeRadii,
     visibilityStates,
     bandInfos,
+    terrainGrid,
     terrainStatus,
-    calculationState: 'READY',
+    calculationState: terrainStatus === 'sampling_error' ? 'ERROR' : 'READY',
     totalSamples,
     terrainLimitedCount,
     coverageRatioPercent,
   };
 
-  volumeCache.set(cacheKey, result);
+  // A failed or unavailable DEM must be retried, never reused as measured terrain.
+  if (terrainStatus === 'loaded') volumeCache.set(cacheKey, result);
   return result;
 }
 
@@ -380,6 +438,7 @@ export interface TerrainGridSamplingResult {
   maxMaskInfoByAzDist: Map<string, { maxTan: number; peakDist: number; peakAlt: number }>;
   sampleDistances: number[];
   terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error';
+  terrainGrid?: RadarTerrainGrid;
 }
 
 /**
@@ -394,16 +453,17 @@ export async function sampleTerrainGridAndMasks(
   azimuthSamples: number[],
   radialStepMeters: number,
   terrainProvider: Cesium.TerrainProvider | null,
-  kFactor: number = DEFAULT_K_FACTOR
+  kFactor: number = DEFAULT_K_FACTOR,
+  requiredDistances: number[] = []
 ): Promise<TerrainGridSamplingResult> {
-  const maxRangeKm = maxRangeM / 1000;
   const sampleDistances: number[] = [];
-  const nearSteps = [200, 400, 600, 800, 1000, 1400, 1800, 2200, 2800, 3500, 4500, 6000, 8000, 10000];
-  nearSteps.forEach((d) => {
-    if (d <= maxRangeM) sampleDistances.push(d);
-  });
+  // A 300 km radar used to skip 6.7 km between samples, missing whole ridges.
+  // Resolve nearby slopes at 250 m and keep distant gaps at most 1 km.
+  const nearStep = Math.min(250, Math.max(100, radialStepMeters));
+  const nearEnd = Math.min(30000, maxRangeM);
+  for (let d = nearStep; d <= nearEnd; d += nearStep) sampleDistances.push(d);
 
-  const farStep = Math.max(2500, radialStepMeters);
+  const farStep = Math.min(1000, Math.max(100, radialStepMeters));
   const startFar = sampleDistances.length > 0 ? sampleDistances[sampleDistances.length - 1] + farStep : farStep;
   for (let d = startFar; d <= maxRangeM; d += farStep) {
     sampleDistances.push(d);
@@ -411,6 +471,11 @@ export async function sampleTerrainGridAndMasks(
   if (sampleDistances.length === 0 || sampleDistances[sampleDistances.length - 1] < maxRangeM) {
     sampleDistances.push(maxRangeM);
   }
+  for (const dist of requiredDistances) {
+    if (Number.isFinite(dist) && dist > 0 && dist <= maxRangeM) sampleDistances.push(dist);
+  }
+  const sortedDistances = [...new Set(sampleDistances)].sort((a, b) => a - b);
+  sampleDistances.splice(0, sampleDistances.length, ...sortedDistances);
 
   interface SampleMeta {
     az: number;
@@ -433,17 +498,29 @@ export async function sampleTerrainGridAndMasks(
   let sampledHeights: number[] = new Array(cartographics.length).fill(0);
   let terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error' = 'flat_fallback';
 
-  if (terrainProvider) {
+  if (terrainProvider && !(terrainProvider instanceof Cesium.EllipsoidTerrainProvider)) {
     try {
-      const targetLevel = maxRangeKm <= 60 ? 11 : maxRangeKm <= 160 ? 10 : 9;
-      sampledHeights = await sampleTerrainOptimized(
-        terrainProvider,
-        centerLon,
-        centerLat,
-        cartographics,
-        targetLevel,
-        1500
-      );
+      // A long-range radar still needs the same nearby mountain detail as a
+      // short-range one. Keep far terrain coarse to bound tile/CPU demand.
+      const indicesByLevel = new Map<number, number[]>();
+      for (let index = 0; index < sampleMetas.length; index++) {
+        const distanceM = sampleMetas[index].dist;
+        const level = distanceM <= 30000 ? 13 : distanceM <= 80000 ? 11 : distanceM <= 160000 ? 10 : 9;
+        const indices = indicesByLevel.get(level) ?? [];
+        indices.push(index);
+        indicesByLevel.set(level, indices);
+      }
+      for (const [level, indices] of indicesByLevel) {
+        const heights = await sampleTerrainOptimized(
+          terrainProvider,
+          centerLon,
+          centerLat,
+          indices.map((index) => cartographics[index]),
+          level,
+          1500
+        );
+        indices.forEach((index, offset) => { sampledHeights[index] = heights[offset]; });
+      }
       terrainStatus = 'loaded';
     } catch {
       sampledHeights = cartographics.map(() => 0);
@@ -458,13 +535,21 @@ export async function sampleTerrainGridAndMasks(
   }
 
   const maxMaskInfoByAzDist = new Map<string, { maxTan: number; peakDist: number; peakAlt: number }>();
+  const terrainGrid: RadarTerrainGrid | undefined = terrainStatus === 'loaded'
+    ? {
+      azimuthSamples: [...azimuthSamples],
+      sampleDistances: [...sampleDistances],
+      terrainHeights: new Float32Array(sampledHeights),
+      minimumVisibleHeights: new Float32Array(sampledHeights.length),
+    }
+    : undefined;
 
-  azimuthSamples.forEach((az) => {
+  azimuthSamples.forEach((az, azIndex) => {
     let currentMaxTan = -Number.MAX_VALUE;
     let peakDist = 0;
     let peakAlt = 0;
 
-    sampleDistances.forEach((dist) => {
+    sampleDistances.forEach((dist, distanceIndex) => {
       const groundAlt = terrainMap.get(`${az}_${dist}`) || 0;
       const deltaHCurvature = calculateEarthBulgeMeters(dist, kFactor);
       const tanObstacle = (groundAlt - centerAltM - deltaHCurvature) / dist;
@@ -475,6 +560,13 @@ export async function sampleTerrainGridAndMasks(
         peakAlt = groundAlt;
       }
       maxMaskInfoByAzDist.set(`${az}_${dist}`, { maxTan: currentMaxTan, peakDist, peakAlt });
+      if (terrainGrid) {
+        const index = azIndex * sampleDistances.length + distanceIndex;
+        terrainGrid.minimumVisibleHeights[index] = Math.max(
+          groundAlt,
+          centerAltM + dist * currentMaxTan + deltaHCurvature
+        );
+      }
     });
   });
 
@@ -483,5 +575,51 @@ export async function sampleTerrainGridAndMasks(
     maxMaskInfoByAzDist,
     sampleDistances,
     terrainStatus,
+    terrainGrid,
   };
 }
+
+/**
+ * Trích xuất lát cắt địa hình chuẩn hóa cho một góc phương vị từ kết quả lấy mẫu lưới 3D có sẵn
+ * Dùng làm Single Source of Truth cho 2D Cross Section Panel
+ */
+export function extractSliceFromTerrainGrid(
+  instanceId: string,
+  azimuthDeg: number,
+  centerLat: number,
+  centerLon: number,
+  groundAltM: number,
+  antennaHeightAGL: number,
+  maxRangeM: number,
+  terrainMap: Map<string, number> | undefined,
+  sampleDistances: number[],
+  terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error' = 'loaded',
+  kFactor: number = DEFAULT_K_FACTOR
+): SharedTerrainSlice {
+  const samples = sampleDistances.map((distM) => {
+    const dest = destinationPoint(centerLat, centerLon, distM, azimuthDeg);
+    const altM = terrainMap ? (terrainMap.get(`${azimuthDeg}_${distM}`) ?? 0) : 0;
+    return {
+      distM,
+      lat: dest.lat,
+      lon: dest.lon,
+      terrainAltM: altM,
+    };
+  });
+
+  return {
+    instanceId,
+    azimuthDeg,
+    centerLat,
+    centerLon,
+    groundAltM,
+    antennaHeightAGL,
+    maxRangeM,
+    kFactor,
+    samples,
+    terrainStatus,
+    timestamp: Date.now(),
+    cacheKey: `${instanceId}_${azimuthDeg}_${centerLat}_${centerLon}_${terrainStatus}`,
+  };
+}
+

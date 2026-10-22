@@ -1,0 +1,20 @@
+.math {
+  font-style: normal;
+  font-family: inherit;
+  text-align: left;
+}
+.math .katex-display {
+  margin: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 3px 1px;
+  text-align: center;
+  scrollbar-width: thin;
+}
+.math .katex { font-size: 1.12em; }
+.inline-math .katex { font-size: 1.02em; }
+.katex-error {
+  color: #ffb3ba !important;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: .88em;
+}

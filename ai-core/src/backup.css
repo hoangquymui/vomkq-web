@@ -1,0 +1,48 @@
+.data-manager {
+  position: relative;
+  width: min(560px, calc(100vw - 32px));
+  padding: 30px;
+  border: 1px solid rgba(118, 238, 207, .14);
+  border-radius: 24px;
+  color: #eaf3f1;
+  background: linear-gradient(155deg, rgba(17, 30, 32, .98), rgba(8, 15, 17, .99));
+  box-shadow: 0 28px 90px rgba(0, 0, 0, .58), inset 0 1px rgba(255, 255, 255, .03);
+}
+
+.data-title { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.data-title small { display: block; color: #6ce6c5; font-size: 10px; font-weight: 800; letter-spacing: .2em; }
+.data-title h2 { margin: 3px 0 0; font-size: 24px; letter-spacing: -.02em; }
+.data-icon {
+  display: grid; place-items: center; width: 46px; height: 46px; flex: 0 0 auto;
+  border: 1px solid rgba(103, 232, 199, .28); border-radius: 14px;
+  color: #73ebcb; background: rgba(75, 211, 178, .08); font-size: 25px;
+}
+.data-manager > p { margin: 0 0 22px; color: #91a3a0; font-size: 14px; line-height: 1.6; }
+.data-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.data-options button {
+  min-height: 108px; padding: 18px; border: 1px solid rgba(255,255,255,.08); border-radius: 16px;
+  color: #e8f1ef; text-align: left; background: rgba(255,255,255,.025); cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, background .18s ease;
+}
+.data-options button:hover { transform: translateY(-2px); border-color: rgba(103,232,199,.3); background: rgba(85,219,185,.07); }
+.data-options button:disabled { opacity: .45; pointer-events: none; }
+.data-options b { display: block; margin-bottom: 7px; font-size: 15px; }
+.data-options small { color: #81928f; font-size: 12px; line-height: 1.45; }
+.backup-status { margin-top: 18px; }
+.backup-status > div { height: 4px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.07); }
+.backup-status i { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #35cda7, #87efd3); transition: width .18s ease; }
+.backup-status span { display: block; margin-top: 8px; color: #91a3a0; font-size: 12px; }
+.backup-status[data-kind="success"] span { color: #73e7c7; }
+.backup-status[data-kind="error"] span { color: #ff8f9a; }
+.backup-status[data-kind="error"] i { background: #ee6675; }
+.data-note { margin-top: 20px; padding: 12px 14px; border-radius: 12px; color: #788986; background: rgba(255,255,255,.025); font-size: 11px; line-height: 1.5; }
+
+@media (max-width: 600px) {
+  .data-manager { padding: 24px 18px; }
+  .data-options { grid-template-columns: 1fr; }
+  .data-options button { min-height: 86px; }
+}
+.restore-gate { position: fixed; inset: 0; z-index: 100000; display: grid; place-items: center; background: #080e10eF; padding: 24px; }
+.restore-gate section { max-width: 540px; padding: 30px; border: 1px solid #29413e; border-radius: 20px; background: #101d1d; color: #e6f5f1; }
+.restore-gate p { line-height: 1.7; color: #b7ccc6; }
+.restore-gate button { margin-top: 16px; padding: 12px 20px; border-radius: 12px; border: 0; background: #83e7cc; color: #09211c; cursor: pointer; }

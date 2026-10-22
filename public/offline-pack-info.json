@@ -1,6 +1,6 @@
 {
   "name": "Bản đồ Vệ tinh & Địa hình 3D Việt Nam Offline",
-  "downloadedAt": "2026-09-15T09:29:52.877Z",
+  "downloadedAt": "2026-10-06T00:44:24.590Z",
   "bounds": {
     "minLon": 101.5,
     "maxLon": 118.5,
@@ -21,34 +21,25 @@
     "format": "Quantized Mesh 1.0 (uncompressed binary)",
     "localPath": "/offline-terrain"
   },
-  "lastUpdated": "2026-09-20T03:05:27.308Z",
+  "lastUpdated": "2026-10-06T00:58:15.351Z",
   "highResRegions": [
     {
       "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
       "lat": 21.45,
       "lon": 105.65,
       "radiusKm": 35,
-      "zoomLevels": "9-11",
-      "downloadedAt": "2026-09-18T02:07:38.989Z",
-      "tileCount": 29
+      "zoomLevels": "9-13",
+      "downloadedAt": "2026-10-05T14:29:30.324Z",
+      "tileCount": 349
     },
     {
       "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
       "lat": 21.45,
       "lon": 105.65,
       "radiusKm": 35,
-      "zoomLevels": "12-12",
-      "downloadedAt": "2026-09-18T02:07:43.646Z",
-      "tileCount": 64
-    },
-    {
-      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
-      "lat": 21.45,
-      "lon": 105.65,
-      "radiusKm": 35,
-      "zoomLevels": "13-13",
-      "downloadedAt": "2026-09-18T02:07:49.864Z",
-      "tileCount": 256
+      "zoomLevels": "9-13",
+      "downloadedAt": "2026-10-05T16:12:58.638Z",
+      "tileCount": 349
     },
     {
       "name": "Tây Sơn - Đèo An Khê - Quy Nhơn (Bình Định - Gia Lai)",
@@ -56,42 +47,15 @@
       "lon": 108.95,
       "radiusKm": 40,
       "zoomLevels": "9-13",
-      "downloadedAt": "2026-09-18T02:08:02.219Z",
+      "downloadedAt": "2026-10-06T00:44:37.399Z",
       "tileCount": 425
     }
   ],
   "highResTerrain": [
     {
-      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
-      "lat": 21.45,
-      "lon": 105.65,
-      "radiusKm": 35,
-      "zoomLevels": "8-12",
-      "downloadedAt": "2026-09-18T02:32:27.867Z",
-      "tileCount": 344
-    },
-    {
-      "name": "Tây Sơn - Đèo An Khê - Quy Nhơn (Bình Định - Gia Lai)",
-      "lat": 13.9,
-      "lon": 108.95,
-      "radiusKm": 40,
-      "zoomLevels": "8-12",
-      "downloadedAt": "2026-09-18T02:32:40.438Z",
-      "tileCount": 425
-    },
-    {
-      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
-      "lat": 21.45,
-      "lon": 105.65,
-      "radiusKm": 35,
-      "zoomLevels": "8-13",
-      "downloadedAt": "2026-09-18T03:02:11.024Z",
-      "tileCount": 1304
-    },
-    {
       "name": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
       "zoomLevel": 8,
-      "downloadedAt": "2026-09-18T09:47:02.143Z",
+      "downloadedAt": "2026-10-05T16:12:59.681Z",
       "totalTiles": 105,
       "downloadedCount": 0,
       "skippedCount": 105,
@@ -101,7 +65,7 @@
     {
       "name": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
       "zoomLevel": 9,
-      "downloadedAt": "2026-09-18T09:47:02.345Z",
+      "downloadedAt": "2026-10-05T16:12:59.705Z",
       "totalTiles": 392,
       "downloadedCount": 0,
       "skippedCount": 392,
@@ -111,7 +75,7 @@
     {
       "name": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
       "zoomLevel": 10,
-      "downloadedAt": "2026-09-18T09:47:03.072Z",
+      "downloadedAt": "2026-10-05T16:12:59.771Z",
       "totalTiles": 1430,
       "downloadedCount": 0,
       "skippedCount": 1430,
@@ -121,7 +85,7 @@
     {
       "name": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
       "zoomLevel": 11,
-      "downloadedAt": "2026-09-18T09:47:05.973Z",
+      "downloadedAt": "2026-10-05T16:12:59.996Z",
       "totalTiles": 5668,
       "downloadedCount": 0,
       "skippedCount": 5668,
@@ -131,7 +95,7 @@
     {
       "name": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
       "zoomLevel": 12,
-      "downloadedAt": "2026-09-18T09:48:34.690Z",
+      "downloadedAt": "2026-10-05T16:14:10.956Z",
       "totalTiles": 22454,
       "downloadedCount": 0,
       "skippedCount": 20342,
@@ -141,11 +105,71 @@
     {
       "name": "Toàn Bộ Miền Trung & Tây Nguyên (Thanh Hóa -> Bình Thuận)",
       "zoomLevel": 13,
-      "downloadedAt": "2026-09-18T09:54:46.557Z",
+      "downloadedAt": "2026-10-05T16:27:56.022Z",
       "totalTiles": 89404,
-      "downloadedCount": 985,
-      "skippedCount": 79745,
+      "downloadedCount": 25438,
+      "skippedCount": 55292,
       "notFoundCount": 8674,
+      "localPath": "/offline-terrain/13/{x}/{y}.terrain"
+    },
+    {
+      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
+      "zoomLevel": 8,
+      "downloadedAt": "2026-10-06T00:44:39.174Z",
+      "totalTiles": 2,
+      "downloadedCount": 2,
+      "skippedCount": 0,
+      "notFoundCount": 0,
+      "localPath": "/offline-terrain/8/{x}/{y}.terrain"
+    },
+    {
+      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
+      "zoomLevel": 9,
+      "downloadedAt": "2026-10-06T00:44:39.480Z",
+      "totalTiles": 6,
+      "downloadedCount": 6,
+      "skippedCount": 0,
+      "notFoundCount": 0,
+      "localPath": "/offline-terrain/9/{x}/{y}.terrain"
+    },
+    {
+      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
+      "zoomLevel": 10,
+      "downloadedAt": "2026-10-06T00:44:39.815Z",
+      "totalTiles": 16,
+      "downloadedCount": 16,
+      "skippedCount": 0,
+      "notFoundCount": 0,
+      "localPath": "/offline-terrain/10/{x}/{y}.terrain"
+    },
+    {
+      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
+      "zoomLevel": 11,
+      "downloadedAt": "2026-10-06T00:44:40.499Z",
+      "totalTiles": 64,
+      "downloadedCount": 64,
+      "skippedCount": 0,
+      "notFoundCount": 0,
+      "localPath": "/offline-terrain/11/{x}/{y}.terrain"
+    },
+    {
+      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
+      "zoomLevel": 12,
+      "downloadedAt": "2026-10-06T00:44:42.247Z",
+      "totalTiles": 256,
+      "downloadedCount": 256,
+      "skippedCount": 0,
+      "notFoundCount": 0,
+      "localPath": "/offline-terrain/12/{x}/{y}.terrain"
+    },
+    {
+      "name": "Dãy Núi Tam Đảo & Phụ Cận (Vĩnh Phúc - Thái Nguyên - Tuyên Quang)",
+      "zoomLevel": 13,
+      "downloadedAt": "2026-10-06T00:44:48.730Z",
+      "totalTiles": 960,
+      "downloadedCount": 960,
+      "skippedCount": 0,
+      "notFoundCount": 0,
       "localPath": "/offline-terrain/13/{x}/{y}.terrain"
     }
   ],
@@ -159,7 +183,7 @@
         "maxLon": 109.5
       },
       "zoomLevels": "8-13",
-      "downloadedAt": "2026-09-20T03:05:29.753Z",
+      "downloadedAt": "2026-10-06T00:58:15.862Z",
       "tileCount": 31076,
       "localPath": "/offline-terrain-map/{z}/{x}/{y}.png"
     }

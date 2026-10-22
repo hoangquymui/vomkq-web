@@ -4,6 +4,7 @@ import {
   CircleDot,
   Tag,
   MapPin,
+  Map,
   Filter,
   ChevronDown,
   Eye,
@@ -11,6 +12,7 @@ import {
   Box,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useShallow } from 'zustand/react/shallow';
 import type { EquipmentCategory } from '../../types/equipment';
 import { ENABLE_3D_MODELS } from '../../types/equipment';
 
@@ -30,7 +32,26 @@ export const TacticalLayerControls: React.FC = () => {
     toggleMarkersLayer,
     toggleModelsLayer,
     setCategoryFilter,
-  } = useTacticalStore();
+    showVectorLayer,
+    toggleVectorLayer,
+    vectorPackCount,
+  } = useTacticalStore(useShallow((state) => ({
+    showCoverageLayer: state.showCoverageLayer,
+    showRangeRingsLayer: state.showRangeRingsLayer,
+    showLabelsLayer: state.showLabelsLayer,
+    showMarkersLayer: state.showMarkersLayer,
+    showModelsLayer: state.showModelsLayer,
+    categoryFilter: state.categoryFilter,
+    toggleCoverageLayer: state.toggleCoverageLayer,
+    toggleRangeRingsLayer: state.toggleRangeRingsLayer,
+    toggleLabelsLayer: state.toggleLabelsLayer,
+    toggleMarkersLayer: state.toggleMarkersLayer,
+    toggleModelsLayer: state.toggleModelsLayer,
+    setCategoryFilter: state.setCategoryFilter,
+    showVectorLayer: state.showVectorLayer,
+    toggleVectorLayer: state.toggleVectorLayer,
+    vectorPackCount: state.vectorPackCount,
+  })));
 
   const categories: { key: EquipmentCategory | 'All'; label: string }[] = [
     { key: 'All', label: 'Tất cả loại khí tài' },
@@ -147,6 +168,30 @@ export const TacticalLayerControls: React.FC = () => {
         )}
 
         <div className="w-[1px] h-5 bg-slate-800 mx-0.5" />
+
+        {/* Toggle Lớp Vectơ OSM (nhà / sông / suối / núi) */}
+        <button
+          onClick={toggleVectorLayer}
+          disabled={vectorPackCount === 0}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+            showVectorLayer
+              ? 'bg-emerald-950/90 text-emerald-300 border border-emerald-500/40 shadow-[0_0_8px_rgba(16,185,129,0.25)]'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 border border-transparent'
+          }`}
+          title={
+            vectorPackCount === 0
+              ? 'Chưa có gói dữ liệu vectơ. Chạy: npm run download-vector-tamdao'
+              : 'Bật/Tắt lớp đối tượng vùng phủ (nhà, sông, suối, núi, đường, rừng)'
+          }
+        >
+          <Map className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Đối tượng</span>
+          {showVectorLayer ? (
+            <Eye className="w-3 h-3 text-emerald-400 ml-0.5 opacity-80" />
+          ) : (
+            <EyeOff className="w-3 h-3 text-slate-500 ml-0.5 opacity-60" />
+          )}
+        </button>
 
         {/* Bộ Lọc Theo Loại Khí Tài */}
         <div className="relative">

@@ -1,5 +1,48 @@
 import * as Cesium from 'cesium';
 import type { RadarCoverageVolume, VolumeMeshOptions } from '../types/radarVolume';
+import { destinationPoint } from './radarLosEngine';
+
+// Cesium exports this helper at runtime but omits the private API from its declarations.
+const verticalExaggeration = (Cesium as unknown as {
+  VerticalExaggeration: { getHeight(height: number, scale: number, relativeHeight: number): number };
+}).VerticalExaggeration;
+
+function displayHeightTransform(options: VolumeMeshOptions) {
+  const requestedScale = options.verticalExaggeration ?? 1;
+  const requestedRelativeHeight = options.verticalExaggerationRelativeHeight ?? 0;
+  const scale = Number.isFinite(requestedScale) && requestedScale >= 0 ? requestedScale : 1;
+  const relativeHeight = Number.isFinite(requestedRelativeHeight) ? requestedRelativeHeight : 0;
+  return (physicalHeightM: number) => verticalExaggeration.getHeight(physicalHeightM, scale, relativeHeight);
+}
+
+/** Use the same surface coordinates as the terrain sampler before converting to ENU. */
+function createGeodeticPositionWriter(
+  radarLat: number,
+  radarLon: number,
+  modelMatrix: Cesium.Matrix4,
+  positions: Float64Array,
+  toDisplayHeight: ReturnType<typeof displayHeightTransform>
+) {
+  const inverseModelMatrix = Cesium.Matrix4.inverseTransformation(modelMatrix, new Cesium.Matrix4());
+  const worldPosition = new Cesium.Cartesian3();
+  const localPosition = new Cesium.Cartesian3();
+
+  return (positionIndex: number, rangeM: number, azimuthDeg: number, altitudeM: number) => {
+    const destination = destinationPoint(radarLat, radarLon, rangeM, azimuthDeg);
+    Cesium.Cartesian3.fromDegrees(
+      destination.lon,
+      destination.lat,
+      toDisplayHeight(altitudeM),
+      Cesium.Ellipsoid.WGS84,
+      worldPosition
+    );
+    Cesium.Matrix4.multiplyByPoint(inverseModelMatrix, worldPosition, localPosition);
+    positions[positionIndex] = localPosition.x;
+    positions[positionIndex + 1] = localPosition.y;
+    positions[positionIndex + 2] = localPosition.z;
+    return localPosition;
+  };
+}
 
 export interface RadarVolumeGeometry {
   /** Tọa độ các đỉnh (Float64Array, hệ ENU cục bộ mét, 3 giá trị/đỉnh) */
@@ -37,6 +80,82 @@ interface SlicedBand {
   innerRadius: number;
 }
 
+const MAX_CAP_RADIAL_STEP_M = 2000;
+const MIN_VOLUME_WIDTH_M = 0.001;
+
+interface RadialCap {
+  altitudeM: number;
+  outerRanges: number[];
+  innerRanges: number[];
+  radialSteps: number;
+  upward: boolean;
+}
+
+function createRadialCap(
+  altitudeM: number,
+  outerRanges: number[],
+  innerRanges: number[],
+  upward: boolean
+): RadialCap {
+  const maxWidth = Math.max(0, ...outerRanges.map((range, j) => range - innerRanges[j]));
+  return {
+    altitudeM,
+    outerRanges,
+    innerRanges,
+    radialSteps: maxWidth > MIN_VOLUME_WIDTH_M ? Math.ceil(maxWidth / MAX_CAP_RADIAL_STEP_M) : 0,
+    upward,
+  };
+}
+
+function capVertexCount(cap: RadialCap, numAz: number): number {
+  return cap.radialSteps > 0 ? (cap.radialSteps + 1) * numAz : 0;
+}
+
+/** Short radial strips follow the Earth instead of spanning a single long chord. */
+function appendRadialCap(
+  cap: RadialCap,
+  azimuthSamples: number[],
+  vertexOffset: number,
+  writePosition: ReturnType<typeof createGeodeticPositionWriter>,
+  normals: Float32Array,
+  st: Float32Array,
+  indices: number[]
+): number {
+  if (cap.radialSteps === 0) return 0;
+  const numAz = azimuthSamples.length;
+  let maxLocalHeight = -Infinity;
+  for (let radial = 0; radial <= cap.radialSteps; radial++) {
+    const fraction = radial / cap.radialSteps;
+    for (let j = 0; j < numAz; j++) {
+      const range = cap.innerRanges[j] + fraction * (cap.outerRanges[j] - cap.innerRanges[j]);
+      const index = vertexOffset + radial * numAz + j;
+      const positionIndex = index * 3;
+      const local = writePosition(positionIndex, range, azimuthSamples[j], cap.altitudeM);
+      maxLocalHeight = Math.max(maxLocalHeight, local.z);
+      normals[positionIndex + 2] = cap.upward ? 1 : -1;
+      st[index * 2] = j / numAz;
+      st[index * 2 + 1] = cap.upward ? 1 : 0;
+    }
+  }
+  for (let radial = 0; radial < cap.radialSteps; radial++) {
+    for (let j = 0; j < numAz; j++) {
+      const nextJ = (j + 1) % numAz;
+      if (cap.outerRanges[j] - cap.innerRanges[j] <= MIN_VOLUME_WIDTH_M &&
+          cap.outerRanges[nextJ] - cap.innerRanges[nextJ] <= MIN_VOLUME_WIDTH_M) continue;
+      const p00 = vertexOffset + radial * numAz + j;
+      const p01 = vertexOffset + radial * numAz + nextJ;
+      const p10 = p00 + numAz;
+      const p11 = p01 + numAz;
+      if (cap.upward) {
+        indices.push(p00, p01, p10, p10, p01, p11);
+      } else {
+        indices.push(p00, p10, p01, p10, p11, p01);
+      }
+    }
+  }
+  return maxLocalHeight;
+}
+
 /**
  * Trích xuất và cắt lát các tầng độ cao cho hình học 3D:
  * - Nếu selectedAltitudeM được truyền vào (> 0), chỉ lấy các tầng <= selectedAltitudeM
@@ -52,6 +171,7 @@ function getSlicedBands(
   const numBands = altitudeBands.length;
   const numAz = azimuthSamples.length;
   const rangeMatrix = mode === 'nominal' ? nominalRanges : effectiveRanges;
+  if (numBands === 0) return [];
 
   // Nếu không chọn hoặc chọn >= trần cao nhất, dùng toàn bộ các tầng
   const maxAlt =
@@ -116,16 +236,16 @@ function getSlicedBands(
       altM: baseAlt,
       outerRanges: single.outerRanges,
       nominalRanges: single.nominalRanges,
-      innerRadius: Math.max(0.1, single.innerRadius * 0.3),
+      innerRadius: single.innerRadius,
     });
   } else if (bands.length === 0) {
     // Fallback nếu maxAlt quá nhỏ (< altitudeBands[0])
     const firstAlt = altitudeBands[0];
     bands.push({
-      altM: Math.max(0, Math.round(firstAlt * 0.3)),
+      altM: Math.max(0, Math.round(maxAlt * 0.3)),
       outerRanges: rangeMatrix[0],
       nominalRanges: nominalRanges[0],
-      innerRadius: 0.1,
+      innerRadius: innerConeRadii[0] || 0.1,
     });
     bands.push({
       altM: maxAlt > 0 ? maxAlt : firstAlt,
@@ -155,7 +275,10 @@ export function buildRadarVolumeGeometry(
   } = volume;
 
   const mode = options.mode || 'terrain-aware';
-  const slicedBands = getSlicedBands(volume, mode, options.selectedAltitudeM);
+  const slicedBands = getSlicedBands(volume, mode, options.selectedAltitudeM).map((band) => ({
+    ...band,
+    outerRanges: band.outerRanges.map((range, j) => Math.max(0.1, Math.min(range, band.nominalRanges[j]))),
+  }));
   const numBands = slicedBands.length;
   const numAz = azimuthSamples.length;
 
@@ -163,9 +286,25 @@ export function buildRadarVolumeGeometry(
 
   const showInnerCone = options.showInnerCone !== false;
   const showTopCap = options.showTopCap !== false;
-  const showBottomCap = options.showBottomCap !== false;
+  const showBottomCap = options.showBottomCap ?? (mode === 'nominal');
+  const widths = slicedBands.map((band) => band.outerRanges.map((range) => range - band.innerRadius));
+  if (!widths.some((row) => row.some((width) => width > MIN_VOLUME_WIDTH_M))) return null;
+  const cellHasCoverage = (k: number, j: number, nextJ: number) =>
+    widths[k][j] > MIN_VOLUME_WIDTH_M || widths[k][nextJ] > MIN_VOLUME_WIDTH_M ||
+    widths[k + 1][j] > MIN_VOLUME_WIDTH_M || widths[k + 1][nextJ] > MIN_VOLUME_WIDTH_M;
+  const makeCoverageCap = (band: SlicedBand, upward: boolean) => createRadialCap(
+    band.altM,
+    band.outerRanges,
+    band.outerRanges.map((range) => range - band.innerRadius <= MIN_VOLUME_WIDTH_M
+      ? range : showInnerCone ? Math.min(range, band.innerRadius) : 0),
+    upward
+  );
+  const caps: RadialCap[] = [];
+  if (showTopCap) caps.push(makeCoverageCap(slicedBands[numBands - 1], true));
+  if (showBottomCap) caps.push(makeCoverageCap(slicedBands[0], false));
 
-  const center = Cesium.Cartesian3.fromDegrees(radarLon, radarLat, radarAltM);
+  const toDisplayHeight = displayHeightTransform(options);
+  const center = Cesium.Cartesian3.fromDegrees(radarLon, radarLat, toDisplayHeight(radarAltM));
   const modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(center);
 
   // Tính số lượng đỉnh cần cấp phát
@@ -177,11 +316,13 @@ export function buildRadarVolumeGeometry(
   const innerVertexOffset = outerVertexCount;
   const innerVertexCount = showInnerCone ? numBands * numAz : 0;
 
-  const totalVertices = outerVertexCount + innerVertexCount;
+  const shellVertexCount = outerVertexCount + innerVertexCount;
+  const totalVertices = shellVertexCount + caps.reduce((count, cap) => count + capVertexCount(cap, numAz), 0);
 
   const positions = new Float64Array(totalVertices * 3);
   const normals = new Float32Array(totalVertices * 3);
   const st = new Float32Array(totalVertices * 2);
+  const writePosition = createGeodeticPositionWriter(radarLat, radarLon, modelMatrix, positions, toDisplayHeight);
 
   let apexHeightM = 0;
   let maxEffectiveRadiusM = 0;
@@ -192,15 +333,10 @@ export function buildRadarVolumeGeometry(
   for (let k = 0; k < numBands; k++) {
     const band = slicedBands[k];
     const altM = band.altM;
-    // Độ cao z so với vị trí anten radar
-    const z = Math.max(0, altM - radarAltM);
-    if (z > apexHeightM) apexHeightM = z;
-
     const vCoord = numBands > 1 ? k / (numBands - 1) : 0;
 
     for (let j = 0; j < numAz; j++) {
       const azDeg = azimuthSamples[j];
-      const azRad = (azDeg * Math.PI) / 180;
       const uCoord = j / numAz;
 
       const rOuter = Math.max(0.1, band.outerRanges[j]);
@@ -209,16 +345,12 @@ export function buildRadarVolumeGeometry(
       radiusSampleCount++;
 
       // Tọa độ ENU cục bộ
-      const x = rOuter * Math.sin(azRad);
-      const y = rOuter * Math.cos(azRad);
-
       const vIdx = outerVertexOffset + (k * numAz + j);
       const pIdx = vIdx * 3;
       const stIdx = vIdx * 2;
 
-      positions[pIdx] = x;
-      positions[pIdx + 1] = y;
-      positions[pIdx + 2] = z;
+      const { x, y, z } = writePosition(pIdx, rOuter, azDeg, altM);
+      apexHeightM = Math.max(apexHeightM, z);
 
       // Normal hướng tâm ra ngoài
       const len = Math.sqrt(x * x + y * y + z * z) || 1;
@@ -236,25 +368,19 @@ export function buildRadarVolumeGeometry(
     for (let k = 0; k < numBands; k++) {
       const band = slicedBands[k];
       const altM = band.altM;
-      const z = Math.max(0, altM - radarAltM);
-      const rInner = Math.max(0.1, band.innerRadius || 0.1);
       const vCoord = numBands > 1 ? k / (numBands - 1) : 0;
 
       for (let j = 0; j < numAz; j++) {
         const azDeg = azimuthSamples[j];
-        const azRad = (azDeg * Math.PI) / 180;
         const uCoord = j / numAz;
-
-        const x = rInner * Math.sin(azRad);
-        const y = rInner * Math.cos(azRad);
+        const rInner = Math.min(band.outerRanges[j], Math.max(0.1, band.innerRadius));
 
         const vIdx = innerVertexOffset + (k * numAz + j);
         const pIdx = vIdx * 3;
         const stIdx = vIdx * 2;
 
-        positions[pIdx] = x;
-        positions[pIdx + 1] = y;
-        positions[pIdx + 2] = z;
+        const { x, y, z } = writePosition(pIdx, rInner, azDeg, altM);
+        apexHeightM = Math.max(apexHeightM, z);
 
         // Normal hướng vào trong nón mù
         const len = Math.sqrt(x * x + y * y + z * z) || 1;
@@ -278,6 +404,7 @@ export function buildRadarVolumeGeometry(
 
     for (let j = 0; j < numAz; j++) {
       const jNext = (j + 1) % numAz;
+      if (!cellHasCoverage(k, j, jNext)) continue;
 
       const p00 = rowCurrent + j;
       const p01 = rowCurrent + jNext;
@@ -298,6 +425,7 @@ export function buildRadarVolumeGeometry(
 
       for (let j = 0; j < numAz; j++) {
         const jNext = (j + 1) % numAz;
+        if (!cellHasCoverage(k, j, jNext)) continue;
 
         const p00 = rowCurrent + j;
         const p01 = rowCurrent + jNext;
@@ -311,44 +439,11 @@ export function buildRadarVolumeGeometry(
     }
   }
 
-  // 3. Đậy nắp trên cùng tại H_max (Top Cap)
-  if (showTopCap) {
-    const topOuterRow = outerVertexOffset + (numBands - 1) * numAz;
-    const topInnerRow = showInnerCone ? innerVertexOffset + (numBands - 1) * numAz : -1;
-
-    for (let j = 0; j < numAz; j++) {
-      const jNext = (j + 1) % numAz;
-
-      const out0 = topOuterRow + j;
-      const out1 = topOuterRow + jNext;
-
-      if (topInnerRow >= 0) {
-        const in0 = topInnerRow + j;
-        const in1 = topInnerRow + jNext;
-        indexList.push(out0, in0, out1);
-        indexList.push(out1, in0, in1);
-      }
-    }
-  }
-
-  // 4. Đáy tầng thấp nhất (Bottom Cap)
-  if (showBottomCap) {
-    const botOuterRow = outerVertexOffset;
-    const botInnerRow = showInnerCone ? innerVertexOffset : -1;
-
-    for (let j = 0; j < numAz; j++) {
-      const jNext = (j + 1) % numAz;
-
-      const out0 = botOuterRow + j;
-      const out1 = botOuterRow + jNext;
-
-      if (botInnerRow >= 0) {
-        const in0 = botInnerRow + j;
-        const in1 = botInnerRow + jNext;
-        indexList.push(out0, out1, in0);
-        indexList.push(out1, in1, in0);
-      }
-    }
+  // Geodetic top and bottom caps, including a center when the inner cone is hidden.
+  let capOffset = shellVertexCount;
+  for (const cap of caps) {
+    apexHeightM = Math.max(apexHeightM, appendRadialCap(cap, azimuthSamples, capOffset, writePosition, normals, st, indexList));
+    capOffset += capVertexCount(cap, numAz);
   }
 
   const indices = new Uint32Array(indexList);
@@ -409,7 +504,8 @@ export function buildRadarOccludedVolumeGeometry(
 
   if (!hasAnyOcclusion) return null;
 
-  const center = Cesium.Cartesian3.fromDegrees(radarLon, radarLat, radarAltM);
+  const toDisplayHeight = displayHeightTransform(options);
+  const center = Cesium.Cartesian3.fromDegrees(radarLon, radarLat, toDisplayHeight(radarAltM));
   const modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(center);
 
   // Mỗi đỉnh trong lưới shadow bao gồm:
@@ -417,11 +513,22 @@ export function buildRadarOccludedVolumeGeometry(
   // - Vỏ ngoài (Biên cự ly lý thuyết): tại r = band.nominalRanges[j] (nominal)
   const innerVertexOffset = 0;
   const outerVertexOffset = numBands * numAz;
-  const totalVertices = numBands * numAz * 2;
+  const shellVertexCount = numBands * numAz * 2;
+  const makeShadowCap = (band: SlicedBand, upward: boolean) => {
+    const innerRanges = band.outerRanges.map((range) => Math.max(0.1, range));
+    const outerRanges = band.nominalRanges.map((range, j) =>
+      range - innerRanges[j] > 150 ? range : innerRanges[j]);
+    return createRadialCap(band.altM, outerRanges, innerRanges, upward);
+  };
+  const caps: RadialCap[] = [];
+  if (options.showTopCap !== false) caps.push(makeShadowCap(slicedBands[numBands - 1], true));
+  if (options.showBottomCap === true) caps.push(makeShadowCap(slicedBands[0], false));
+  const totalVertices = shellVertexCount + caps.reduce((count, cap) => count + capVertexCount(cap, numAz), 0);
 
   const positions = new Float64Array(totalVertices * 3);
   const normals = new Float32Array(totalVertices * 3);
   const st = new Float32Array(totalVertices * 2);
+  const writePosition = createGeodeticPositionWriter(radarLat, radarLon, modelMatrix, positions, toDisplayHeight);
 
   let apexHeightM = 0;
   let maxEffectiveRadiusM = 0;
@@ -429,17 +536,14 @@ export function buildRadarOccludedVolumeGeometry(
   for (let k = 0; k < numBands; k++) {
     const band = slicedBands[k];
     const altM = band.altM;
-    const z = Math.max(0, altM - radarAltM);
-    if (z > apexHeightM) apexHeightM = z;
     const vCoord = numBands > 1 ? k / (numBands - 1) : 0;
 
     for (let j = 0; j < numAz; j++) {
       const azDeg = azimuthSamples[j];
-      const azRad = (azDeg * Math.PI) / 180;
       const uCoord = j / numAz;
 
       const rEff = Math.max(0.1, band.outerRanges[j]);
-      const rNom = Math.max(rEff, band.nominalRanges[j]);
+      const rNom = band.nominalRanges[j] - rEff > 150 ? band.nominalRanges[j] : rEff;
 
       if (rNom > maxEffectiveRadiusM) maxEffectiveRadiusM = rNom;
 
@@ -448,16 +552,13 @@ export function buildRadarOccludedVolumeGeometry(
       const inP = inIdx * 3;
       const inST = inIdx * 2;
 
-      const inX = rEff * Math.sin(azRad);
-      const inY = rEff * Math.cos(azRad);
-      positions[inP] = inX;
-      positions[inP + 1] = inY;
-      positions[inP + 2] = z;
+      const { x: inX, y: inY, z: inZ } = writePosition(inP, rEff, azDeg, altM);
+      apexHeightM = Math.max(apexHeightM, inZ);
 
-      const inLen = Math.sqrt(inX * inX + inY * inY + z * z) || 1;
+      const inLen = Math.sqrt(inX * inX + inY * inY + inZ * inZ) || 1;
       normals[inP] = inX / inLen;
       normals[inP + 1] = inY / inLen;
-      normals[inP + 2] = z / inLen;
+      normals[inP + 2] = inZ / inLen;
 
       st[inST] = uCoord;
       st[inST + 1] = vCoord;
@@ -467,16 +568,13 @@ export function buildRadarOccludedVolumeGeometry(
       const outP = outIdx * 3;
       const outST = outIdx * 2;
 
-      const outX = rNom * Math.sin(azRad);
-      const outY = rNom * Math.cos(azRad);
-      positions[outP] = outX;
-      positions[outP + 1] = outY;
-      positions[outP + 2] = z;
+      const { x: outX, y: outY, z: outZ } = writePosition(outP, rNom, azDeg, altM);
+      apexHeightM = Math.max(apexHeightM, outZ);
 
-      const outLen = Math.sqrt(outX * outX + outY * outY + z * z) || 1;
+      const outLen = Math.sqrt(outX * outX + outY * outY + outZ * outZ) || 1;
       normals[outP] = outX / outLen;
       normals[outP + 1] = outY / outLen;
-      normals[outP + 2] = z / outLen;
+      normals[outP + 2] = outZ / outLen;
 
       st[outST] = uCoord;
       st[outST + 1] = vCoord;
@@ -524,18 +622,6 @@ export function buildRadarOccludedVolumeGeometry(
       indexList.push(i00, i10, i01);
       indexList.push(i10, i11, i01);
 
-      // Nắp trên (Top quad của band trên cùng)
-      if (k === numBands - 2) {
-        indexList.push(o10, i10, o11);
-        indexList.push(o11, i10, i11);
-      }
-
-      // Nắp đáy (Bottom quad của band dưới cùng)
-      if (k === 0) {
-        indexList.push(o00, o01, i00);
-        indexList.push(o01, i01, i00);
-      }
-
       // Vách bên nếu ô liền kề không bị che khuất (Radial Side Walls)
       const prevJ = (j - 1 + numAz) % numAz;
       const prevOcc =
@@ -558,6 +644,11 @@ export function buildRadarOccludedVolumeGeometry(
     }
   }
 
+  let capOffset = shellVertexCount;
+  for (const cap of caps) {
+    apexHeightM = Math.max(apexHeightM, appendRadialCap(cap, azimuthSamples, capOffset, writePosition, normals, st, indexList));
+    capOffset += capVertexCount(cap, numAz);
+  }
   if (indexList.length === 0) return null;
 
   const indices = new Uint32Array(indexList);
@@ -606,10 +697,7 @@ export function createRadarVolumeGeometryInstance(
     attributes,
     indices: geom.indices,
     primitiveType: Cesium.PrimitiveType.TRIANGLES,
-    boundingSphere: new Cesium.BoundingSphere(
-      new Cesium.Cartesian3(0, 0, geom.apexHeightM * 0.5),
-      Math.max(geom.maxEffectiveRadiusM, geom.apexHeightM)
-    ),
+    boundingSphere: Cesium.BoundingSphere.fromVertices(geom.positions),
   });
 
   return new Cesium.GeometryInstance({
@@ -647,10 +735,7 @@ export function createRadarOccludedGeometryInstance(
     attributes,
     indices: geom.indices,
     primitiveType: Cesium.PrimitiveType.TRIANGLES,
-    boundingSphere: new Cesium.BoundingSphere(
-      new Cesium.Cartesian3(0, 0, geom.apexHeightM * 0.5),
-      Math.max(geom.maxEffectiveRadiusM, geom.apexHeightM)
-    ),
+    boundingSphere: Cesium.BoundingSphere.fromVertices(geom.positions),
   });
 
   return new Cesium.GeometryInstance({

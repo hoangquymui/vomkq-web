@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import cesium from 'vite-plugin-cesium'
 import tailwindcss from '@tailwindcss/vite'
 import { vectorAiLauncher } from './scripts/vectorAiLauncher.ts'
+import { getOfflineMapAssets } from './scripts/offlineMapAssets.ts'
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -54,6 +55,9 @@ function offlineTile404Plugin() {
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __OFFLINE_MAP_ASSETS__: JSON.stringify(getOfflineMapAssets(path.join(__dirname, 'public'))),
+  },
   plugins: [
     offlineTile404Plugin(),
     vectorAiLauncher(),
@@ -71,9 +75,9 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     open: false,
-    // Tiles remain available as static files but do not need HMR file watchers.
+    // Map packs and the separate AI runtime do not need frontend HMR file watchers.
     watch: {
-      ignored: ['**/public/offline-*/**'],
+      ignored: ['**/public/offline-*/**', '**/ai/**', '**/ai-core/**', '**/logs/**', '**/tai_lieu/**', '**/docs/**'],
     },
     // Proxy tới backend VECTOR AI local (FastAPI, loopback-only 127.0.0.1:8000).
     // Backend chỉ cho CORS origin http://127.0.0.1:3000 và http://localhost:1420, nên client

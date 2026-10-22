@@ -1,0 +1,29 @@
+{
+  "format": "vomkq-ai-knowledge-pack-v1",
+  "schemaVersion": 1,
+  "implementationState": "unprepared",
+  "namespace": "vomkq-project-documents",
+  "documents": [],
+  "indexes": [],
+  "documentRequiredFields": [
+    "id",
+    "version",
+    "source",
+    "sha256",
+    "reviewStatus",
+    "scope"
+  ],
+  "indexRequiredFields": [
+    "id",
+    "version",
+    "documentVersions",
+    "chunkerVersion",
+    "retrievalMode"
+  ],
+  "denseIndexRequiredFields": [
+    "embeddingProfileId",
+    "embeddingGenerationId",
+    "dimensions"
+  ]
+}
+

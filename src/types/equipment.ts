@@ -17,6 +17,21 @@ export type OperationalStatus = 'Active' | 'Standby' | 'Maintenance' | 'Offline'
  */
 export const ENABLE_3D_MODELS = false;
 
+/**
+ * Phân loại vai trò radar đối với tác chiến tên lửa phòng không:
+ * - 'chi_thi_ten_lua': Radar 3D đo 3 tọa độ (phương vị, cự ly, độ cao), chỉ thị mục tiêu và cung cấp phần tử bắn cho tên lửa (Ví dụ: Đài Radar 36D6 ST-68UM).
+ * - 'canh_gioi_nhin_vong': Radar 2D/VHF cảnh giới phát hiện sớm từ xa, không đo cao 3D trực tiếp để dẫn bắn tên lửa (Ví dụ: P-18M, Nebo, VRS-2DM...).
+ */
+export type RadarSubRole = 'chi_thi_ten_lua' | 'canh_gioi_nhin_vong';
+
+/**
+ * Chế độ cắt địa hình và hiệp đồng vùng hỏa lực tên lửa:
+ * - 'organic': Vòm tên lửa tự cắt địa hình độc lập (theo độ cao và góc che khuất từ vị trí đặt trận địa tên lửa).
+ * - 'linked_radar': Tên lửa chỉ được phép bắn trong phạm vi mà đài radar chỉ thị mục tiêu liên kết quan sát được (kế thừa góc che khuất của radar).
+ * - 'intersection': Giao thoa hỏa lực kép: Vừa bị giới hạn bởi địa hình tại trận địa tên lửa, vừa phải nằm trong vùng quét của đài radar chỉ thị (V_SAM ∩ V_Radar).
+ */
+export type SamTerrainMaskMode = 'organic' | 'linked_radar' | 'intersection';
+
 export interface AltitudeDetectionRow {
   altitudeM: number; // Độ cao mục tiêu (m)
   val1: number | string; // Cự ly phát hiện cột 1 (km)
@@ -60,7 +75,19 @@ export interface EquipmentTemplate {
   reactionTimeSeconds?: number; // Thời gian phản ứng xạ kích (giây)
   deployTimeMinutes?: number; // Thời gian triển khai/thu hồi (phút)
   guidanceMethodVi?: string; // Phương thức dẫn bắn (Radar TVM, Hồng ngoại IIR, Lệnh vô tuyến...)
-  samEngagementMode?: 'head_on' | 'tail_chase' | 'jamming_passive' | 'jamming_active' | 'tbk_optical';
+  samEngagementMode?:
+    | 'head_on'
+    | 'tail_chase'
+    | 'passive_jamming'
+    | 'active_jamming'
+    | 'tvk_optical'
+    | 'surface'
+    | 'ballistic'
+    | 'jamming'
+    | 'jamming_passive'
+    | 'jamming_active'
+    | 'tbk_optical'
+    | string;
   samProfiles?: Record<
     string,
     {
@@ -83,6 +110,81 @@ export interface EquipmentTemplate {
   model3dAltitudeOffset?: number; // Độ lệch cao độ so với mặt đất (m)
   customModelFileName?: string; // Tên file mô hình 3D tự nạp
   customPhotoFileName?: string; // Tên file ảnh thực tế tự nạp
+  canDesignateForSam?: boolean; // Khả năng chỉ thị mục tiêu cho tên lửa phòng không (true với 36D6, false với radar cảnh giới nhìn vòng)
+  radarSubRole?: RadarSubRole; // Phân định 'chi_thi_ten_lua' vs 'canh_gioi_nhin_vong'
+  radarSubRoleVi?: string; // Tên vai trò hiển thị tiếng Việt
+  designatedRadarId?: string | null; // ID đài radar chỉ thị mục tiêu cho tổ hợp tên lửa
+  samTerrainMaskMode?: SamTerrainMaskMode; // Chế độ cắt địa hình tên lửa: 'organic' | 'linked_radar' | 'intersection'
+  radarGroup?: RadarGroup; // Nhóm radar: 'acquisition_3d' | 'surveillance_2d'
+  batteryConfig?: CompositeBatteryConfig; // Cấu hình tổ hợp đồng bộ (SAM Battery)
+  maxLaunchRangeKm?: number; // Cự ly phóng cực đại R_launch_max (vòng đón hỏa lực)
+  isIntegratedOnly?: boolean; // Khí tài hữu cơ nội bộ trong tổ hợp, không cho phép đặt lẻ trên bản đồ
+}
+
+export type RadarGroup = 'acquisition_3d' | 'surveillance_2d';
+
+export interface CompositeLauncherItem {
+  id: string; // ví dụ: "launcher_1", "launcher_2"...
+  index: number; // 1, 2, 3, 4
+  name: string; // ví dụ: "Bệ phóng 5P73-2TM #1"
+  latitude: number;
+  longitude: number;
+  altitude: number; // ASL m (tự snap theo DEM)
+  distanceToCenterM: number; // Khoảng cách tới đài FCR (m)
+  bearingFromCenterDeg: number; // Góc phương vị từ đài FCR (0° - 360°)
+  isValid: boolean; // true nếu trong tầm cáp & không bị đồi che
+  warningMessage?: string; // "Ngoài phễu bắt đạn!" / "Mất kết nối cáp!"
+}
+
+export interface CompositeBatteryConfig {
+  batteryType: string;
+  tarRadarName: string; // Tên đài Radar Chỉ thị đi kèm (TAR)
+  tarRadarId: string;
+  tarRadarTemplateId?: string; // Alias tương thích cho ID template của TAR
+  tarRangeKm: number;
+  tarHeightKm: number;
+  tarAglM: number;
+  tarWavelengthM?: number;
+  alternateTarOptions?: Array<{
+    id: string;
+    name: string;
+    rangeKm: number;
+    heightKm: number;
+    aglM: number;
+    wavelengthM?: number;
+    description?: string;
+  }>;
+  fcrRadarName: string; // Tên đài Điều khiển hỏa lực (FCR)
+  fcrRadarId: string;
+  fcrRadarTemplateId?: string; // Alias tương thích cho ID template của FCR
+  fcrRangeKm: number;
+  fcrHeightKm: number;
+  fcrAglM: number;
+  fcrWavelengthM?: number;
+  fcrSectorAngleDeg: number; // Góc quạt FCR: 90° S-300, 60° C-125, 360° Spyder
+  fcrBlindConeDeg: number; // Phễu mù đỉnh đầu: 70° S-300, 65° C-125, 75° Spyder
+  launcherName: string; // Tên loại bệ phóng (ví dụ: 5P85TE2, 5P73-2TM, 5P73, MFU)
+  launcherCount: number; // Mặc định 4
+  defaultLauncherDistanceM: number; // 80m - 120m
+  maxCableDistanceM: number; // 150m C-125, 200m S-300, 2000m Spyder
+  minEngagementRangeKm: number;
+  maxEngagementRangeKm: number;
+  maxLaunchRangeKm: number; // R_launch_max (Vòng đón)
+  maxEngagementAltitudeM: number;
+  minEngagementAltitudeM: number;
+}
+
+export interface CompositeBatteryState {
+  launchers: CompositeLauncherItem[];
+  combatMode: 'omnidirectional' | 'sector';
+  combatAzimuthDeg: number; // Hướng xạ giới chính (0° - 360°)
+  showLayers: {
+    tarDome: boolean; // Vòm Radar Cảnh giới / Chỉ thị (Xanh dương)
+    fcrDome: boolean; // Vòm Bám bắt FCR (Cam)
+    wezDome: boolean; // Vùng Hỏa lực WEZ (Đỏ)
+    launchers: boolean; // Đội hình Bệ phóng & Cáp
+  };
+  mastHeightOverrideM?: number; // Chiều cao tháp nâng ăng-ten tùy chỉnh
 }
 
 export interface SpyderDomeSpec {
@@ -103,6 +205,10 @@ export interface SpyderSystemConfig {
     aircraftMps: number; // Máy bay > 30m: < 800 m/s
     helicopterMps: number; // Trực thăng > 20m: 0 - 200 m/s
     uavMps: number; // UAV > 100m: < 300 m/s
+  };
+  missileSpeeds?: {
+    mrMps: number; // Derby-MR & Python-5-MR: 1200 m/s
+    srMps: number; // Derby-SR & Python-5-SR: 700 m/s
   };
   targetTypesVi: string[];
 }
@@ -140,7 +246,19 @@ export interface EquipmentInstance {
   reactionTimeSeconds?: number;
   deployTimeMinutes?: number;
   guidanceMethodVi?: string;
-  samEngagementMode?: 'head_on' | 'tail_chase' | 'jamming_passive' | 'jamming_active' | 'tbk_optical';
+  samEngagementMode?:
+    | 'head_on'
+    | 'tail_chase'
+    | 'passive_jamming'
+    | 'active_jamming'
+    | 'tvk_optical'
+    | 'surface'
+    | 'ballistic'
+    | 'jamming'
+    | 'jamming_passive'
+    | 'jamming_active'
+    | 'tbk_optical'
+    | string;
   samProfiles?: Record<
     string,
     {
@@ -165,6 +283,16 @@ export interface EquipmentInstance {
   model3dAltitudeOffset?: number; // Độ lệch cao độ so với mặt đất (m)
   customModelFileName?: string; // Tên file mô hình 3D tự nạp
   customPhotoFileName?: string; // Tên file ảnh thực tế tự nạp
+  canDesignateForSam?: boolean; // Khả năng chỉ thị mục tiêu cho tên lửa phòng không
+  radarSubRole?: RadarSubRole; // Phân định 'chi_thi_ten_lua' vs 'canh_gioi_nhin_vong'
+  radarSubRoleVi?: string; // Tên vai trò hiển thị tiếng Việt
+  designatedRadarId?: string | null; // ID đài radar chỉ thị mục tiêu được liên kết
+  samTerrainMaskMode?: SamTerrainMaskMode; // Chế độ cắt địa hình tên lửa: 'organic' | 'linked_radar' | 'intersection'
+  radarGroup?: RadarGroup;
+  batteryConfig?: CompositeBatteryConfig;
+  compositeBattery?: CompositeBatteryState;
+  maxLaunchRangeKm?: number;
+  isIntegratedOnly?: boolean;
 }
 
 export const CATEGORY_META: Record<

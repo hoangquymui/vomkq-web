@@ -1,0 +1,56 @@
+{
+  "format": "vomkq-ai-harness-design-v1",
+  "implementationState": "planned",
+  "target": {
+    "platform": "windows-x64",
+    "host": "tauri-sidecar",
+    "browserCompatibility": "managed-local-http"
+  },
+  "sourceCore": "../vendor/vector-ai/backend",
+  "data": {
+    "namespace": "VomKQ/ai",
+    "location": "user-data-directory",
+    "projectKnowledgeOnly": true,
+    "legacyDataMigration": "explicit-separate-step"
+  },
+  "transport": {
+    "preferredInitial": "authenticated-loopback",
+    "optionalLater": "ipc",
+    "processIdentityRequired": true,
+    "portsAndOrigins": "resolve-in-bridge"
+  },
+  "inference": {
+    "provider": "ollama-local",
+    "modelId": null,
+    "automaticDownloads": false
+  },
+  "retrieval": {
+    "initial": "sqlite-fts",
+    "denseOptional": true,
+    "embeddingProfileId": null,
+    "strictSources": true,
+    "citationsRequired": true
+  },
+  "resources": {
+    "maxParallelForegroundRuns": 1,
+    "gpuBudgetMb": null,
+    "ramBudgetMb": null,
+    "calibrationRequired": true,
+    "mapInteractionPriority": true
+  },
+  "tools": {
+    "mode": "read-only",
+    "allowlist": [
+      "rag.search",
+      "document.read_metadata",
+      "report.read_snapshot",
+      "dataset.read_metadata"
+    ],
+    "implemented": false
+  },
+  "workflowSpecs": [
+    "../workflows/explain-document.example.json",
+    "../workflows/quality-review.example.json"
+  ]
+}
+

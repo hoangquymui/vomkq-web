@@ -35,6 +35,35 @@ import type { EquipmentInstance } from '../types/equipment';
 import type { RadarCoverageField, RayCoverageData } from '../types/radarCoverage';
 import { getProfileMaxRange } from './radarMath';
 import { EQUIPMENT_TEMPLATES } from '../data/equipmentTemplates';
+import { destinationPoint } from './samCoverageEngine';
+
+/** Chuyển đổi toạ độ trắc địa mặt cầu WGS84 sang hệ ENU cục bộ chuẩn xác theo độ cong Trái Đất */
+function createGeodeticPositionWriter(
+  centerLat: number,
+  centerLon: number,
+  modelMatrix: Cesium.Matrix4,
+  positions: Float64Array
+) {
+  const inverseModelMatrix = Cesium.Matrix4.inverseTransformation(modelMatrix, new Cesium.Matrix4());
+  const worldPosition = new Cesium.Cartesian3();
+  const localPosition = new Cesium.Cartesian3();
+
+  return (positionIndex: number, rangeM: number, azimuthDeg: number, altitudeM: number) => {
+    const destination = destinationPoint(centerLat, centerLon, rangeM, azimuthDeg);
+    Cesium.Cartesian3.fromDegrees(
+      destination.lon,
+      destination.lat,
+      altitudeM,
+      Cesium.Ellipsoid.WGS84,
+      worldPosition
+    );
+    Cesium.Matrix4.multiplyByPoint(inverseModelMatrix, worldPosition, localPosition);
+    positions[positionIndex] = localPosition.x;
+    positions[positionIndex + 1] = localPosition.y;
+    positions[positionIndex + 2] = localPosition.z;
+    return localPosition;
+  };
+}
 
 /** Số phân đoạn phương vị mặc định — Unity RadarDomeMeshRenderer.azimuthSegments = 96 */
 export const DOME_DEFAULT_AZIMUTH_SEGMENTS = 96;
@@ -223,6 +252,12 @@ export function buildRadarDomeGeometry(
   const positions = new Float64Array(vertexCount * 3);
   const normals = new Float32Array(vertexCount * 3);
   const st = new Float32Array(vertexCount * 2);
+  const writePosition = createGeodeticPositionWriter(
+    instance.latitude,
+    instance.longitude,
+    modelMatrix,
+    positions
+  );
 
   let baseRadiusM = 0;
 
@@ -256,10 +291,10 @@ export function buildRadarDomeGeometry(
       const vertexIndex = ring * azimuthSegments + azimuthIndex;
       const i3 = vertexIndex * 3;
 
-      // Hệ ENU cục bộ: x = East, y = North, z = Up
-      positions[i3] = Math.sin(azimuthRad) * cosElevation * radiusM;
-      positions[i3 + 1] = Math.cos(azimuthRad) * cosElevation * radiusM;
-      positions[i3 + 2] = sinElevation * radiusM;
+      // Tính toạ độ trắc địa WGS84 chính xác theo độ cong Trái Đất
+      const groundRangeM = cosElevation * radiusM;
+      const targetAltM = originAltitudeM + sinElevation * radiusM;
+      writePosition(i3, groundRangeM, azimuthDeg, targetAltM);
 
       // Normal GIẢ = hướng xuyên tâm (đơn vị) — KHÔNG dùng normal hình học thật
       normals[i3] = Math.sin(azimuthRad) * cosElevation;

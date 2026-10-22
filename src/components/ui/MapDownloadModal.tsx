@@ -6,6 +6,7 @@ import {
   Terminal,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useShallow } from 'zustand/react/shallow';
 
 interface PackInfo {
   name?: string;
@@ -35,7 +36,12 @@ export const MapDownloadModal: React.FC = () => {
     setShowMapDownloadModal,
     basemap,
     setBasemap,
-  } = useTacticalStore();
+  } = useTacticalStore(useShallow((state) => ({
+    showMapDownloadModal: state.showMapDownloadModal,
+    setShowMapDownloadModal: state.setShowMapDownloadModal,
+    basemap: state.basemap,
+    setBasemap: state.setBasemap,
+  })));
 
   const [packInfo, setPackInfo] = useState<PackInfo | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string>('mientrung');

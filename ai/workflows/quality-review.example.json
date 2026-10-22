@@ -1,0 +1,37 @@
+{
+  "format": "vomkq-ai-workflow-design-v1",
+  "id": "quality-review-v1",
+  "implementationState": "planned",
+  "purpose": "Review completeness and provenance of an existing report snapshot; explain data-quality limitations.",
+  "input": {
+    "reportSnapshotId": "required",
+    "reportVersion": "required",
+    "datasetVersions": "required"
+  },
+  "stages": [
+    "validate-snapshot",
+    "read-data-metadata",
+    "check-missing-stale-or-inconsistent-fields",
+    "retrieve-document-evidence",
+    "explain-quality-findings",
+    "validate-references",
+    "publish-report"
+  ],
+  "policy": {
+    "allowedTools": [
+      "report.read_snapshot",
+      "dataset.read_metadata",
+      "rag.search"
+    ],
+    "immutableInput": true,
+    "writeApplicationState": false,
+    "strictSources": true
+  },
+  "output": {
+    "findings": "data-quality findings only",
+    "missingData": "explicit",
+    "citations": "required for document-based claims",
+    "snapshotVersion": "required"
+  }
+}
+

@@ -1,0 +1,25 @@
+.visual-card {
+  margin: 16px 0;
+  overflow: hidden;
+  border: 1px solid rgba(168,255,220,.11);
+  border-radius: 12px;
+  background: linear-gradient(145deg,rgba(15,23,29,.98),rgba(8,13,17,.98));
+}
+.visual-head {
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  color: #627079;
+  font-size: 7px;
+  letter-spacing: .13em;
+}
+.visual-head b { color: var(--accent2); font-size: 8px; font-weight: 600; letter-spacing: normal; }
+.mermaid,.mermaid-pending { min-height: 150px; display: grid; place-items: center; overflow-x: auto; padding: 20px; }
+.mermaid svg { width: auto !important; max-width: 100%; height: auto; min-height: 110px; }
+.visual-loading { color: #66737b; font-size: 9px; }
+.chart-pending,.visual-card > div:has(> canvas) { position: relative; height: 330px; padding: 16px; }
+.visual-error { margin: 12px; padding: 12px; border: 1px solid rgba(255,123,136,.18); border-radius: 8px; background: rgba(255,123,136,.06); color: #ff9da6; font: 10px "Cascadia Code",Consolas,monospace; white-space: pre-wrap; }
+@media(max-width:600px){.mermaid,.mermaid-pending{justify-content:start;padding:12px}.chart-pending,.visual-card > div:has(> canvas){height:260px;padding:10px}}

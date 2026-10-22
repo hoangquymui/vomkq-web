@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="vi"><meta charset="utf-8"><title>Knowledge content editor fixture</title>
+<style>body { margin:0; background:#071114; font-family:system-ui; color:#a0d4bf; }</style>
+<script type="module">
+import { openKnowledgeContent } from "../src/knowledge-content-editor.js";
+const sample = String.raw`# Công thức và bảng dữ liệu
+
+Khi $x\ne 0$, dùng biểu thức trong tài liệu:
+
+$$y=\frac{a+b}{c}\cdot\sqrt{x^2+1}$$
+
+## Bảng thông số
+
+| Đại lượng | Ký hiệu | Giá trị | Đơn vị | Điều kiện |
+| --- | --- | ---: | --- | --- |
+| Chiều dài | $a$ | 12 | m | Theo nguồn |
+| Chiều rộng | $b$ | 8 | m | Theo nguồn |
+| Diện tích | $S=a\cdot b$ | 96 | $m^2$ | Hình chữ nhật |
+
+Ghi chú: giữ nguyên đơn vị và các điều kiện áp dụng từ tài liệu gốc.`;
+let editor, saved;
+const open = (options = {}) => { editor?.element.remove(); editor = openKnowledgeContent({title:"Tài liệu minh họa · Công thức và bảng", source:sample, ...options}); return editor; };
+const assert = (ok, message) => { if (!ok) throw new Error(message); };
+const $ = (s) => editor.element.querySelector(s);
+const click = (s) => { assert($(s), `Missing ${s}`); $(s).click(); };
+const input = (s, value) => { assert($(s), `Missing ${s}`); $(s).value=value; $(s).dispatchEvent(new Event("input",{bubbles:true})); };
+const tick = () => new Promise((r) => setTimeout(r, 40));
+window.knowledgeTest = {
+  async run() {
+    const checks=[];
+    assert($(".katex") && $("table") && $("th").textContent === "Đại lượng", "Source was not rendered");
+    assert(editor.getValue() === sample, "Viewing mutated content");
+    assert(!$("[data-save]") && !$("[data-mode=edit]"), "Read-only source should not edit");
+    checks.push("Rendered KaTeX + real table, source bytes preserved, readonly remains readonly");
+    open({editable:true, onSave:async(value) => {saved=value;}});
+    click('[data-mode="edit"]');
+    input('[data-cell="1:2"]', "18");
+    click('[data-mode="preview"]');
+    assert(editor.getValue().includes("| Chiều dài | $a$ | 18 | m |"), "Table cell edit not serialized");
+    assert($("table").textContent.includes("18"), "Preview did not update");
+    click('[data-mode="source"]');
+    assert($("[data-source-input]").value.includes("Ghi chú:"), "Source lost tail");
+    click('[data-close]'); assert(!$("[data-discard]").hidden, "Dirty close lost changes"); click('[data-keep]');
+    click('[data-save]'); await tick();
+    assert(saved.source.includes("| Chiều dài | $a$ | 18 | m |"), "Save callback has wrong source");
+    assert(!editor.element.isConnected, "Saved editor did not close");
+    checks.push("Cell editing → preview → Markdown → save preserves surrounding formulas and notes");
+    open({editable:true, startEditing:true, onSave:async () => {throw new Error("Lỗi lưu thử nghiệm");}});
+    input('[data-text]', "Bản chỉnh chưa lưu"); click('[data-save]'); await tick();
+    assert(editor.element.isConnected && $("[data-status]").textContent.includes("Lỗi lưu"), "Failed save discarded draft");
+    assert(!$("[data-save]").disabled, "Failed save stuck disabled");
+    click('[data-close]'); click('[data-discard-confirm]');
+    checks.push("Failed save retains draft; explicit discard and retry available");
+    open({title:"SỔ TAY TRỐNG", source:"", editable:true, startEditing:true, allowEmpty:true, emptySaveLabel:"Tạo tài liệu trống", onSave:async (value) => {saved=value;}});
+    assert($('[data-save]').textContent === "Tạo tài liệu trống", "Blank-document action is not explicit");
+    click('[data-save]'); await tick();
+    assert(saved.title === "SỔ TAY TRỐNG" && saved.source === "", "Title-only document was not saved as empty");
+    assert(!editor.element.isConnected, "Blank document editor did not close after save");
+    checks.push("Title-only save creates an intentional empty document");
+    open({title:"Dữ liệu nhập tay", source:"", editable:true, startEditing:true, onSave:async (value) => {saved=value;}});
+    click('[data-add="text"]'); input('[data-text]', "Mô tả do người dùng nhập, không cần JSON.");
+    click('[data-add="formula"]'); input('[data-simple]', "s = v*t"); click('[data-convert]');
+    for (let i=0; i<200 && $('[data-status]').textContent.includes('Đang dựng'); i++) await tick();
+    assert($("[data-block-preview] .katex"), "Plain formula not rendered");
+    click('[data-insert="fraction"]'); input('[data-argument="0"]', "a+b"); input('[data-argument="1"]', "c"); click('[data-apply-template]'); await tick();
+    assert(editor.getValue().includes("\\frac"), "Human fraction fields did not create formula");
+    assert(!$(".knowledge-math-error"), "Formula builder produced broken LaTeX");
+    click('[data-add="table"]');
+    const clipboard = new DataTransfer(); clipboard.setData("text/plain", "Tên\tGiá trị\tĐơn vị\r\nA\t3\tm\r\nB\t4\tm\r\n");
+    $('[data-cell="0:0"]').dispatchEvent(new ClipboardEvent("paste",{clipboardData:clipboard,bubbles:true,cancelable:true}));
+    assert($('[data-cell="2:2"]').value === "m", "Spreadsheet paste did not expand grid");
+    const mathCell = $('[data-cell="1:1"]'); mathCell.focus(); mathCell.setSelectionRange(mathCell.value.length, mathCell.value.length);
+    mathCell.closest('[data-block]').querySelector('[data-symbols]').click();
+    click('[data-symbol-group="formulas"]'); click('[data-symbol-item="formulas:0"]');
+    assert(mathCell.value.includes('$\\frac{a}{b}$'), "Formula library did not insert inline math into table cell");
+    assert($('[data-symbol-item="formulas:0"]').textContent.includes('Phân số (chia phần)'), "The fraction template label is not explicit");
+    click('[data-close-symbols]');
+    input('[data-cell="1:0"]', "A | B"); click('[data-save]'); await tick();
+    assert(editor.element.isConnected && $("[data-status]").classList.contains("error"), "Ambiguous pipe saved corrupt table");
+    input('[data-cell="1:0"]', "A");
+    click('[data-mode="preview"]');
+    assert($("table") && !$(".knowledge-math-error"), "New draft preview broken");
+    click('[data-save]'); await tick();
+    assert(saved.source.includes("$\\frac{a}{b}$") && saved.source.includes("Mô tả"), "Manual content not passed to save");
+    checks.push("Manual prose/math entry, symbol/formula library, table-cell insertion, Excel paste, safe serialization");
+    open({title:"Phân số tự động", source:"", editable:true, startEditing:true, onSave:async (value) => {saved=value;}});
+    click('[data-add="formula"]'); input('[data-simple]', '10w/57kt');
+    await tick();
+    assert($('[data-block-preview] .mfrac') && editor.getValue().includes(String.raw`\frac{10w}{57kt}`), 'Shorthand fraction did not update without a button click');
+    input('[data-simple]', '10w/'); click('[data-save]'); await tick();
+    assert(editor.element.isConnected && $('[data-simple]').value === '10w/' && $('[data-status]').classList.contains('error'), 'Incomplete formula was silently saved or discarded');
+    input('[data-simple]', '(a+b)/sqrt(x)'); click('[data-save]');
+    for (let i=0; i<200 && editor.element.isConnected && !$('[data-status]').classList.contains('error'); i++) await tick();
+    assert(!editor.element.isConnected && saved.source.includes('\\sqrt'), 'Immediate save did not wait for automatic conversion');
+    checks.push('Typing 10w/57kt automatically renders a stacked fraction; incomplete input stays editable; immediate save waits for conversion');
+    open({title:"Bảng nhiều dòng", source:"", editable:true, startEditing:true, onSave:async (value) => {saved=value;}});
+    click('[data-add="table"]');
+    const multilineClipboard = new DataTransfer(); multilineClipboard.setData('text/plain', '"Dòng đầu\n10w/57kt"\tGiá trị\r\nA\tB\r\n');
+    $('[data-cell="0:0"]').dispatchEvent(new ClipboardEvent('paste',{clipboardData:multilineClipboard,bubbles:true,cancelable:true}));
+    assert($('[data-cell="0:0"]').value === 'Dòng đầu\n10w/57kt' && $('[data-cell="1:0"]').value === 'A', 'Quoted Excel cell line break split the table row');
+    assert(!$('[data-cell-preview="0:0"] .mfrac'), 'A slash typed in a cell must not preview as a fraction');
+    input('[data-cell="0:1"]', '5/4');
+    assert($('[data-cell="0:1"]').value === '5/4' && !$('[data-cell-preview="0:1"] .mfrac'), '5/4 typed in a cell must stay plain text with no fraction preview');
+    const fractionCell = $('[data-cell="1:1"]'); input('[data-cell="1:1"]', '');
+    fractionCell.focus(); fractionCell.setSelectionRange(0, 0);
+    fractionCell.closest('[data-block]').querySelector('[data-symbols]').click();
+    click('[data-symbol-group="popular"]');
+    assert($('[data-symbol-item="popular:0"]') && $('[data-symbol-item="popular:0"]').textContent.includes('Phân số (chia phần)'), 'The Thường dùng group has no fraction entry');
+    click('[data-symbol-item="popular:0"]');
+    assert(fractionCell.value === '$\\frac{a}{b}$', 'The Thường dùng fraction entry did not insert inline math into a cell');
+    assert($('[data-cell-preview="1:1"] .mfrac'), 'The inserted fraction has no live stacked preview');
+    click('[data-close-symbols]');
+    const proseClipboard = new DataTransfer(); proseClipboard.setData('text/plain', 'Hai dòng\ntrong một ô');
+    const prosePaste = new ClipboardEvent('paste',{clipboardData:proseClipboard,bubbles:true,cancelable:true});
+    $('[data-cell="1:0"]').dispatchEvent(prosePaste);
+    assert(!prosePaste.defaultPrevented, 'Ordinary multiline text paste should stay in the focused cell');
+    click('[data-save]'); await tick();
+    assert(saved.source.includes('10w/57kt') && saved.source.includes('| 5/4 |') && !saved.source.includes('\\frac{10w}'), 'A slash typed in a cell was rewritten into LaTeX');
+    assert(saved.source.includes('$\\frac{a}{b}$'), 'The inserted fraction did not reach the saved source');
+    open({source:saved.source, editable:true, startEditing:true});
+    assert($('[data-cell="0:0"]').value === 'Dòng đầu\n10w/57kt' && $('[data-cell="0:1"]').value === '5/4', 'Multiline slash cells did not survive save/reopen');
+    assert($('[data-cell="1:1"]').value === '$\\frac{a}{b}$', 'Stored LaTeX in a cell was re-shortened when reopened');
+    click('[data-mode="preview"]');
+    assert($('th br') && !$('th .mfrac') && $('th').textContent.includes('10w/57kt'), 'Saved table lost the line break or invented a fraction');
+    assert($('td .mfrac'), 'The inserted fraction no longer renders as a stacked fraction');
+    checks.push('A slash typed into a cell stays plain text through save/reopen; only the library fraction inserts and renders as a stacked fraction; multiline cells keep working');
+    open({title:"Bảng gộp ô", source:"", editable:true, startEditing:true, onSave:async (value) => {saved=value;}});
+    click('[data-add="table"]'); click('[data-row]'); click('[data-row]'); click('[data-column]');
+    input('[data-cell="0:0"]', "A"); input('[data-cell="0:1"]', "B"); input('[data-cell="0:2"]', "C");
+    input('[data-cell="1:0"]', "D"); input('[data-cell="1:1"]', "E"); input('[data-cell="1:2"]', "F");
+    input('[data-cell="2:0"]', "G"); input('[data-cell="2:1"]', "H"); input('[data-cell="2:2"]', "I");
+    input('[data-cell="3:0"]', "J"); input('[data-cell="3:1"]', "K"); input('[data-cell="3:2"]', "L");
+    const press = (cell, shiftKey = false) => { const field = $('[data-cell="' + cell + '"]'); assert(field, "Missing cell " + cell); field.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, button:0, shiftKey})); };
+    click("[data-split]");
+    assert($("[data-status]").textContent.includes("giữ Shift và bấm ô cuối") && $("[data-status]").classList.contains("error"), "Split without any clicked cell must ask for a click or a range");
+    press("0:0"); press("0:1", true); click("[data-merge]");
+    assert($('th[colspan="2"]') && !$('[data-cell="0:1"]'), "Shift range did not merge the header cells");
+    press("1:0"); press("2:0", true); click("[data-merge]");
+    assert($('td[rowspan="2"]') && !$('[data-cell="2:0"]'), "Shift range did not merge the column cells");
+    checks.push("Shift range merge paints real colspan/rowspan and removes the covered cells");
+    press("3:2"); click("[data-merge]");
+    assert($("[data-status]").classList.contains("error") && !!$('[data-cell="3:2"]'), "Gộp ô must still require a real range of at least two cells");
+    press("0:0"); click("[data-split]");
+    assert(!$("th[colspan]") && $('[data-cell="0:1"]') && $('[data-cell="0:0"]').value === "A\nB", "A plain click did not split the merged header");
+    assert($("[data-status]").textContent.includes("Đã tách ô") && !$("[data-status]").classList.contains("error"), "Split by a single clicked cell reported an error");
+    checks.push("⧈ Tách ô splits the region under the plain-clicked cell, no range needed");
+    press("3:1"); click("[data-split]");
+    assert($("[data-status]").textContent.includes("không nằm trong vùng gộp") && !$("[data-status]").classList.contains("error"), "A cell outside every region must only report a clear status");
+    input('[data-cell="1:1"]', "<<");
+    assert($('[data-cell="1:1"]').value === String.raw`\<<`, "A bare marker typed by hand was not kept as text");
+    assert($("[data-status]").textContent.includes("dạng văn bản") && !$("[data-status]").classList.contains("error"), "The kept-as-text hint is missing or reported as an error");
+    click('[data-mode="preview"]');
+    assert($('td[rowspan="2"]'), "Typing a bare marker dissolved the existing merge");
+    assert($("table").textContent.includes("<<"), "The escaped marker no longer reads as the two literal characters");
+    click('[data-mode="edit"]');
+    assert($('[data-cell="1:1"]').value === String.raw`\<<`, "Returning to the editor lost the escaped marker");
+    click('[data-save]'); await tick();
+    assert(!editor.element.isConnected && saved.source.includes(String.raw`| \<< |`) && saved.source.includes("| ^^ |") && !/<table|rowspan|colspan/i.test(saved.source), "The escaped marker or the surviving merge did not reach the saved source");
+    checks.push("Typing a bare << stays text, the existing merge survives, and the document is still one pipe table");
+    open({title:"Bảng có phím tắt", source:"", editable:true, startEditing:true, onSave:async (value) => {saved=value;}});
+    click('[data-add="table"]'); click('[data-row]'); click('[data-row]'); click('[data-column]');
+    input('[data-cell="0:0"]', "A"); input('[data-cell="0:1"]', "B"); input('[data-cell="0:2"]', "C");
+    input('[data-cell="1:0"]', "D"); input('[data-cell="1:1"]', "E"); input('[data-cell="1:2"]', "F");
+    input('[data-cell="2:0"]', "G"); input('[data-cell="2:1"]', "H"); input('[data-cell="2:2"]', "I");
+    const pressKeyAt = (selector, key, {ctrlKey = false, metaKey = false, altKey = false} = {}) => { const field = $(selector); assert(field, "Missing " + selector); const event = new KeyboardEvent("keydown", {key, ctrlKey, metaKey, altKey, bubbles:true, cancelable:true}); field.dispatchEvent(event); return event; };
+    const pressKey = (cell, key, ctrlKey = false, metaKey = false, altKey = false) => pressKeyAt('[data-cell="' + cell + '"]', key, {ctrlKey, metaKey, altKey});
+    press("1:0"); press("1:2", true);
+    const mergeKey = pressKey("1:0", "g", true);
+    assert(mergeKey.defaultPrevented, "Ctrl+G inside a table cell was not handled by the editor");
+    assert($('td[colspan="3"]') && !$('[data-cell="1:1"]') && !$('[data-cell="1:2"]'), "Ctrl+G did not merge the Shift+clicked range");
+    assert($("[data-status]").textContent === "Đã gộp ô · chưa lưu. Có thể Hoàn tác." && !$("[data-status]").classList.contains("error"), "Ctrl+G reported a different status than ⧉ Gộp ô");
+    click("[data-undo]");
+    assert(!$("td[colspan]") && $('[data-cell="1:1"]') && $('[data-cell="1:2"]'), "Ctrl+G did not push exactly one undo step");
+    press("1:0"); press("1:2", true); pressKey("1:0", "g", true);
+    assert($('td[colspan="3"]'), "Ctrl+G did not merge again after Hoàn tác");
+    checks.push("Ctrl+G merges the Shift+clicked range exactly like ⧉ Gộp ô, with one undo step and the same status");
+    press("1:0");
+    const splitKey = pressKey("1:0", "t", true);
+    assert(splitKey.defaultPrevented, "Ctrl+T on the merged cell was not handled by the editor");
+    assert(!$("td[colspan]") && $('[data-cell="1:1"]') && $('[data-cell="1:2"]'), "Ctrl+T did not split the merged region under the clicked cell");
+    assert($("[data-status]").textContent === "Đã tách ô · chưa lưu. Có thể Hoàn tác." && !$("[data-status]").classList.contains("error"), "Ctrl+T reported a different status than ⧈ Tách ô");
+    checks.push("Ctrl+T on the clicked merged cell splits it exactly like ⧈ Tách ô, with the same status");
+    click("[data-split]");
+    const emptySplit = $("[data-status]").textContent;
+    assert(emptySplit.includes("giữ Shift và bấm ô cuối") && $("[data-status]").classList.contains("error"), "⧈ Tách ô without any clicked cell must ask for a click or a range");
+    const emptyKey = pressKey("1:0", "t", true);
+    assert(emptyKey.defaultPrevented, "Ctrl+T must still be handled when nothing is selected");
+    assert($("[data-status]").textContent === emptySplit && $("[data-status]").classList.contains("error"), "Ctrl+T without a selection reported a different error than ⧈ Tách ô");
+    const plainKey = pressKey("2:1", "g");
+    assert(!plainKey.defaultPrevented, "A plain g press inside a cell was swallowed");
+    const plainField = $('[data-cell="2:1"]');
+    plainField.setRangeText("g", plainField.value.length, plainField.value.length, "end");
+    plainField.dispatchEvent(new InputEvent("input", {bubbles:true, inputType:"insertText", data:"g"}));
+    assert(plainField.value === "Hg" && !$("td[colspan],th[colspan]") && $('[data-cell="2:2"]'), "Typing g in a cell did not insert text, or it merged cells");
+    checks.push("Ctrl+T without a selection keeps the button's error, and a plain g in a cell still types instead of merging");
+    press("2:0"); press("2:2", true); pressKey("2:0", "g", false, true);
+    assert($('td[colspan="3"]'), "Cmd+G did not merge the last row");
+    click("[data-save]"); await tick();
+    assert(!editor.element.isConnected && saved.source.includes("| << | << |") && !/<table|rowspan|colspan/i.test(saved.source), "A shortcut-merged table did not save as one pipe table");
+    checks.push("Ctrl+G/Cmd+G merges reach the saved Markdown as one pipe table with the merge markers");
+    open({title:"Alt+H và Alt+C", source:"", editable:true, startEditing:true, onSave:async (value) => {saved=value;}});
+    click('[data-add="table"]');
+    input('[data-cell="0:0"]', "A"); input('[data-cell="0:1"]', "B");
+    const widths = () => [...editor.element.querySelectorAll(".knowledge-edit-table tbody tr")].map((row) => row.querySelectorAll("textarea").length);
+    const rowCount = () => editor.element.querySelectorAll(".knowledge-edit-table tbody tr").length;
+    const cellsOf = (index) => [...editor.element.querySelectorAll(".knowledge-edit-table tbody tr")[index].querySelectorAll("textarea")].map((field) => field.value);
+    const altRow = pressKey("0:0", "h", false, false, true);
+    assert(altRow.defaultPrevented, "Alt+H inside a table cell was not handled by the editor");
+    assert(rowCount() === 3, "Alt+H did not add exactly one row");
+    assert(widths().join(",") === "2,2,2" && cellsOf(2).join("") === "", "The Alt+H row is not empty or not as wide as the table");
+    assert($("[data-status]").textContent === "Đã sửa bảng · chưa lưu. Có thể Hoàn tác." && !$("[data-status]").classList.contains("error"), "Alt+H reported a different status than ＋ Hàng");
+    const rowStatus = $("[data-status]").textContent;
+    click("[data-row]");
+    assert(rowCount() === 4 && $("[data-status]").textContent === rowStatus, "＋ Hàng and Alt+H no longer report the same status");
+    click("[data-undo]");
+    assert(rowCount() === 3, "Hoàn tác restored the ＋ Hàng step in more than one step");
+    click("[data-undo]");
+    assert(rowCount() === 2 && cellsOf(0).join(",") === "A,B", "Hoàn tác restored the Alt+H step in more than one step");
+    checks.push("Alt+H in a table cell inserts exactly one empty, full-width row with the same status as ＋ Hàng and exactly one undo step");
+    const altColumn = pressKey("0:0", "c", false, false, true);
+    assert(altColumn.defaultPrevented, "Alt+C inside a table cell was not handled by the editor");
+    assert(widths().join(",") === "3,3" && cellsOf(1).join("") === "", "Alt+C did not add one empty column to every row");
+    assert($("[data-status]").textContent === "Đã sửa bảng · chưa lưu. Có thể Hoàn tác." && !$("[data-status]").classList.contains("error"), "Alt+C reported a different status than ＋ Cột");
+    const columnStatus = $("[data-status]").textContent;
+    click("[data-column]");
+    assert(widths().join(",") === "4,4" && $("[data-status]").textContent === columnStatus, "＋ Cột and Alt+C no longer report the same status");
+    click("[data-undo]");
+    assert(widths().join(",") === "3,3", "Hoàn tác restored the Alt+C step in more than one step");
+    checks.push("Alt+C in a table cell adds one empty column to every row with the same status as ＋ Cột and exactly one undo step");
+    const narrow = Array.from({length:60}, (_, i) => "C" + (i + 1)).join(" | ");
+    const wide = Array.from({length:60}, (_, i) => "V" + (i + 1)).join(" | ");
+    open({title:"Giới hạn trình soạn", source:"| Tên | Giá trị |\n| --- | --- |\n" + Array.from({length:199}, (_, i) => "| R" + (i + 1) + " | " + (i + 1) + " |").join("\n") + "\n", editable:true, startEditing:true});
+    assert(rowCount() === 200 && $("[data-row]").disabled, "The 200-row fixture is not at the limit");
+    assert($("[data-undo]").disabled, "Reopening a document must not create undo steps");
+    const limitRow = pressKey("0:0", "h", false, false, true);
+    assert(limitRow.defaultPrevented && rowCount() === 200, "Alt+H at the 200-row limit changed the table");
+    assert($("[data-status]").textContent === "Bảng đã đạt giới hạn 200 hàng." && $("[data-status]").classList.contains("error"), "Alt+H at the 200-row limit did not explain the limit");
+    assert($("[data-undo]").disabled, "Alt+H at the 200-row limit pushed an empty undo step");
+    open({title:"Giới hạn cột", source:"| " + narrow + " |\n| " + Array.from({length:60}, () => "---").join(" | ") + " |\n| " + wide + " |\n", editable:true, startEditing:true});
+    assert(widths().join(",") === "60,60" && $("[data-column]").disabled, "The 60-column fixture is not at the limit");
+    assert($("[data-undo]").disabled, "Reopening a wide document must not create undo steps");
+    const limitColumn = pressKey("0:0", "c", false, false, true);
+    assert(limitColumn.defaultPrevented && widths().join(",") === "60,60", "Alt+C at the 60-column limit changed the table");
+    assert($("[data-status]").textContent === "Bảng đã đạt giới hạn 60 cột." && $("[data-status]").classList.contains("error"), "Alt+C at the 60-column limit did not explain the limit");
+    assert($("[data-undo]").disabled, "Alt+C at the 60-column limit pushed an empty undo step");
+    checks.push("Alt+H/Alt+C at 200 rows or 60 columns report the Vietnamese limit, leave the grid unchanged and push no empty undo step");
+    open({title:"Phím tắt ngoài bảng", source:"", editable:true, startEditing:true});
+    click('[data-add="formula"]');
+    const formulaKey = new KeyboardEvent("keydown", {key:"g", ctrlKey:true, bubbles:true, cancelable:true});
+    $("[data-simple]").dispatchEvent(formulaKey);
+    assert(!formulaKey.defaultPrevented, "Ctrl+G was swallowed in a formula field with nothing to merge");
+    assert(!pressKeyAt("[data-simple]", "h", {altKey:true}).defaultPrevented, "Alt+H was swallowed in a formula field");
+    assert(!pressKeyAt("[data-simple]", "c", {altKey:true}).defaultPrevented, "Alt+C was swallowed in a formula field");
+    click('[data-mode="source"]');
+    const sourceField = $("[data-source-input]"); sourceField.focus();
+    const sourceKey = new KeyboardEvent("keydown", {key:"t", ctrlKey:true, bubbles:true, cancelable:true});
+    sourceField.dispatchEvent(sourceKey);
+    assert(!sourceKey.defaultPrevented && sourceField.value === editor.getValue(), "Ctrl+T was swallowed in the Markdown / LaTeX field");
+    const sourceAltKey = pressKeyAt("[data-source-input]", "h", {altKey:true});
+    assert(!sourceAltKey.defaultPrevented && sourceField.value === editor.getValue(), "Alt+H was swallowed in the Markdown / LaTeX field");
+    const sourceAltColumn = pressKeyAt("[data-source-input]", "c", {altKey:true});
+    assert(!sourceAltColumn.defaultPrevented && sourceField.value === editor.getValue(), "Alt+C was swallowed in the Markdown / LaTeX field");
+    click('[data-close]'); click('[data-discard-confirm]');
+    checks.push("Ctrl+G/Ctrl+T and Alt+H/Alt+C are left untouched outside a table block so typing and field bindings keep working");
+    open({source:'<img src=x onerror=alert(1)>\n\n| A | B |\n| --- | --- |\n| <script>x<\/script> | 2 |'});
+    assert(!$("img") && !$("script"), "Untrusted source inserted executable HTML");
+    checks.push("HTML from source remains inert text");
+    open(); return checks;
+  },
+  show: () => { open(); return true; },
+  edit: () => { open({editable:true,startEditing:true}); return true; },
+  prepareNativeMultiline: () => {
+    open({title:'Bảng xuống dòng và phân số', source:'', editable:true, startEditing:true, onSave:async (value) => {saved=value;}});
+    click('[data-add="table"]'); input('[data-cell="0:0"]', 'Nội dung'); input('[data-cell="0:1"]', 'Ghi chú');
+    input('[data-cell="1:0"]', 'Dòng đầu'); const field = $('[data-cell="1:0"]'); field.focus(); field.setSelectionRange(field.value.length,field.value.length); return true;
+  },
+  async finishNativeMultiline() {
+    assert($('[data-cell="1:0"]').value === 'Dòng đầu\n10w/57kt', 'Native Enter did not add a line inside the cell');
+    const preview = $('[data-cell-preview="1:0"]');
+    assert(preview && preview.innerHTML === '' && !preview.querySelector('.mfrac'), 'A slash typed into a cell rendered as a live fraction');
+    click('[data-save]'); await tick();
+    assert(!editor.element.isConnected && saved.source.includes('<br>') && saved.source.includes('10w/57kt') && !saved.source.includes('\\frac{10w}'), 'Native multiline cell did not save as literal text');
+    open({source:saved.source,editable:true,startEditing:true});
+    assert($('[data-cell="1:0"]').value === 'Dòng đầu\n10w/57kt', 'Reopening lost native multiline input');
+    click('[data-mode="preview"]');
+    assert($('td br') && !$('td .mfrac') && $('td').textContent.includes('10w/57kt'), 'The reopened table no longer shows the typed slash as plain text');
+    return 'Native Enter inserts a newline inside a cell; a typed 10w/57kt stays plain text (no fraction); saving and reopening preserves both';
+  },
+};
+open(); window.knowledgeReady = true;
+</script></html>

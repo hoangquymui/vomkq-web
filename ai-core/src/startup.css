@@ -1,0 +1,37 @@
+.app-intro {
+  position: fixed; inset: 0; z-index: 9999; display: block;
+  background: radial-gradient(circle at 50% 45%, rgba(62,195,156,.12), transparent 28%), #070c0f;
+  transition: opacity .55s ease, visibility .55s ease, filter .55s ease;
+}
+.app-intro::before { content: ""; position: absolute; left: calc(50% - 135px); top: calc(50% - 135px); width: 270px; height: 270px; border: 1px solid rgba(112,234,188,.08); border-radius: 50%; animation: intro-ring 2.8s linear infinite; }
+.intro-emblem.brand-logo {
+  position: absolute; left: 50%; top: 50%; width: 92px; height: 92px;
+  display: grid; place-items: center; overflow: visible; transform: translate(-50%,-50%);
+  border: 0; border-radius: 0; color: #8df4d4; background: none; box-shadow: none;
+  filter: drop-shadow(0 0 24px rgba(106,235,195,.3)); animation: intro-mark .8s cubic-bezier(.2,.85,.25,1) both;
+}
+.intro-emblem.brand-logo::after { display: none; }
+.intro-emblem.brand-logo .brand-mark { width: 100%; height: 100%; }
+.app-intro b { position: absolute; left: 50%; top: calc(50% + 74px); font-size: 20px; letter-spacing: .32em; transform: translateX(calc(-50% + .16em)); white-space: nowrap; }
+.app-intro small { position: absolute; left: 50%; top: calc(50% + 112px); color: #5b746d; font-size: 8px; letter-spacing: .25em; transform: translateX(-50%); white-space: nowrap; }
+.app-intro > i { position: absolute; left: 50%; top: calc(50% + 149px); width: 92px; height: 2px; overflow: hidden; transform: translateX(-50%); border-radius: 9px; background: rgba(255,255,255,.05); }
+.app-intro > i::after { content: ""; display: block; width: 45%; height: 100%; background: #70e9bd; box-shadow: 0 0 12px #70e9bd; animation: intro-load 1.05s ease-in-out infinite; }
+.app-intro.leaving { opacity: 0; visibility: hidden; filter: blur(8px); }
+
+.confirm-box { position: relative; width: min(410px, calc(100vw - 32px)); padding: 30px; border: 1px solid rgba(255,255,255,.09); border-radius: 22px; text-align: center; background: linear-gradient(150deg,#131b21,#0b1116); box-shadow: 0 30px 90px rgba(0,0,0,.6); }
+.confirm-symbol { display: grid; place-items: center; width: 48px; height: 48px; margin: 0 auto 16px; border: 1px solid rgba(255,126,140,.2); border-radius: 15px; color: #ff8996; background: rgba(255,100,120,.07); }
+.confirm-symbol svg { width: 23px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.confirm-box > small { color: #d97984; font-size: 8px; font-weight: 800; letter-spacing: .2em; }
+.confirm-box h2 { margin: 9px 0 10px; font: 400 24px Georgia,serif; }
+.confirm-box p { min-height: 38px; margin: 0 auto 24px; color: #82908f; font-size: 12px; line-height: 1.6; }
+.confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.confirm-actions button { height: 42px; border: 1px solid rgba(255,255,255,.08); border-radius: 11px; background: rgba(255,255,255,.035); font-size: 11px; font-weight: 700; cursor: pointer; }
+.confirm-actions button:hover { background: rgba(255,255,255,.07); }
+.confirm-actions #confirmAccept { border-color: rgba(111,233,190,.24); color: #07110e; background: #84edce; }
+.confirm-actions #confirmAccept.danger { border-color: rgba(255,110,126,.25); color: white; background: #d95667; }
+
+@keyframes intro-mark { from { opacity: 0; transform: translate(-50%,-50%) scale(.65) rotate(-12deg); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
+@keyframes intro-ring { to { transform: rotate(360deg); } }
+@keyframes intro-load { from { transform: translateX(-110%); } to { transform: translateX(230%); } }
+
+@media (prefers-reduced-motion: reduce) { .app-intro::before,.intro-emblem,.app-intro>i::after { animation: none; } }

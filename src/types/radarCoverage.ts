@@ -150,3 +150,30 @@ export interface RadarFieldSummary {
   }>;
 }
 
+/**
+ * Lát cắt địa hình dùng chung chuẩn hóa giữa 3D Map và 2D Cross Section
+ * SINGLE SOURCE OF TRUTH đảm bảo không lệch cao độ DEM
+ */
+export interface SharedTerrainSlice {
+  instanceId: string;
+  azimuthDeg: number;
+  centerLat: number;
+  centerLon: number;
+  groundAltM: number;
+  antennaHeightAGL: number;
+  maxRangeM: number;
+  kFactor: number;
+  samples: Array<{
+    distM: number;
+    lat: number;
+    lon: number;
+    terrainAltM: number;
+    rayAltM?: number;
+    isShadowed?: boolean;
+  }>;
+  terrainStatus: 'loaded' | 'flat_fallback' | 'sampling_error';
+  timestamp: number;
+  cacheKey: string;
+}
+
+

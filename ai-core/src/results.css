@@ -1,0 +1,79 @@
+.result-card {
+  margin: 22px 0 5px;
+  overflow: hidden;
+  border: 1px solid rgba(112,233,189,.2);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(31,64,55,.42), rgba(12,25,25,.72));
+  box-shadow: 0 14px 38px rgba(0,0,0,.18), inset 0 1px rgba(255,255,255,.035);
+}
+.result-card > header { display: flex; align-items: center; gap: 11px; padding: 13px 15px; border-bottom: 1px solid rgba(112,233,189,.11); background: rgba(112,233,189,.035); }
+.result-card > header > span { display: grid; place-items: center; width: 29px; height: 29px; flex: none; border-radius: 9px; color: #07110e; background: #82ebca; box-shadow: 0 0 15px rgba(112,233,189,.18); }
+.result-card header svg { width: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.result-card header div { display: flex; flex-direction: column; gap: 2px; }
+.result-card header small { color: #69bea5; font-size: 7px; font-weight: 800; letter-spacing: .16em; }
+.result-card header b { color: #e5efec; font-size: 12px; }
+.result-table { display: flex; flex-direction: column; padding: 5px 15px 9px; }
+.result-table > div { display: grid; grid-template-columns: minmax(110px,.8fr) minmax(130px,1.2fr); gap: 18px; align-items: center; min-height: 42px; padding: 8px 1px; border-bottom: 1px solid rgba(255,255,255,.055); }
+.result-table > div:last-child { border-bottom: 0; }
+.result-table span { color: #7f928c; font-size: 10px; }
+.result-table strong { color: #baf7e3; font-size: 13px; text-align: right; overflow-wrap: anywhere; }
+.result-table p { margin: 0; }
+.result-table .inline-math { color: inherit; }
+.result-card.stream-building { margin-bottom: 9px; }
+.stream-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  min-height: 30px;
+  margin: 11px 0 3px;
+  padding: 7px 11px;
+  border: 1px solid rgba(112,233,189,.12);
+  border-radius: 10px;
+  background: rgba(112,233,189,.035);
+  color: #7d938c;
+  font-size: 9px;
+}
+.stream-status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent2);
+  box-shadow: 0 0 10px rgba(112,233,189,.45);
+  animation: pulse 1s ease-in-out infinite;
+}
+.stream-math {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: .92em;
+  font-style: normal;
+  letter-spacing: 0;
+}
+.math.stream-math {
+  text-align: left;
+  white-space: pre-wrap;
+}
+.math-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 27px;
+  margin: 3px 0 8px;
+  padding: 5px 9px;
+  border: 1px solid rgba(112,233,189,.1);
+  border-radius: 8px;
+  background: rgba(112,233,189,.025);
+  color: #70857f;
+  font-size: 9px;
+  vertical-align: middle;
+}
+.math-pending > i {
+  width: 13px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(112,233,189,.15), var(--accent2), rgba(112,233,189,.15));
+  background-size: 200% 100%;
+  animation: math-pending 1s linear infinite;
+}
+@keyframes math-pending { to { background-position: -200% 0; } }
+@media (max-width: 540px) { .result-table > div { grid-template-columns: 1fr; gap: 3px; }.result-table strong { text-align: left; } }

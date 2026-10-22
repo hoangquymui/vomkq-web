@@ -3,6 +3,7 @@ import path from 'path';
 import https from 'https';
 import zlib from 'zlib';
 import { fileURLToPath } from 'url';
+import { generateLocalTerrainManifest } from './scripts/generate-local-terrain-manifest.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -179,12 +180,13 @@ async function runDownload() {
   layerConfig.tiles = ['{z}/{x}/{y}.terrain'];
   layerConfig.minzoom = 0;
   layerConfig.maxzoom = 7;
-  fs.writeFileSync(
-    path.join(OUT_TERRAIN_DIR, 'layer.json'),
-    JSON.stringify(layerConfig, null, 2),
-    'utf8'
-  );
-  console.log(`   ✅ Đã cấu hình layer.json offline thành công.`);
+  const layerPath = path.join(OUT_TERRAIN_DIR, 'layer.json');
+  if (!fs.existsSync(layerPath)) {
+    fs.writeFileSync(layerPath, JSON.stringify(layerConfig, null, 2), 'utf8');
+    console.log('   ✅ Đã tạo layer.json offline thành công.');
+  } else {
+    console.log('   ✅ Giữ manifest địa hình cục bộ hiện có; cập nhật lại sau khi tải xong.');
+  }
 
   // 4. Tải các tile địa hình 3D (.terrain) (Level 0-7)
   const terrainTiles = getTerrainTileList(7);
@@ -252,6 +254,9 @@ async function runDownload() {
     JSON.stringify(metadata, null, 2),
     'utf8'
   );
+
+  const manifest = generateLocalTerrainManifest(OUT_TERRAIN_DIR);
+  console.log(`💾 Manifest địa hình cục bộ: ${manifest.tileCount} tile, ${manifest.rangeCount} vùng, zoom tối đa ${manifest.maxZoom}.`);
 
   console.log('\n🎉 HOÀN THÀNH TẢI TOÀN BỘ BẢN ĐỒ VỆ TINH 2D VÀ ĐỊA HÌNH 3D VIỆT NAM!');
 }

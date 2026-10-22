@@ -9,11 +9,26 @@ import {
   HardDriveDownload,
   Sparkles,
   FolderKanban,
+  Crosshair,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useAnalysisStore } from '../../store/useAnalysisStore';
+import { useTacticalSandboxStore } from '../../store/useTacticalSandboxStore';
+import { useShallow } from 'zustand/react/shallow';
 import { PRESET_LOCATIONS } from '../../data/equipmentTemplates';
 
 export const TopBar: React.FC = () => {
+  const analysis = useAnalysisStore(useShallow((state) => ({
+    enabled: state.enabled, panelOpen: state.panelOpen, setEnabled: state.setEnabled, togglePanel: state.togglePanel,
+  })));
+  const { isSandboxActive, enterSandbox, exitSandbox } = useTacticalSandboxStore(
+    useShallow((state) => ({
+      isSandboxActive: state.isSandboxActive,
+      enterSandbox: state.enterSandbox,
+      exitSandbox: state.exitSandbox,
+    }))
+  );
+  const selectedInstanceId = useTacticalStore((state) => state.selectedInstanceId);
   const {
     viewMode,
     setViewMode,
@@ -31,10 +46,26 @@ export const TopBar: React.FC = () => {
     clearAll,
     setShowRadarFieldModal,
     setShowMapDownloadModal,
-    aiAdvisorPanelOpen,
-    toggleAiAdvisorPanel,
     setShowLayoutModal,
-  } = useTacticalStore();
+  } = useTacticalStore(useShallow((state) => ({
+    viewMode: state.viewMode,
+    setViewMode: state.setViewMode,
+    activeTool: state.activeTool,
+    setActiveTool: state.setActiveTool,
+    terrainExaggeration: state.terrainExaggeration,
+    setTerrainExaggeration: state.setTerrainExaggeration,
+    basemap: state.basemap,
+    setBasemap: state.setBasemap,
+    vietnamOnly: state.vietnamOnly,
+    toggleVietnamOnly: state.toggleVietnamOnly,
+    showAllDomes: state.showAllDomes,
+    toggleDomes: state.toggleDomes,
+    triggerFlyTo: state.triggerFlyTo,
+    clearAll: state.clearAll,
+    setShowRadarFieldModal: state.setShowRadarFieldModal,
+    setShowMapDownloadModal: state.setShowMapDownloadModal,
+    setShowLayoutModal: state.setShowLayoutModal,
+  })));
 
   return (
     <header className="absolute top-0 left-0 right-0 h-14 bg-slate-950/90 backdrop-blur-md border-b border-cyan-900/40 z-30 px-3 flex items-center justify-between select-none">
@@ -101,17 +132,31 @@ export const TopBar: React.FC = () => {
           </button>
         </div>
 
-        {/* Nút mở Cố vấn vị trí đặt khí tài bằng AI local (VECTOR AI) */}
+        {/* Một cửa vào chung cho AI phân tích và hỏi đáp tài liệu. */}
         <button
-          onClick={toggleAiAdvisorPanel}
-          className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded border transition-all ${aiAdvisorPanelOpen
-              ? 'bg-violet-950/85 text-violet-300 border-violet-500/70 shadow-[0_0_10px_rgba(139,92,246,0.35)]'
-              : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-violet-500/50 hover:text-violet-200'
-            }`}
-          title="Bật/Tắt: Cố vấn vị trí đặt khí tài bằng VECTOR AI chạy local (127.0.0.1:8000)"
+          onClick={() => { if (!analysis.enabled) analysis.setEnabled(true); else analysis.togglePanel(); }}
+          className={`flex items-center gap-1.5 px-2 py-1 text-xs font-bold rounded border ${analysis.enabled && analysis.panelOpen
+            ? 'bg-emerald-950 text-emerald-200 border-emerald-500' : 'bg-slate-900 text-emerald-300 border-slate-700 hover:border-emerald-500'}`}
+          title="Mở GIS AI: AI phân tích và hỏi đáp tài liệu local"
         >
-          <Sparkles className={`w-3.5 h-3.5 ${aiAdvisorPanelOpen ? 'text-violet-300' : 'text-violet-400'}`} />
-          <span>AI Gợi ý</span>
+          <Sparkles className="w-3.5 h-3.5" /> GIS AI
+        </button>
+
+        {/* Nút Sa Bàn Tác Chiến 3D */}
+        <button
+          onClick={() => {
+            if (isSandboxActive) exitSandbox();
+            else enterSandbox(selectedInstanceId ?? undefined);
+          }}
+          className={`flex items-center gap-1.5 px-2 py-1 text-xs font-bold rounded border transition-all ${
+            isSandboxActive
+              ? 'bg-cyan-500 text-slate-950 border-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.6)]'
+              : 'bg-slate-900 text-cyan-300 border-slate-700 hover:border-cyan-500 hover:text-white'
+          }`}
+          title="Bật/Tắt Chế độ Sa bàn Tác chiến Mô phỏng (Nền đen, núi nhô trắng & đón lõng UAV)"
+        >
+          <Crosshair className={`w-3.5 h-3.5 ${isSandboxActive ? 'animate-spin' : ''}`} />
+          <span>Sa Bàn 3D</span>
         </button>
 
         {/* Nút Chỉ Vùng Việt Nam / Toàn Cầu */}

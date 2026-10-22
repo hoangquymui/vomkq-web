@@ -1,0 +1,2 @@
+# Runtime API. Install the heavier local AI adapters only when they are used.
+-e .[api,math,workflow,documents,dev]

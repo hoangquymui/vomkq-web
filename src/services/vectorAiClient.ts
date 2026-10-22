@@ -48,7 +48,7 @@ export type VectorAiResult<T> =
  * Đơn vị: không có. Kiểu: string. Nơi dùng: mọi request bên dưới.
  */
 export const VECTOR_AI_BASE_URL: string =
-  (import.meta.env.VITE_VECTOR_AI_URL as string | undefined)?.replace(/\/+$/, '') ||
+  (import.meta.env?.VITE_VECTOR_AI_URL as string | undefined)?.replace(/\/+$/, '') ||
   '/vector-ai';
 
 /** Timeout kiểm tra health (ms) — backend local nên rất nhanh, 3s là đủ để kết luận offline. */
@@ -81,17 +81,42 @@ export interface AskVectorAiOptions {
   messages: VectorAiChatMessage[];
   /** Chế độ suy luận của backend, mặc định 'NORMAL' theo yêu cầu tích hợp */
   mode?: string;
+  /**
+   * Backend api.py /api/v1/runs defaults strict_sources to true for document Q&A.
+   * Measured GIS candidate ranking supplies evidence in messages and opts out of
+   * the document-retrieval requirement for that request only.
+   */
+  strictSources?: boolean;
   timeoutMs?: number;
   /** Tín hiệu huỷ từ bên ngoài (ví dụ: đóng panel) */
   signal?: AbortSignal;
   /** Callback nhận từng mẩu token để UI stream dần (tuỳ chọn) */
   onDelta?: (chunk: string) => void;
+  /** Structured events are advisory until a canonical completed result arrives. */
+  onEvent?: (event: VectorAiRunEvent) => void;
+  onRunStarted?: (runId: string) => void;
+  workflowId?: string;
+  snapshotId?: string;
+  documentIds?: string[];
+  reportIds?: string[];
+}
+
+export interface VectorAiRunEvent {
+  type: string;
+  stage?: string;
+  message?: string;
+  progress?: number;
+  data: Record<string, unknown>;
 }
 
 export interface AskVectorAiResult {
   runId: string;
   /** Toàn bộ nội dung trả lời đã ghép */
   text: string;
+  sources: unknown[];
+  usage: Record<string, unknown>;
+  truncated: boolean;
+  completedData: Record<string, unknown>;
 }
 
 function makeError(kind: VectorAiErrorKind, message: string, status?: number): VectorAiError {
@@ -355,7 +380,7 @@ function extractErrorMessage(payload: unknown, fallback: string): string {
 export async function askVectorAi(
   options: AskVectorAiOptions
 ): Promise<VectorAiResult<AskVectorAiResult>> {
-  const { model, messages, mode = 'NORMAL', onDelta } = options;
+  const { model, messages, mode = 'NORMAL' } = options;
   const timeoutMs = options.timeoutMs ?? VECTOR_AI_ASK_TIMEOUT_MS;
 
   if (!model || !model.trim()) {
@@ -366,6 +391,7 @@ export async function askVectorAi(
   }
 
   // 1. Khởi tạo run
+  const plannedRunId = crypto.randomUUID();
   const startFetched = await fetchWithTimeout(
     '/api/v1/runs',
     {
@@ -375,14 +401,31 @@ export async function askVectorAi(
         model,
         messages,
         mode,
+        run_id: plannedRunId,
+        strict_sources: options.strictSources ?? true,
         // scope builtin: chỉ dùng tri thức gốc, không phụ thuộc workspace/chat của app Tauri
         scope: { builtin: true },
+        ...(options.workflowId ? { workflow_id: options.workflowId } : {}),
+        ...(options.snapshotId ? { snapshot_id: options.snapshotId } : {}),
+        ...(options.documentIds ? { document_ids: options.documentIds } : {}),
+        ...(options.reportIds ? { report_ids: options.reportIds } : {}),
       }),
     },
     Math.min(timeoutMs, VECTOR_AI_MODELS_TIMEOUT_MS),
     options.signal
   );
-  if (!startFetched.ok) return { ok: false, error: startFetched.error };
+  if (!startFetched.ok) {
+    if (startFetched.error.kind === 'aborted' || startFetched.error.kind === 'timeout') {
+      // The POST can reach Core even if the response is aborted. Its known ID
+      // lets us cancel that job instead of losing ownership of it.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const cancellation = await cancelVectorAiRun(plannedRunId);
+        if (cancellation.ok) break;
+        await new Promise<void>((resolve) => setTimeout(resolve, 250));
+      }
+    }
+    return { ok: false, error: startFetched.error };
+  }
 
   if (!startFetched.response.ok) {
     return {
@@ -407,6 +450,28 @@ export async function askVectorAi(
     return { ok: false, error: makeError('parse', 'Phản hồi tạo run thiếu "run_id".') };
   }
 
+  options.onRunStarted?.(runId);
+  return streamVectorAiRun(runId, options);
+}
+
+/** Stop the actual backend job, rather than only disconnecting its event stream. */
+export async function cancelVectorAiRun(runId: string): Promise<VectorAiResult<void>> {
+  const fetched = await fetchWithTimeout(`/api/v1/runs/${encodeURIComponent(runId)}`, { method: 'DELETE' }, VECTOR_AI_HEALTH_TIMEOUT_MS);
+  if (!fetched.ok) return fetched;
+  if (!fetched.response.ok && fetched.response.status !== 404) {
+    return { ok: false, error: makeError('http', `Không hủy được lượt chạy (${fetched.response.status}).`, fetched.response.status) };
+  }
+  return { ok: true, value: undefined };
+}
+
+/** Existing-run streaming lets analysis recover by durable GET without replaying deltas. */
+export async function streamVectorAiRun(
+  runId: string,
+  options: Pick<AskVectorAiOptions, 'timeoutMs' | 'signal' | 'onDelta' | 'onEvent'> = {}
+): Promise<VectorAiResult<AskVectorAiResult>> {
+  const { onDelta } = options;
+  const timeoutMs = options.timeoutMs ?? VECTOR_AI_ASK_TIMEOUT_MS;
+
   // 2. Mở luồng SSE và ghép nội dung
   const controller = new AbortController();
   let timedOut = false;
@@ -416,6 +481,7 @@ export async function askVectorAi(
     controller.abort();
   };
   if (options.signal) options.signal.addEventListener('abort', onExternalAbort);
+  if (externalAborted) controller.abort();
   const timeoutId = setTimeout(() => {
     timedOut = true;
     controller.abort();
@@ -424,6 +490,12 @@ export async function askVectorAi(
   let streamText = '';
   let finalText = '';
   let streamError: VectorAiError | null = null;
+  let confirmedCompleted = false;
+  let serverTerminal = false;
+  let completedData: Record<string, unknown> = {};
+  let sources: unknown[] = [];
+  let usage: Record<string, unknown> = {};
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
   try {
     const response = await fetch(`${VECTOR_AI_BASE_URL}/api/v1/runs/${encodeURIComponent(runId)}/events`, {
@@ -446,7 +518,7 @@ export async function askVectorAi(
       return { ok: false, error: makeError('stream', 'Backend không trả về luồng SSE.') };
     }
 
-    const reader = response.body.getReader();
+    reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
     let completed = false;
@@ -456,6 +528,10 @@ export async function askVectorAi(
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
+      buffer = buffer.replace(/\r\n/g, '\n');
+      // An 8 MiB event-buffer guard bounds malformed streams; source payloads in
+      // Core tools are already capped at 2 MiB. This is a transport guard, not a model limit.
+      if (buffer.length > 8 * 1024 * 1024) throw new Error('Luồng sự kiện vượt giới hạn bộ đệm.');
 
       let separatorIndex = buffer.indexOf('\n\n');
       while (separatorIndex !== -1) {
@@ -480,6 +556,15 @@ export async function askVectorAi(
             ? String((payload as Record<string, unknown>).type)
             : parsed.eventType;
 
+        const record = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
+        const data = record.data && typeof record.data === 'object' ? record.data as Record<string, unknown> : record;
+        options.onEvent?.({
+          type, data,
+          ...(typeof record.stage === 'string' ? { stage: record.stage } : {}),
+          ...(typeof record.message === 'string' ? { message: record.message } : {}),
+          ...(typeof record.progress === 'number' ? { progress: record.progress } : {}),
+        });
+
         if (type === 'delta') {
           const chunk = extractDeltaContent(payload);
           if (chunk) {
@@ -488,28 +573,43 @@ export async function askVectorAi(
           }
         } else if (type === 'completed') {
           finalText = extractFinalContent(payload);
+          confirmedCompleted = true;
+          serverTerminal = true;
+          completedData = data;
           completed = true;
         } else if (type === 'cancelled') {
+          serverTerminal = true;
           streamError = makeError('aborted', 'VECTOR AI đã huỷ lượt chạy.');
           completed = true;
         } else if (type === 'error') {
+          serverTerminal = true;
           streamError = makeError('stream', extractErrorMessage(payload, 'VECTOR AI báo lỗi khi sinh câu trả lời.'));
           completed = true;
+        } else if (type === 'sources') {
+          if (Array.isArray(data.sources)) sources = data.sources;
+        } else if (type === 'usage') {
+          usage = { ...usage, ...data };
         }
       }
     }
 
     if (streamError) return { ok: false, error: streamError };
+    if (!confirmedCompleted) {
+      return { ok: false, error: makeError('stream', 'Kết nối kết thúc trước khi backend xác nhận hoàn tất.') };
+    }
 
     const text = finalText.trim().length > 0 ? finalText : streamText;
-    if (text.trim().length === 0) {
+    if (text.trim().length === 0 && !completedData.result && !completedData.analysis_result) {
       return { ok: false, error: makeError('stream', 'VECTOR AI không trả về nội dung nào.') };
     }
-    return { ok: true, value: { runId, text } };
+    const truncated = completedData.truncated === true || usage.truncated === true;
+    return { ok: true, value: { runId, text, sources, usage, truncated, completedData } };
   } catch (error) {
     return { ok: false, error: normalizeFetchError(error, timedOut, externalAborted) };
   } finally {
     clearTimeout(timeoutId);
     options.signal?.removeEventListener('abort', onExternalAbort);
+    await reader?.cancel().catch(() => undefined);
+    if (!serverTerminal && (externalAborted || timedOut)) await cancelVectorAiRun(runId);
   }
 }

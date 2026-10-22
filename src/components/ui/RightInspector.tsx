@@ -26,11 +26,13 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useShallow } from 'zustand/react/shallow';
 import type { OperationalStatus } from '../../types/equipment';
 import type { SpxTargetHeightTier } from '../../types/spxRadarCoverage';
 import { EQUIPMENT_TEMPLATES } from '../../data/equipmentTemplates';
 import { resolveDomeColorHex } from '../../utils/radarDomeMaterial';
 import { ASSET_TYPE_REGISTRY } from '../../utils/assetVisualization';
+import { EQUIPMENT_UI_LABELS } from '../../constants/equipmentLabels';
 
 /** Slider có nhãn + giá trị, dùng cho khối tham số vòm phủ sóng */
 const DomeSlider: React.FC<{
@@ -141,7 +143,67 @@ export const RightInspector: React.FC = () => {
     samVolumes,
     samEngagementModes,
     setSamEngagementMode,
-  } = useTacticalStore();
+    setBatteryLayerVisibility,
+    switchBatteryTarRadar,
+  } = useTacticalStore(useShallow((state) => ({
+    instances: state.instances,
+    selectedInstanceId: state.selectedInstanceId,
+    selectEquipment: state.selectEquipment,
+    updateEquipment: state.updateEquipment,
+    removeEquipment: state.removeEquipment,
+    triggerFlyTo: state.triggerFlyTo,
+    showCrossSection: state.showCrossSection,
+    toggleCrossSection: state.toggleCrossSection,
+    targetHeightMeters: state.targetHeightMeters,
+    setTargetHeightMeters: state.setTargetHeightMeters,
+    activeTool: state.activeTool,
+    setActiveTool: state.setActiveTool,
+    spxConfig: state.spxConfig,
+    updateEquipmentSpxConfig: state.updateEquipmentSpxConfig,
+    spxResults: state.spxResults,
+    domeAlpha: state.domeAlpha,
+    setDomeAlpha: state.setDomeAlpha,
+    domeAzimuthSegments: state.domeAzimuthSegments,
+    setDomeAzimuthSegments: state.setDomeAzimuthSegments,
+    domeElevationRings: state.domeElevationRings,
+    setDomeElevationRings: state.setDomeElevationRings,
+    domeRimColor: state.domeRimColor,
+    setDomeRimColor: state.setDomeRimColor,
+    domeRimPower: state.domeRimPower,
+    setDomeRimPower: state.setDomeRimPower,
+    domeScanLineCount: state.domeScanLineCount,
+    setDomeScanLineCount: state.setDomeScanLineCount,
+    domeScanLineSpeed: state.domeScanLineSpeed,
+    setDomeScanLineSpeed: state.setDomeScanLineSpeed,
+    domeScanLineAnimated: state.domeScanLineAnimated,
+    toggleDomeScanLineAnimated: state.toggleDomeScanLineAnimated,
+    showDomeFootprint: state.showDomeFootprint,
+    setShowDomeFootprint: state.setShowDomeFootprint,
+    domeTerrainMasked: state.domeTerrainMasked,
+    setDomeTerrainMasked: state.setDomeTerrainMasked,
+    domeColorOverride: state.domeColorOverride,
+    setDomeColorOverride: state.setDomeColorOverride,
+    resetDomeStyleDefaults: state.resetDomeStyleDefaults,
+    viewMode: state.viewMode,
+    showSensorNetwork: state.showSensorNetwork,
+    toggleSensorNetwork: state.toggleSensorNetwork,
+    coverageVolumes: state.coverageVolumes,
+    dome3DMode: state.dome3DMode,
+    setDome3DMode: state.setDome3DMode,
+    selectedAltitudeM: state.selectedAltitudeM,
+    setSelectedAltitudeM: state.setSelectedAltitudeM,
+    isCalculatingVolume: state.isCalculatingVolume,
+    showConeOfSilence: state.showConeOfSilence,
+    toggleConeOfSilence: state.toggleConeOfSilence,
+    showOccludedVolume: state.showOccludedVolume,
+    toggleOccludedVolume: state.toggleOccludedVolume,
+    triggerRadarCameraPreset: state.triggerRadarCameraPreset,
+    samVolumes: state.samVolumes,
+    samEngagementModes: state.samEngagementModes,
+    setSamEngagementMode: state.setSamEngagementMode,
+    setBatteryLayerVisibility: state.setBatteryLayerVisibility,
+    switchBatteryTarRadar: state.switchBatteryTarRadar,
+  })));
 
   const [coordFormat, setCoordFormat] = useState<'decimal' | 'dms'>('dms');
   // Tab chế độ xem trong Inspector: Mặc định đồng bộ với viewMode toàn cục nhưng cho phép người dùng chuyển đổi linh hoạt
@@ -153,6 +215,8 @@ export const RightInspector: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [isSpecsOpen, setIsSpecsOpen] = useState<boolean>(false);
   const [isDomeStylingOpen, setIsDomeStylingOpen] = useState<boolean>(false);
+  const [isOrganicRadarOpen, setIsOrganicRadarOpen] = useState<boolean>(true);
+  const [activeOrganicRadarRole, setActiveOrganicRadarRole] = useState<'tar' | 'fcr'>('tar');
   const selected = instances.find((i) => i.instanceId === selectedInstanceId);
 
   // Helper tính cự ly đại vòng tròn giữa 2 điểm (km)
@@ -243,12 +307,19 @@ export const RightInspector: React.FC = () => {
   // Bảng cự ly theo độ cao của khí tài đang chọn (lấy từ instance hoặc fallback template)
   const activeDetectionTable = useMemo(() => {
     if (!selected) return null;
+    if (selected.category === 'TenLuaPhongKhong' && selected.batteryConfig) {
+      const currentTarId = selected.batteryConfig.tarRadarId || selected.batteryConfig.tarRadarTemplateId;
+      const currentFcrId = selected.batteryConfig.fcrRadarId || selected.batteryConfig.fcrRadarTemplateId;
+      const targetRadarId = activeOrganicRadarRole === 'tar' ? currentTarId : currentFcrId;
+      const tmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === targetRadarId);
+      if (tmpl?.altitudeDetectionTable) return tmpl.altitudeDetectionTable;
+    }
     return (
       selected.altitudeDetectionTable ||
       EQUIPMENT_TEMPLATES.find((t) => t.id === selected.templateId)?.altitudeDetectionTable ||
       null
     );
-  }, [selected]);
+  }, [selected, activeOrganicRadarRole]);
 
   // Bán kính vùng mù đỉnh đầu (Cone of Silence) tại tầng độ cao đang chọn
   const coneRadiusKmAtTarget = useMemo(() => {
@@ -1054,33 +1125,169 @@ export const RightInspector: React.FC = () => {
                         Chế độ bắn & điều kiện tác chiến:
                       </span>
                       <div className="grid grid-cols-2 gap-1.5">
-                        {(
-                          [
-                            { id: 'head_on', label: 'Bắn đón (Không nhiễu)' },
-                            { id: 'tail_chase', label: 'Bắn đuổi (Không nhiễu)' },
-                            { id: 'jamming_passive', label: 'Nhiễu tiêu cực' },
-                            { id: 'jamming_active', label: 'Nhiễu tích cực' },
-                            { id: 'tbk_optical', label: 'Quang học (TBK)' },
-                          ] as const
-                        ).map((m) => {
-                          const currentMode =
-                            selected.samEngagementMode ||
-                            samEngagementModes[selected.instanceId] ||
-                            'head_on';
-                          const isActive = currentMode === m.id;
+                        {(() => {
+                          const samTmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === selected.templateId);
+                          const profiles = selected.samProfiles || samTmpl?.samProfiles;
+                          const modeEntries = profiles
+                            ? Object.entries(profiles).map(([id, p]) => ({ id, label: p.modeVi }))
+                            : [
+                                { id: 'head_on', label: 'Bắn đón (Không nhiễu)' },
+                                { id: 'tail_chase', label: 'Bắn đuổi (Không nhiễu)' },
+                                { id: 'passive_jamming', label: 'Nhiễu tiêu cực' },
+                                { id: 'active_jamming', label: 'Nhiễu tích cực' },
+                                { id: 'tvk_optical', label: 'Quang học (TVK)' },
+                              ];
+                          return modeEntries.map((m) => {
+                            const currentMode =
+                              selected.samEngagementMode ||
+                              samEngagementModes[selected.instanceId] ||
+                              'head_on';
+                            const isActive = currentMode === m.id;
+                            return (
+                              <button
+                                key={m.id}
+                                onClick={() => setSamEngagementMode(selected.instanceId, m.id)}
+                                title={m.label}
+                                className={`px-2 py-1 text-[10px] font-mono rounded border transition-all text-left truncate ${isActive
+                                    ? 'bg-rose-950/80 border-rose-500 text-rose-300 font-bold shadow-sm'
+                                    : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                                  }`}
+                              >
+                                {m.label}
+                              </button>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* KHỐI HIỆP ĐỒNG HỎA LỰC RADAR & CẮT ĐỊA HÌNH CHO TÊN LỬA */}
+                  {selected.category === 'TenLuaPhongKhong' && (
+                    <div className="space-y-2 pt-2 border-t border-rose-900/50">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-cyan-300 font-mono font-bold flex items-center gap-1">
+                          <Target className="w-3.5 h-3.5 text-cyan-400" />
+                          HIỆP ĐỒNG RADAR & CẮT ĐỊA HÌNH
+                        </span>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950/80 text-cyan-400 border border-cyan-500/40 font-mono font-bold">
+                          FIRE-CONTROL
+                        </span>
+                      </div>
+
+                      {/* 1. Chọn Đài Radar Chỉ Thị Mục Tiêu */}
+                      <div>
+                        <label className="text-[10px] text-slate-400 font-mono block mb-1">
+                          Đài Radar chỉ thị mục tiêu liên kết:
+                        </label>
+                        <select
+                          value={selected.designatedRadarId || ''}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? null : e.target.value;
+                            updateEquipment(selected.instanceId, { designatedRadarId: val });
+                          }}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                        >
+                          <option value="">-- Tự ngắm độc lập (Không liên kết đài) --</option>
+                          {instances
+                            .filter((i) => i.category === 'RadarCanhGioi' && i.instanceId !== selected.instanceId)
+                            .map((radar) => {
+                              const isCapable = radar.canDesignateForSam === true;
+                              return (
+                                <option key={radar.instanceId} value={radar.instanceId}>
+                                  {isCapable ? '🎯' : '⚠️'} [{radar.shortId || 'RADAR'}] {radar.name}{' '}
+                                  {isCapable
+                                    ? `(${EQUIPMENT_UI_LABELS.RADAR_SUBROLE_SHORT.FIRE_CONTROL})`
+                                    : `(${EQUIPMENT_UI_LABELS.RADAR_SUBROLE_SHORT.EARLY_WARNING})`}
+                                </option>
+                              );
+                            })}
+                        </select>
+                      </div>
+
+                      {/* Gợi ý / Cảnh báo về loại radar đã chọn */}
+                      {(() => {
+                        if (!selected.designatedRadarId) return null;
+                        const linkedRadar = instances.find((i) => i.instanceId === selected.designatedRadarId);
+                        if (!linkedRadar) return null;
+                        const isCapable = linkedRadar.canDesignateForSam === true;
+
+                        if (isCapable) {
                           return (
-                            <button
-                              key={m.id}
-                              onClick={() => setSamEngagementMode(selected.instanceId, m.id)}
-                              className={`px-2 py-1 text-[10px] font-mono rounded border transition-all text-left truncate ${isActive
-                                  ? 'bg-rose-950/80 border-rose-500 text-rose-300 font-bold shadow-sm'
-                                  : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                                }`}
-                            >
-                              {m.label}
-                            </button>
+                            <div className="p-2 rounded bg-cyan-950/60 border border-cyan-500/50 text-[10px] text-cyan-200 space-y-0.5">
+                              <div className="font-bold flex items-center gap-1 text-cyan-300">
+                                <span>✅ Đài {linkedRadar.shortId || 'Radar'} đạt chuẩn {EQUIPMENT_UI_LABELS.RADAR_SUBROLE_SHORT.FIRE_CONTROL}</span>
+                              </div>
+                              <p className="text-slate-300">
+                                {EQUIPMENT_UI_LABELS.GROUP_DESCRIPTIONS.RADAR_FIRE_CONTROL}
+                              </p>
+                            </div>
                           );
-                        })}
+                        }
+
+                        return (
+                          <div className="p-2 rounded bg-amber-950/60 border border-amber-600/50 text-[10px] text-amber-200 space-y-0.5">
+                            <div className="font-bold flex items-center gap-1 text-amber-300">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                              <span>⚠️ Cảnh báo: Đài này là {EQUIPMENT_UI_LABELS.RADAR_SUBROLE_SHORT.EARLY_WARNING}</span>
+                            </div>
+                            <p className="text-amber-200/90">
+                              {linkedRadar.name} chỉ là đài cảnh giới nhìn vòng phát hiện sớm từ xa, không đo cao 3D trực tiếp để dẫn bắn cho tên lửa!
+                            </p>
+                          </div>
+                        );
+                      })()}
+
+                      {/* 2. Chọn Chế độ Cắt Địa Hình Hỏa Lực */}
+                      <div>
+                        <label className="text-[10px] text-slate-400 font-mono block mb-1">
+                          Cơ chế cắt địa hình vùng hỏa lực:
+                        </label>
+                        <div className="space-y-1">
+                          {[
+                            {
+                              id: 'organic',
+                              name: '⛰️ Tự cắt địa hình độc lập',
+                              desc: 'Vòm tên lửa tự cắt 3D theo góc che khuất từ trận địa tên lửa.',
+                            },
+                            {
+                              id: 'linked_radar',
+                              name: '📡 Bắn theo vùng quét của Radar',
+                              desc: 'Tên lửa chỉ được phép bắn trong phạm vi đài radar chỉ thị quét được.',
+                            },
+                            {
+                              id: 'intersection',
+                              name: '🎯 Giao thoa kép (SAM ∩ Radar)',
+                              desc: 'Vừa bị chặn bởi địa hình tại trận địa SAM, vừa nằm trong vùng phủ radar.',
+                            },
+                          ].map((opt) => {
+                            const isModeActive = (selected.samTerrainMaskMode || 'organic') === opt.id;
+                            const isOptionDisabled = opt.id !== 'organic' && !selected.designatedRadarId;
+                            return (
+                              <button
+                                key={opt.id}
+                                disabled={isOptionDisabled}
+                                onClick={() => {
+                                  updateEquipment(selected.instanceId, {
+                                    samTerrainMaskMode: opt.id as any,
+                                  });
+                                }}
+                                className={`w-full text-left p-1.5 rounded border transition-all ${
+                                  isOptionDisabled
+                                    ? 'opacity-40 cursor-not-allowed bg-slate-950/40 border-slate-900 text-slate-500'
+                                    : isModeActive
+                                    ? 'bg-rose-950/80 border-rose-500 text-rose-200 shadow-sm'
+                                    : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                                }`}
+                              >
+                                <div className="text-[10px] font-bold">{opt.name}</div>
+                                <div className="text-[9px] text-slate-400 leading-tight mt-0.5">
+                                  {opt.desc}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1332,6 +1539,12 @@ export const RightInspector: React.FC = () => {
                         <span>Đang tính toán ma trận độ cao địa hình...</span>
                       </div>
                     )}
+                    {dome3DMode === 'terrain-aware' && (!activeVolume || activeVolume.terrainStatus !== 'loaded') && !isCalculatingVolume && (
+                      <div className="flex items-center gap-2 p-1.5 bg-amber-950/40 rounded border border-amber-500/30 text-[10px] font-mono text-amber-300">
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        <span>Chưa có đủ dữ liệu địa hình để dựng vòm LOS.</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* 2. BẢNG CÁC NÚT TẦM THEO ĐỘ CAO (RCS S_mt) & 3D LOS ĐỊA HÌNH */}
@@ -1345,9 +1558,14 @@ export const RightInspector: React.FC = () => {
                         <span className="text-[9px] bg-slate-950 text-slate-400 border border-slate-800 px-1.5 py-0.5 rounded font-mono">
                           k = 4/3
                         </span>
-                        <span className="text-[9px] bg-emerald-950/80 text-emerald-300 border border-emerald-600/40 px-1.5 py-0.5 rounded font-mono font-bold">
-                          SHADOW: TỰ ĐỘNG
-                        </span>
+                        <button
+                          onClick={toggleOccludedVolume}
+                          aria-pressed={showOccludedVolume}
+                          title="Khối đỏ thể hiện vùng khuất sau núi. Bấm để bật hoặc ẩn."
+                          className="text-[9px] bg-rose-950/80 text-rose-300 border border-rose-600/40 px-1.5 py-0.5 rounded font-mono font-bold cursor-pointer"
+                        >
+                          {showOccludedVolume ? 'VÙNG KHUẤT: BẬT' : 'VÙNG KHUẤT: ẨN'}
+                        </button>
                       </div>
                     </div>
 
@@ -1814,9 +2032,404 @@ export const RightInspector: React.FC = () => {
                 const vMaxMps = samProfile?.vMaxMps || selected.maxTargetSpeedMps || samTmpl?.maxTargetSpeedMps || (isSpyder ? 800 : 700);
                 const pGhKm = samProfile?.pGhKm || selected.maxTargetParamKm || samTmpl?.maxTargetParamKm || 16.5;
                 const activeSamVolume = samVolumes[selected.instanceId];
+                const hasCompositeBattery = !!(selected.compositeBattery && selected.batteryConfig);
+                const compBattery = selected.compositeBattery;
+                const battCfg = selected.batteryConfig;
 
                 return (
-                  <div className={`p-2.5 rounded-xl border space-y-2.5 ${isSpyder
+                  <div className="space-y-2.5">
+                    {/* KHỐI CỤM TỔ HỢP TÊN LỬA ĐỒNG BỘ (COMPOSITE BATTERY) */}
+                    {hasCompositeBattery && compBattery && battCfg && (
+                      <div className="p-2.5 rounded-xl border border-amber-500/50 bg-slate-900/80 space-y-2.5 shadow-lg">
+                        {/* Header Cụm */}
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                            <span className="text-[10.5px] font-bold font-mono text-amber-300 uppercase truncate">
+                              CỤM BIÊN CHẾ {battCfg.batteryType.toUpperCase()}
+                            </span>
+                          </div>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-950 border border-amber-500/50 text-amber-300">
+                            {battCfg.launcherCount || 4} BỆ PHÓNG
+                          </span>
+                        </div>
+
+                        {/* 1. KHỐI THUỘC TÍNH & BẢNG TẦM RADAR HỮU CƠ CỦA TỔ HỢP (TAR & FCR) */}
+                        {(() => {
+                          const currentTarId = battCfg.tarRadarId || battCfg.tarRadarTemplateId;
+                          const currentFcrId = battCfg.fcrRadarId || battCfg.fcrRadarTemplateId;
+                          const activeTarTmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === currentTarId);
+                          const activeFcrTmpl = EQUIPMENT_TEMPLATES.find((t) => t.id === currentFcrId);
+                          const activeRadarTmpl = activeOrganicRadarRole === 'tar' ? activeTarTmpl : activeFcrTmpl;
+
+                          const formatWavelengthStr = (wl?: number) => {
+                            if (!wl) return 'Chưa xác định';
+                            if (wl >= 1) return `${wl.toFixed(1)}m (Sóng mét / VHF)`;
+                            if (wl >= 0.05) return `${(wl * 100).toFixed(0)}cm (Sóng dm / S-band)`;
+                            return `${(wl * 100).toFixed(1)}cm (Sóng cm / X-band)`;
+                          };
+
+                          return (
+                            <div className="bg-slate-900/90 rounded-xl border border-emerald-500/40 p-2.5 space-y-2.5">
+                              {/* Header Accordion */}
+                              <div
+                                onClick={() => setIsOrganicRadarOpen(!isOrganicRadarOpen)}
+                                className="flex items-center justify-between cursor-pointer select-none"
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <RadioTower className="w-4 h-4 text-emerald-400" />
+                                  <span className="text-[10.5px] font-bold font-mono text-emerald-300 uppercase tracking-wide">
+                                    KHÍ TÀI RADAR HỮU CƠ
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[8.5px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 font-bold">
+                                    {activeOrganicRadarRole === 'tar' ? 'ĐÀI TRINH SÁT (TAR)' : 'ĐÀI DẪN BẮN (FCR)'}
+                                  </span>
+                                  {isOrganicRadarOpen ? (
+                                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                                  ) : (
+                                    <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                                  )}
+                                </div>
+                              </div>
+
+                              {isOrganicRadarOpen && (
+                                <div className="space-y-2 pt-1 border-t border-slate-800 animate-in fade-in duration-150">
+                                  {/* Tab Selector: [TAR] vs [FCR] */}
+                                  <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-950 rounded-lg border border-slate-800 font-mono text-[9.5px]">
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveOrganicRadarRole('tar')}
+                                      className={`py-1 px-1.5 rounded transition-all cursor-pointer font-bold text-center truncate ${
+                                        activeOrganicRadarRole === 'tar'
+                                          ? 'bg-emerald-950 border border-emerald-400 text-emerald-200 shadow-sm'
+                                          : 'text-slate-400 hover:text-slate-200'
+                                      }`}
+                                    >
+                                      📡 ĐÀI TRINH SÁT (TAR)
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveOrganicRadarRole('fcr')}
+                                      className={`py-1 px-1.5 rounded transition-all cursor-pointer font-bold text-center truncate ${
+                                        activeOrganicRadarRole === 'fcr'
+                                          ? 'bg-amber-950 border border-orange-400 text-orange-200 shadow-sm'
+                                          : 'text-slate-400 hover:text-slate-200'
+                                      }`}
+                                    >
+                                      🎯 ĐÀI DẪN BẮN (FCR)
+                                    </button>
+                                  </div>
+
+                                  {/* Selector đổi nhanh đài TAR (Ví dụ S-300: 96L6E vs 36D6M) */}
+                                  {activeOrganicRadarRole === 'tar' && battCfg.alternateTarOptions && battCfg.alternateTarOptions.length > 0 && (
+                                    <div className="p-1.5 bg-slate-950/80 rounded-lg border border-emerald-900/50 space-y-1">
+                                      <span className="text-[8.5px] font-mono text-emerald-400/90 font-bold block">
+                                        LỰA CHỌN ĐÀI TRINH SÁT CHỈ THỊ (TAR):
+                                      </span>
+                                      <div className="grid grid-cols-2 gap-1">
+                                        {battCfg.alternateTarOptions.map((opt) => {
+                                          const isCurrent = battCfg.tarRadarId === opt.id;
+                                          return (
+                                            <button
+                                              key={opt.id}
+                                              type="button"
+                                              onClick={() => switchBatteryTarRadar(selected.instanceId, opt.id)}
+                                              className={`px-1.5 py-1 rounded text-[8.5px] font-mono border transition-all text-left truncate cursor-pointer ${
+                                                isCurrent
+                                                  ? 'bg-emerald-950 border-emerald-400 text-emerald-200 font-bold shadow-sm'
+                                                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                                              }`}
+                                            >
+                                              <div className="truncate font-bold">{opt.name.split('(')[0].trim()}</div>
+                                              <div className="text-[7.5px] text-slate-400">{opt.rangeKm}km • H_max {opt.heightKm}km</div>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Bảng thông số chi tiết đài radar đang chọn */}
+                                  <div className="p-2 bg-slate-950/90 rounded-lg border border-slate-800/80 font-mono text-[9px] space-y-1.5">
+                                    <div className="flex justify-between items-start gap-1 pb-1 border-b border-slate-800/60">
+                                      <span className="text-slate-400">Khí tài:</span>
+                                      <span className={`font-bold text-right ${activeOrganicRadarRole === 'tar' ? 'text-emerald-300' : 'text-orange-300'}`}>
+                                        {activeRadarTmpl?.name || (activeOrganicRadarRole === 'tar' ? battCfg.tarRadarName : battCfg.fcrRadarName)}
+                                      </span>
+                                    </div>
+
+                                    {activeRadarTmpl?.description && (
+                                      <p className="text-[8.5px] text-slate-400 italic leading-snug">
+                                        {activeRadarTmpl.description}
+                                      </p>
+                                    )}
+
+                                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-0.5 border-t border-slate-800/60">
+                                      <div>
+                                        <span className="text-slate-500 block text-[8px]">Bước sóng λ:</span>
+                                        <span className="text-cyan-300 font-bold">
+                                          {formatWavelengthStr(activeRadarTmpl?.wavelengthM)}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-500 block text-[8px]">Tầm cực đại D_max:</span>
+                                        <span className="text-amber-300 font-bold">
+                                          {activeRadarTmpl?.defaultRangeKm || (activeOrganicRadarRole === 'tar' ? battCfg.tarRangeKm : battCfg.fcrRangeKm)} km
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-500 block text-[8px]">Trần phủ sóng H_max:</span>
+                                        <span className="text-cyan-300 font-bold">
+                                          {activeRadarTmpl?.coverageHeightKm || (activeOrganicRadarRole === 'tar' ? battCfg.tarHeightKm : 25)} km
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-500 block text-[8px]">Tháp ăng-ten AGL:</span>
+                                        <span className="text-slate-200 font-bold">
+                                          {activeRadarTmpl?.antennaHeightAGL || 15} m
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-500 block text-[8px]">Dải góc tà quét:</span>
+                                        <span className="text-slate-300 font-bold">
+                                          {activeRadarTmpl?.minElevationDeg ?? 0}° – {activeRadarTmpl?.maxElevationDeg ?? 55}°
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-500 block text-[8px]">Tốc độ quay 360°:</span>
+                                        <span className="text-slate-300 font-bold">
+                                          {activeRadarTmpl?.defaultScanSpeed ? `${activeRadarTmpl.defaultScanSpeed}°/s` : 'Quét mảng pha'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* BẢNG TẦM THEO ĐỘ CAO (RCS S_mt) */}
+                                  {activeRadarTmpl?.altitudeDetectionTable && (
+                                    <div className="p-2 bg-slate-950/90 rounded-lg border border-slate-800 space-y-1.5 font-mono">
+                                      <div className="flex items-center justify-between border-b border-slate-800 pb-1">
+                                        <span className="text-[9px] font-bold text-amber-300 flex items-center gap-1">
+                                          <Table2 className="w-3 h-3 text-amber-400" />
+                                          BẢNG TẦM THEO ĐỘ CAO (RCS S_mt):
+                                        </span>
+                                        <span className="text-[8px] text-slate-500">k = 4/3</span>
+                                      </div>
+                                      <div className="overflow-x-auto rounded border border-slate-800/80 bg-slate-950">
+                                        <table className="w-full text-[8.5px] text-left font-mono">
+                                          <thead className="bg-slate-900/90 text-slate-400 border-b border-slate-800">
+                                            <tr>
+                                              {activeRadarTmpl.altitudeDetectionTable.headers.map((h, i) => (
+                                                <th
+                                                  key={i}
+                                                  className={`p-1 font-bold ${i === 0 ? 'text-slate-300' : 'text-cyan-300 text-center'}`}
+                                                >
+                                                  {h}
+                                                </th>
+                                              ))}
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-slate-800/60">
+                                            {activeRadarTmpl.altitudeDetectionTable.rows.map((row, idx) => {
+                                              const numVal1 = typeof row.val1 === 'number' ? row.val1 : parseFloat(String(row.val1));
+                                              const numVal2 = row.val2 !== undefined && row.val2 !== '-'
+                                                ? (typeof row.val2 === 'number' ? row.val2 : parseFloat(String(row.val2)))
+                                                : undefined;
+                                              const isRowAltitudeActive = (selected.targetAltitudeM ?? targetHeightMeters) === row.altitudeM;
+
+                                              return (
+                                                <tr
+                                                  key={idx}
+                                                  className={`transition-colors ${isRowAltitudeActive ? 'bg-cyan-950/40' : 'hover:bg-slate-900/50'}`}
+                                                >
+                                                  <td className="p-1 font-bold text-amber-300 whitespace-nowrap border-r border-slate-800/60">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setTargetHeightMeters(row.altitudeM);
+                                                        setSelectedAltitudeM(row.altitudeM);
+                                                        updateEquipment(selected.instanceId, { targetAltitudeM: row.altitudeM });
+                                                      }}
+                                                      className={`px-1 py-0.5 rounded text-[8px] font-bold transition-all cursor-pointer ${
+                                                        isRowAltitudeActive
+                                                          ? 'bg-amber-500/20 text-amber-200 border border-amber-500/50'
+                                                          : 'text-amber-300 hover:text-white'
+                                                      }`}
+                                                      title={`Chọn tầng độ cao ${row.altitudeM}m để khảo sát`}
+                                                    >
+                                                      {row.altitudeM >= 1000 ? `${(row.altitudeM / 1000).toLocaleString()} km` : `${row.altitudeM} m`}
+                                                    </button>
+                                                  </td>
+                                                  <td className="p-1 text-center font-bold text-emerald-300">
+                                                    {!isNaN(numVal1) ? `${numVal1} km` : '-'}
+                                                  </td>
+                                                  {(activeRadarTmpl.altitudeDetectionTable?.headers?.length ?? 0) > 2 && (
+                                                    <td className="p-1 text-center font-bold text-cyan-300">
+                                                      {numVal2 !== undefined && !isNaN(numVal2) ? `${numVal2} km` : '-'}
+                                                    </td>
+                                                  )}
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Thông tin bố trí bệ phóng & cự ly cáp */}
+                        <div className="p-2 bg-slate-950/80 rounded-lg border border-slate-800 text-[9.5px] font-mono flex justify-between items-center">
+                          <span className="text-slate-400">Bố trí bệ phóng:</span>
+                          <span className="text-emerald-400 font-bold">R ~ {battCfg.defaultLauncherDistanceM}m (Cáp tối đa {battCfg.maxCableDistanceM}m)</span>
+                        </div>
+
+                        {/* Bật/Tắt 4 Lớp Vòm Tác Chiến & Bệ Phóng */}
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-bold text-slate-400 font-mono uppercase tracking-wider block">
+                            HIỂN THỊ CÁC LỚP TÁC CHIẾN (LAYERS):
+                          </span>
+                          <div className="grid grid-cols-3 gap-1.5 font-mono text-[9px]">
+                            <button
+                              onClick={() =>
+                                setBatteryLayerVisibility(
+                                  selected.instanceId,
+                                  'tarDome',
+                                  !compBattery.showLayers.tarDome
+                                )
+                              }
+                              className={`p-1.5 rounded border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                                compBattery.showLayers.tarDome
+                                  ? 'bg-sky-950/80 border-sky-500 text-sky-300 font-bold shadow-sm'
+                                  : 'bg-slate-950/60 border-slate-800 text-slate-500 hover:border-slate-700'
+                              }`}
+                              title="Vòm radar trinh sát chỉ thị mục tiêu 360° (Màu xanh dương Sky Blue, alpha ~0.12)"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-sky-400" />
+                                <span>Vòm TAR</span>
+                              </div>
+                              <span className="text-[8.5px] opacity-80">{compBattery.showLayers.tarDome ? 'BẬT' : 'ẨN'}</span>
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                setBatteryLayerVisibility(
+                                  selected.instanceId,
+                                  'wezDome',
+                                  !compBattery.showLayers.wezDome
+                                )
+                              }
+                              className={`p-1.5 rounded border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                                compBattery.showLayers.wezDome
+                                  ? 'bg-rose-950/80 border-rose-500 text-rose-300 font-bold shadow-sm'
+                                  : 'bg-slate-950/60 border-slate-800 text-slate-500 hover:border-slate-700'
+                              }`}
+                              title="Vùng hỏa lực tiêu diệt WEZ (Màu đỏ đậm, alpha ~0.38, co theo góc quạt khi ở Sector mode)"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-rose-500" />
+                                <span>Vùng WEZ</span>
+                              </div>
+                              <span className="text-[8.5px] opacity-80">{compBattery.showLayers.wezDome ? 'BẬT' : 'ẨN'}</span>
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                setBatteryLayerVisibility(
+                                  selected.instanceId,
+                                  'launchers',
+                                  !compBattery.showLayers.launchers
+                                )
+                              }
+                              className={`p-1.5 rounded border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                                compBattery.showLayers.launchers
+                                  ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 font-bold shadow-sm'
+                                  : 'bg-slate-950/60 border-slate-800 text-slate-500 hover:border-slate-700'
+                              }`}
+                              title="Hiển thị 4 bệ phóng và đường cáp điều khiển nối về xe trung tâm"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                                <span>4 Bệ & Cáp</span>
+                              </div>
+                              <span className="text-[8.5px] opacity-80">{compBattery.showLayers.launchers ? 'BẬT' : 'ẨN'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+
+                        {/* Danh sách 4 Bệ Phóng LN-1 .. LN-4 & Giám sát tuyến cáp */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-bold text-slate-400 font-mono uppercase tracking-wider">
+                              TRẠNG THÁI 4 BỆ PHÓNG:
+                            </span>
+                            <span className="text-[8.5px] text-slate-500 font-mono">
+                              Kéo thả bệ trực tiếp trên 3D
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 font-mono text-[9px]">
+                            {compBattery.launchers.map((ln) => {
+                              const isOverCable = ln.distanceToCenterM > battCfg.maxCableDistanceM;
+                              return (
+                                <div
+                                  key={ln.id}
+                                  className={`p-1.5 rounded border transition-all ${
+                                    isOverCable
+                                      ? 'bg-rose-950/40 border-rose-600/70 text-rose-200'
+                                      : !ln.isValid
+                                      ? 'bg-amber-950/40 border-amber-600/70 text-amber-200'
+                                      : 'bg-slate-950/70 border-slate-800 text-slate-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="px-1 py-0.2 rounded font-bold bg-slate-800 text-cyan-300">
+                                        LN-{ln.index || ln.id.slice(-1)}
+                                      </span>
+                                      <span className="font-bold">
+                                        {Math.round(ln.distanceToCenterM)}m
+                                      </span>
+                                      <span className="text-slate-400">
+                                        • {Math.round(ln.bearingFromCenterDeg)}°
+                                      </span>
+                                      <span className="text-slate-400">
+                                        • {Math.round(ln.altitude)}m MSL
+                                      </span>
+                                    </div>
+                                    <div>
+                                      {isOverCable ? (
+                                        <span className="text-[8.5px] text-rose-400 font-bold">
+                                          ⚠️ Quá cáp (&gt;{battCfg.maxCableDistanceM}m)
+                                        </span>
+                                      ) : !ln.isValid ? (
+                                        <span className="text-[8.5px] text-amber-400 font-bold">
+                                          ⚠️ Bị che khuất
+                                        </span>
+                                      ) : (
+                                        <span className="text-[8.5px] text-emerald-400 font-bold">
+                                          ✅ Đạt chuẩn
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* VÒM HỎA LỰC TIÊU DIỆT (TIÊU DIỆT / ĐÁNH CHẶN) */}
+                    <div className={`p-2.5 rounded-xl border space-y-2.5 ${isSpyder
                       ? 'bg-slate-900/60 border-sky-500/40'
                       : 'bg-slate-900/60 border-rose-500/40'
                     }`}>
@@ -1989,64 +2602,117 @@ export const RightInspector: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Cụm 5 nút chọn chế độ chiến thuật SAM (cho các tổ hợp SAM có profiles như Pechora) */}
-                    {selected.category === 'TenLuaPhongKhong' && !isSpyder && (
+                    {/* Cụm nút chọn chế độ chiến thuật SAM (hỗ trợ động các profile như S-300, Pechora, SPYDER...) */}
+                    {selected.category === 'TenLuaPhongKhong' && (
                       <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
                         <div className="flex items-center justify-between">
                           <span className="text-[9.5px] text-slate-400 font-mono font-semibold">
-                            CHẾ ĐỘ TÁC CHIẾN HỎA LỰC:
+                            LOẠI MỤC TIÊU & CHẾ ĐỘ BẮN:
                           </span>
                           <span className="text-[9px] text-rose-300 font-mono font-bold bg-rose-950/80 px-1.5 py-0.5 rounded border border-rose-500/40">
-                            {activeSamMode === 'head_on' && 'BẮN ĐÓN'}
+                            {activeSamMode === 'head_on' && (isSpyder ? 'SPYDER-MR (BẮN ĐÓN)' : 'BẮN ĐÓN KHÍ ĐỘNG')}
+                            {activeSamMode === 'sr_mode' && 'SPYDER-SR (TẦM NGẮN 20KM)'}
+                            {activeSamMode === 'lobl_sr' && 'SPYDER-SR (KHÓA TRƯỚC PHÓNG LOBL)'}
+                            {activeSamMode === 'ballistic' && 'ĐÁNH CHẶN ĐẠN ĐẠO'}
                             {activeSamMode === 'tail_chase' && 'BẮN ĐUỔI'}
+                            {activeSamMode === 'toplite_optical' && 'QUANG ĐIỆN TỬ TOPLITE'}
+                            {activeSamMode === 'jamming' && 'CHỐNG NHIỄU EW'}
                             {activeSamMode === 'jamming_passive' && 'NHIỄU TIÊU CỰC'}
                             {activeSamMode === 'jamming_active' && 'NHIỄU TÍCH CỰC'}
                             {activeSamMode === 'tbk_optical' && 'QUANG HỌC TBK'}
                           </span>
                         </div>
-                        <div className="grid grid-cols-2 gap-1">
-                          {(
-                            [
-                              { id: 'head_on', label: 'Bắn đón (Chuẩn)' },
-                              { id: 'tail_chase', label: 'Bắn đuổi' },
-                              { id: 'jamming_passive', label: 'Nhiễu tiêu cực' },
-                              { id: 'jamming_active', label: 'Nhiễu tích cực' },
-                              { id: 'tbk_optical', label: 'Quang học (TBK)' },
-                            ] as const
-                          ).map((m) => {
-                            const isActive = activeSamMode === m.id;
-                            return (
-                              <button
-                                key={m.id}
-                                onClick={() => setSamEngagementMode(selected.instanceId, m.id)}
-                                className={`px-2 py-1 text-[9.5px] font-mono rounded border transition-all text-left truncate cursor-pointer ${isActive
-                                    ? 'bg-rose-950 border-rose-500 text-rose-200 font-bold shadow-sm'
-                                    : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                        <div className="grid grid-cols-2 gap-1 font-mono text-[9px]">
+                          {Object.keys(selected.samProfiles || EQUIPMENT_TEMPLATES.find((t) => t.id === selected.templateId)?.samProfiles || {}).length > 0 ? (
+                            Object.entries((selected.samProfiles || EQUIPMENT_TEMPLATES.find((t) => t.id === selected.templateId)?.samProfiles || {}) as Record<string, { modeVi: string; dMaxKm: number; hMaxM: number; hMinM?: number }>).map(([key, prof]) => {
+                              const isActive = activeSamMode === key;
+                              return (
+                                <button
+                                  key={key}
+                                  onClick={() => setSamEngagementMode(selected.instanceId, key as any)}
+                                  className={`p-1.5 text-[9px] font-mono rounded border transition-all text-left cursor-pointer flex flex-col justify-between gap-0.5 ${
+                                    isActive
+                                      ? 'bg-rose-950 border-rose-500 text-rose-200 font-bold shadow-sm'
+                                      : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                                   }`}
-                              >
-                                {m.label}
-                              </button>
-                            );
-                          })}
+                                >
+                                  <span className="font-bold truncate">{prof.modeVi}</span>
+                                  <span className="text-[8px] text-slate-400">
+                                    Tầm: <span className="text-amber-300 font-bold">{prof.dMaxKm} km</span> • H: {prof.hMaxM / 1000} km
+                                  </span>
+                                </button>
+                              );
+                            })
+                          ) : (
+                            (
+                              [
+                                { id: 'head_on', label: 'Bắn đón (Chuẩn)' },
+                                { id: 'tail_chase', label: 'Bắn đuổi' },
+                                { id: 'jamming_passive', label: 'Nhiễu tiêu cực' },
+                                { id: 'jamming_active', label: 'Nhiễu tích cực' },
+                                { id: 'tbk_optical', label: 'Quang học (TBK)' },
+                              ] as const
+                            ).map((m) => {
+                              const isActive = activeSamMode === m.id;
+                              return (
+                                <button
+                                  key={m.id}
+                                  onClick={() => setSamEngagementMode(selected.instanceId, m.id)}
+                                  className={`px-2 py-1 text-[9.5px] font-mono rounded border transition-all text-left truncate cursor-pointer ${
+                                    isActive
+                                      ? 'bg-rose-950 border-rose-500 text-rose-200 font-bold shadow-sm'
+                                      : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                                  }`}
+                                >
+                                  {m.label}
+                                </button>
+                              );
+                            })
+                          )}
                         </div>
                       </div>
                     )}
 
-                    {/* Giải thích trực quan vòm hỏa lực SAM */}
+                    {/* Giải thích trực quan vòm hỏa lực SAM & tính năng khí tài */}
                     {isSpyder ? (
-                      <div className="p-2 bg-slate-950/90 rounded border border-slate-800 space-y-1 text-[9px] font-mono">
-                        <span className="text-slate-400 block font-bold text-[9.5px]">CẤU TRÚC VÒM HỎA LỰC SPYDER (BẢNG 1):</span>
-                        <div className="flex items-center gap-1.5 text-emerald-300">
-                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block shrink-0 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
-                          <span>Vòm SR: D_max 20 km • H_max 9 km (Vùng chết R_min 1 km, H_min 20 m)</span>
-                        </div>
+                      <div className="p-2 bg-slate-950/90 rounded border border-slate-800 space-y-1.5 text-[9px] font-mono">
+                        <span className="text-sky-400 block font-bold text-[9.5px]">TÍNH NĂNG CHIẾN - KỸ THUẬT SPYDER-SR/MR (BỘ QUỐC PHÒNG):</span>
                         <div className="flex items-center gap-1.5 text-sky-300">
-                          <span className="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block shrink-0 shadow-[0_0_6px_rgba(14,165,233,0.8)]" />
-                          <span>Vòm MR: D_max 50 km • H_max 16 km (Vùng chết R_min 2 km, H_min 20 m)</span>
+                          <span className="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block shrink-0 shadow-[0_0_6px_rgba(56,189,248,0.8)]" />
+                          <span>Đài Ra đa EL/M-2084AD MMR: Tầm <strong>330 km</strong>, 30 RPM (180°/s), H: 30 km, cao 8m</span>
                         </div>
-                        <div className="flex items-center gap-1.5 text-purple-300">
-                          <span className="w-2.5 h-2.5 rounded-full bg-purple-400 inline-block shrink-0 shadow-[0_0_6px_rgba(192,132,252,0.8)]" />
-                          <span>Mặt cắt bán elip D(H) = D_max√(1-(H/H_max)²) • Phóng đa hướng 360°</span>
+                        <div className="flex items-center gap-1.5 text-rose-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shrink-0 shadow-[0_0_6px_rgba(244,63,94,0.8)]" />
+                          <span>Hỏa lực 6 xe MFU (36 đạn): Phản ứng <strong>4 giây</strong>, diệt đồng thời <strong>20 mục tiêu</strong></span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-emerald-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block shrink-0 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
+                          <span>Đạn MR: D 2-50km, H 20m-16km (1200 m/s) • Đạn SR: D 1-20km, H 20m-9km</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-amber-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block shrink-0 shadow-[0_0_6px_rgba(245,158,11,0.8)]" />
+                          <span>Cảm biến Toplite trên MFU: FLIR Gen 3 + LRF 20km, liên lạc vô tuyến BNET 10 km</span>
+                        </div>
+                      </div>
+                    ) : selected.templateId === 'sam_s300' || selected.batteryConfig?.batteryType?.includes('S-300') ? (
+                      <div className="p-2 bg-slate-950/90 rounded border border-slate-800 space-y-1.5 text-[9px] font-mono">
+                        <span className="text-amber-400 block font-bold text-[9.5px]">
+                          TÍNH NĂNG CHIẾN - KỸ THUẬT С-300ПМУ1 (CHUẨN QUÂN SỰ):
+                        </span>
+                        <div className="flex items-center gap-1.5 text-sky-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block shrink-0 shadow-[0_0_6px_rgba(56,189,248,0.8)]" />
+                          <span>Đài ra đa trinh sát 96Л6Э (TAR): Phát hiện 360° cự ly <strong>300 km</strong> • H: 100 km</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-rose-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shrink-0 shadow-[0_0_6px_rgba(244,63,94,0.8)]" />
+                          <span>Đạn tên lửa 48Н6Э (WEZ): Khí động <strong>150 km</strong> • Đạn đạo <strong>40 km</strong> • V đón 180 km</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-orange-300">
+                          <span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block shrink-0 shadow-[0_0_6px_rgba(251,146,60,0.8)]" />
+                          <span>Đài chiếu xạ 30Н6Э1 (РПН): Bám sát đồng thời 6 mục tiêu, điều khiển 12 tên lửa</span>
+                        </div>
+                        <div className="p-1 rounded bg-slate-900 border border-slate-800/80 text-[8px] text-slate-400 italic">
+                          ℹ️ Ở độ cao thấp (H ≤ 500m), cự ly tiêu diệt thực tế bị giới hạn bởi độ cong Trái Đất (~38-45km đối với tên lửa hành trình). Chọn độ cao cao hơn trong bảng để vươn hết tầm 150km.
                         </div>
                       </div>
                     ) : (
@@ -2094,8 +2760,9 @@ export const RightInspector: React.FC = () => {
                       </span>
                     </button>
                   </div>
-                );
-              })()}
+                </div>
+              );
+            })()}
 
               {/* Trường hợp 3: Cảm Biến Thụ Động ESM (Kolchuga-M) */}
               {caps.hasSensorNetwork && (

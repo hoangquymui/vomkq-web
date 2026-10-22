@@ -12,6 +12,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useShallow } from 'zustand/react/shallow';
 import type { LayoutSaveData } from '../../types/layout';
 import { CATEGORY_META } from '../../types/equipment';
 
@@ -23,7 +24,14 @@ export const LayoutModal: React.FC = () => {
     exportToLayout,
     importFromLayout,
     clearAll,
-  } = useTacticalStore();
+  } = useTacticalStore(useShallow((state) => ({
+    showLayoutModal: state.showLayoutModal,
+    setShowLayoutModal: state.setShowLayoutModal,
+    instances: state.instances,
+    exportToLayout: state.exportToLayout,
+    importFromLayout: state.importFromLayout,
+    clearAll: state.clearAll,
+  })));
 
   const [activeTab, setActiveTab] = useState<'export' | 'import'>('export');
   const [layoutName, setLayoutName] = useState<string>(() => {

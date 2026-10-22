@@ -2,50 +2,54 @@
 trigger: always_on
 ---
 
-# Project Development Rules
+# AI Coding Agent Rules
 
-## 1. Nguyên tắc chung
-- Trước khi sửa code phải đọc và hiểu code liên quan.
-- Ưu tiên sửa tối thiểu, tránh thay đổi không cần thiết.
-- Không tự ý thay đổi kiến trúc dự án.
-- Không tạo duplicate logic khi đã có function/utility phù hợp.
+## Core Behavior
 
-## 2. Thông số phải được ghi chú
-Mọi thông số quan trọng dùng trong logic phải có nguồn gốc rõ ràng.
+- Understand the task before modifying code.
+- Inspect only relevant files.
+- Prefer minimal, targeted changes.
+- Follow existing architecture and conventions.
+- Do not introduce unnecessary dependencies.
+- Avoid speculative refactoring.
 
-Khi gặp một thông số quan trọng, xác định:
-- Tên biến
-- Type
-- Giá trị mặc định
-- Đơn vị
-- Phạm vi hợp lệ nếu có
-- Nơi khai báo
-- Nơi được sử dụng
-- Ý nghĩa của nó
-- Quan hệ với các thông số khác
+## Autonomy
 
-Không đổi đơn vị giữa các module mà không ghi rõ phép chuyển đổi.
+- Complete the requested task autonomously.
+- Do not ask unnecessary clarification questions.
+- Make reasonable assumptions for reversible changes.
+- Ask before destructive or irreversible operations.
+- Do not stop at the first implementation if verification
+  is still needed.
 
-## 3. Debug
-Khi sửa bug:
-- Mô tả nguyên nhân trước khi sửa.
-- Xác định input.
-- Xác định processing.
-- Xác định output.
-- Ghi lại giá trị quan trọng gây lỗi.
-- Sau khi sửa phải xác minh lại bằng trường hợp tái hiện bug.
+## Token Efficiency
 
-Cập nhật docs/DEBUG_NOTES.md sau khi hoàn thành bug fix.
+- Never scan the entire repository without a clear reason.
+- Search filenames and symbols before opening large files.
+- Limit log and command output.
+- Avoid rereading unchanged files.
+- Do not repeat previously completed investigations.
 
-## 4. Không được tự suy đoán
-- Không tự tạo giá trị mặc định nếu chưa có căn cứ.
-- Không tự đổi đơn vị.
-- Không tự thay đổi công thức quan trọng.
-- Nếu thiếu thông tin, báo rõ phần còn thiếu.
+## Code Quality
 
-## 5. Git
-Agent không được tự thực hiện:
-- git push
-- git commit
+- Preserve existing functionality.
+- Maintain backward compatibility where required.
+- Keep changes modular.
+- Use existing project conventions.
+- Avoid changing unrelated files.
 
-Người dùng sẽ tự kiểm soát commit và push.
+## Verification
+
+- Run tests relevant to modified components.
+- Do not repeatedly run the full test suite without cause.
+- Fix failures introduced by the current changes.
+- Report any verification that could not be completed.
+
+## Reporting & Checkpoints
+
+- Summarize implemented changes.
+- List modified files.
+- Report test results and remaining issues.
+- Avoid unnecessary lengthy explanations.
+- **Checkpoint File**: Mỗi khi hoàn thành công việc hoặc kết thúc phiên làm việc, bắt buộc phải tạo 1 file checkpoint tại `docs/checkpoints/` (ví dụ `docs/checkpoints/checkpoint-<tên_tính_năng_hoặc_ngày>.md`) ghi lại toàn bộ những thứ đã làm, các file đã thay đổi, kết quả xác minh và trạng thái hiện tại/các bước tiếp theo.
+- **Checkpoint Link**: Trong phần phản hồi của trợ lý sau khi hoàn thành, luôn luôn kèm đường dẫn liên kết trực tiếp (clickable markdown link theo chuẩn `file:///...`) tới file checkpoint đó.

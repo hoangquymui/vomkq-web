@@ -12,8 +12,11 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useShallow } from 'zustand/react/shallow';
 import { destinationPoint } from '../../utils/radarLosEngine';
 import {
   calculateSamPearMaxRange,
@@ -57,7 +60,30 @@ export const RadarCrossSectionPanel: React.FC = () => {
     targetHeightMeters,
     setTargetHeightMeters,
     kFactor,
-  } = useTacticalStore();
+    coverageVolumes,
+    isCalculatingVolume,
+    isCalculatingLOS,
+  } = useTacticalStore(useShallow((state) => ({
+    instances: state.instances,
+    selectedInstanceId: state.selectedInstanceId,
+    coverageFields: state.coverageFields,
+    coverageVolumes: state.coverageVolumes,
+    isCalculatingVolume: state.isCalculatingVolume,
+    isCalculatingLOS: state.isCalculatingLOS,
+    showCrossSection: state.showCrossSection,
+    setShowCrossSection: state.setShowCrossSection,
+    selectedAzimuthDeg: state.selectedAzimuthDeg,
+    setSelectedAzimuthDeg: state.setSelectedAzimuthDeg,
+    samVolumes: state.samVolumes,
+    samEngagementModes: state.samEngagementModes,
+    setSamEngagementMode: state.setSamEngagementMode,
+    crossSectionProbePoint: state.crossSectionProbePoint,
+    setCrossSectionProbePoint: state.setCrossSectionProbePoint,
+    clearCrossSectionProbePoint: state.clearCrossSectionProbePoint,
+    targetHeightMeters: state.targetHeightMeters,
+    setTargetHeightMeters: state.setTargetHeightMeters,
+    kFactor: state.kFactor,
+  })));
 
   const [isMinimized, setIsMinimized] = useState(false);
   const [hoverData, setHoverData] = useState<{
@@ -100,6 +126,8 @@ export const RadarCrossSectionPanel: React.FC = () => {
   );
 
   const [prevSelectedId, setPrevSelectedId] = useState(selectedInstanceId);
+  const [prevSamMode, setPrevSamMode] = useState<SamEngagementMode | null>(null);
+
   if (prevSelectedId !== selectedInstanceId) {
     setPrevSelectedId(selectedInstanceId);
     setViewDistMinM(0);
@@ -113,14 +141,16 @@ export const RadarCrossSectionPanel: React.FC = () => {
     [samVolumes, selectedInst, isSam]
   );
 
-  // Tìm góc Azimuth gần nhất có trong Coverage Field
+  // Tìm góc Azimuth gần nhất có trong Coverage Field hoặc 3D Volume
   const availableAzimuths = useMemo(() => {
     if (isSam && samVolume) return samVolume.azimuthSamples || [];
+    const radarVol = selectedInstanceId && !isSam ? coverageVolumes[selectedInstanceId] : null;
+    if (radarVol && radarVol.terrainGrid) return radarVol.terrainGrid.azimuthSamples || [];
     if (!field || !field.azimuthRays) return [];
     return Object.keys(field.azimuthRays)
       .map(Number)
       .sort((a, b) => a - b);
-  }, [field, isSam, samVolume]);
+  }, [field, isSam, samVolume, selectedInstanceId, coverageVolumes]);
 
   const currentAzimuth = useMemo(() => {
     if (availableAzimuths.length === 0) return selectedAzimuthDeg;
@@ -152,6 +182,14 @@ export const RadarCrossSectionPanel: React.FC = () => {
     );
   }, [selectedInst, samEngagementModes]);
 
+  if (isSam && prevSamMode !== activeSamMode) {
+    setPrevSamMode(activeSamMode);
+    setViewDistMinM(0);
+    setViewDistMaxM(null);
+    setViewAltMinM(0);
+    setViewAltMaxM(null);
+  }
+
   const samTmpl = useMemo(
     () => (selectedInst ? EQUIPMENT_TEMPLATES.find((t) => t.id === selectedInst.templateId) : null),
     [selectedInst]
@@ -159,8 +197,69 @@ export const RadarCrossSectionPanel: React.FC = () => {
 
   const samProfile = useMemo(() => {
     if (!selectedInst || !isSam) return null;
-    return (selectedInst.samProfiles || samTmpl?.samProfiles)?.[activeSamMode];
+    const profiles = selectedInst.samProfiles || samTmpl?.samProfiles;
+    if (!profiles) return null;
+    let prof = profiles[activeSamMode];
+    if (!prof) {
+      if (activeSamMode === 'jamming_passive' && profiles['passive_jamming']) prof = profiles['passive_jamming'];
+      else if (activeSamMode === 'passive_jamming' && profiles['jamming_passive']) prof = profiles['jamming_passive'];
+      else if (activeSamMode === 'jamming_active' && profiles['active_jamming']) prof = profiles['active_jamming'];
+      else if (activeSamMode === 'active_jamming' && profiles['jamming_active']) prof = profiles['jamming_active'];
+      else if (activeSamMode === 'tbk_optical' && profiles['tvk_optical']) prof = profiles['tvk_optical'];
+      else if (activeSamMode === 'tvk_optical' && profiles['tbk_optical']) prof = profiles['tbk_optical'];
+      else if (activeSamMode === 'jamming' && (profiles['active_jamming'] || profiles['jamming_active'])) prof = profiles['active_jamming'] || profiles['jamming_active'];
+    }
+    return prof || null;
   }, [selectedInst, isSam, samTmpl, activeSamMode]);
+
+  // Danh sách các chế độ bắn thực tế theo cấu hình từng tổ hợp SAM
+  const availableModes = useMemo(() => {
+    if (!selectedInst || !isSam) return [];
+    const profiles = selectedInst.samProfiles || samTmpl?.samProfiles;
+    if (profiles && Object.keys(profiles).length > 0) {
+      return Object.entries(profiles).map(([id, p]) => {
+        let shortLabel = id;
+        if (id === 'head_on') shortLabel = 'Đón';
+        else if (id === 'tail_chase') shortLabel = 'Đuổi';
+        else if (id === 'ballistic') shortLabel = 'Đạn đạo';
+        else if (id === 'jamming') shortLabel = 'Nhiễu EW';
+        else if (id === 'passive_jamming' || id === 'jamming_passive') shortLabel = 'Nhiễu-TC';
+        else if (id === 'active_jamming' || id === 'jamming_active') shortLabel = 'Nhiễu-TK';
+        else if (id === 'tvk_optical' || id === 'tbk_optical') shortLabel = 'Quang';
+        else if (id === 'surface') shortLabel = 'Mặt đất';
+        else if (id === 'sr_mode') shortLabel = 'SR-20km';
+        else if (id === 'lobl_sr') shortLabel = 'LOBL';
+        else if (id === 'toplite_optical') shortLabel = 'Toplite';
+        else if (p.modeVi) {
+          if (p.modeVi.includes('Đón')) shortLabel = 'Đón';
+          else if (p.modeVi.includes('Đuổi')) shortLabel = 'Đuổi';
+          else if (p.modeVi.toLowerCase().includes('đạn đạo')) shortLabel = 'Đạn đạo';
+          else if (p.modeVi.includes('tiêu cực')) shortLabel = 'Nhiễu-TC';
+          else if (p.modeVi.includes('tích cực')) shortLabel = 'Nhiễu-TK';
+          else if (p.modeVi.includes('Toplite')) shortLabel = 'Toplite';
+          else if (p.modeVi.includes('LOBL')) shortLabel = 'LOBL';
+          else if (p.modeVi.includes('SR')) shortLabel = 'SR-20km';
+          else if (p.modeVi.includes('Quang') || p.modeVi.includes('ТВК')) shortLabel = 'Quang';
+          else if (p.modeVi.toLowerCase().includes('mặt đất')) shortLabel = 'Mặt đất';
+        }
+        return {
+          id: id as SamEngagementMode,
+          label: p.modeVi,
+          shortLabel,
+          dMaxKm: p.dMaxKm,
+          hMaxM: p.hMaxM,
+          dMinKm: p.dMinKm,
+          hMinM: p.hMinM,
+          vMaxMps: p.vMaxMps,
+          pGhKm: p.pGhKm,
+        };
+      });
+    }
+    return [
+      { id: 'head_on' as SamEngagementMode, label: 'Bắn đón (Không nhiễu)', shortLabel: 'Đón', dMaxKm: selectedInst.rangeKm || 35.4, hMaxM: selectedInst.maxEngagementAltitudeM || 25000 },
+      { id: 'tail_chase' as SamEngagementMode, label: 'Bắn đuổi (Không nhiễu)', shortLabel: 'Đuổi', dMaxKm: (selectedInst.rangeKm || 35.4) * 0.7, hMaxM: (selectedInst.maxEngagementAltitudeM || 25000) * 0.75 },
+    ];
+  }, [selectedInst, isSam, samTmpl]);
 
   const isSpyder = useMemo(
     () => selectedInst?.templateId === 'sam_spyder' || !!selectedInst?.spyderConfig,
@@ -194,20 +293,20 @@ export const RadarCrossSectionPanel: React.FC = () => {
   const chartW = width - padLeft - padRight;
   const chartH = height - padTop - padBottom;
 
-  // Giới hạn cự ly và độ cao tối đa danh nghĩa của khí tài
+  // Giới hạn cự ly và độ cao tối đa danh nghĩa của khí tài (tự động ôm sát chế độ tác chiến)
   const maxRangeM = useMemo(() => {
     if (isSam) {
-      return isSpyder ? 50000 * 1.15 : Math.max(samDMaxKm * 1000 * 1.15, 30000);
+      return Math.max(samDMaxKm * 1000 * 1.15, 20000);
     }
     return field ? field.maxRangeKm * 1000 : (selectedInst?.rangeKm || 150) * 1000;
-  }, [isSam, isSpyder, samDMaxKm, field, selectedInst]);
+  }, [isSam, samDMaxKm, field, selectedInst]);
 
   const maxAltM = useMemo(() => {
     if (isSam) {
-      return isSpyder ? 16000 * 1.15 : Math.max(samHMaxM * 1.15, 12000);
+      return Math.max(samHMaxM * 1.15, 12000);
     }
     return field ? Math.max(30000, field.maxHeightM + 2000) : 32000;
-  }, [isSam, isSpyder, samHMaxM, field]);
+  }, [isSam, samHMaxM, field]);
 
   // Cửa sổ hiển thị hiện tại (áp dụng zoom)
   const curDistMinM = viewDistMinM;
@@ -251,21 +350,82 @@ export const RadarCrossSectionPanel: React.FC = () => {
     [curAltMinM, curAltMaxM, chartH]
   );
 
-  // Đường cắt địa hình núi non (Terrain Profile)
+  // Đường cắt địa hình núi non (Terrain Profile) - SINGLE SOURCE OF TRUTH VỚI 3D GLOBE
   const terrainPoints = useMemo(() => {
     const groundAlt = selectedInst?.altitude || 0;
 
-    if (isSam && samVolume && samVolume.terrainMap && samVolume.sampleDistances) {
-      const points = samVolume.sampleDistances.map((dist) => {
-        const altM = samVolume.terrainMap!.get(`${currentAzimuth}_${dist}`) || 0;
-        return { distM: dist, altM };
-      });
-      if (points.length === 0 || points[0].distM > 0) {
-        points.unshift({ distM: 0, altM: groundAlt });
+    // 1. Đối với Tên Lửa Phòng Không (SAM): Ưu tiên trích xuất từ terrainGrid của samVolume
+    if (isSam && samVolume) {
+      if (samVolume.terrainGrid) {
+        let azIndex = samVolume.terrainGrid.azimuthSamples.indexOf(currentAzimuth);
+        if (azIndex === -1 && samVolume.terrainGrid.azimuthSamples.length > 0) {
+          let minDiff = Infinity;
+          samVolume.terrainGrid.azimuthSamples.forEach((az, i) => {
+            let diff = Math.abs(az - currentAzimuth);
+            if (diff > 180) diff = 360 - diff;
+            if (diff < minDiff) {
+              minDiff = diff;
+              azIndex = i;
+            }
+          });
+        }
+        const distances = samVolume.terrainGrid.sampleDistances;
+        if (azIndex !== -1 && distances && distances.length > 0) {
+          const points = distances.map((dist, dIdx) => {
+            const idx = azIndex * distances.length + dIdx;
+            const altM = samVolume.terrainGrid!.terrainHeights[idx] || 0;
+            return { distM: dist, altM };
+          });
+          if (points.length === 0 || points[0].distM > 0) {
+            points.unshift({ distM: 0, altM: groundAlt });
+          }
+          return points;
+        }
       }
-      return points;
+
+      // Fallback: terrainMap nếu có
+      if (samVolume.terrainMap && samVolume.sampleDistances) {
+        const points = samVolume.sampleDistances.map((dist) => {
+          const altM = samVolume.terrainMap!.get(`${currentAzimuth}_${dist}`) || 0;
+          return { distM: dist, altM };
+        });
+        if (points.length === 0 || points[0].distM > 0) {
+          points.unshift({ distM: 0, altM: groundAlt });
+        }
+        return points;
+      }
     }
 
+    // 2. Đối với Radar Cảnh Giới: Ưu tiên trích xuất trực tiếp từ RadarTerrainGrid của 3D Volume
+    const radarVol = selectedInstanceId && !isSam ? coverageVolumes[selectedInstanceId] : null;
+    if (radarVol && radarVol.terrainGrid) {
+      let azIndex = radarVol.terrainGrid.azimuthSamples.indexOf(currentAzimuth);
+      if (azIndex === -1 && radarVol.terrainGrid.azimuthSamples.length > 0) {
+        let minDiff = Infinity;
+        radarVol.terrainGrid.azimuthSamples.forEach((az, i) => {
+          let diff = Math.abs(az - currentAzimuth);
+          if (diff > 180) diff = 360 - diff;
+          if (diff < minDiff) {
+            minDiff = diff;
+            azIndex = i;
+          }
+        });
+      }
+      const distances = radarVol.terrainGrid.sampleDistances;
+      if (azIndex !== -1 && distances && distances.length > 0) {
+        const points = distances.map((dist, dIdx) => {
+          const idx = azIndex * distances.length + dIdx;
+          const altM = radarVol.terrainGrid!.terrainHeights[idx] || 0;
+          return { distM: dist, altM };
+        });
+        if (points.length === 0 || points[0].distM > 0) {
+          points.unshift({ distM: 0, altM: groundAlt });
+        }
+        return points;
+      }
+    }
+
+    // 3. Fallback: Nếu 3D Volume đang tính hoặc chưa sẵn sàng, dùng raysOnAzimuth từ field
     if (raysOnAzimuth.length === 0) return [];
     const points = (raysOnAzimuth[0]?.samples || []).map((s) => ({
       distM: s.distanceM,
@@ -275,7 +435,16 @@ export const RadarCrossSectionPanel: React.FC = () => {
       points.unshift({ distM: 0, altM: groundAlt });
     }
     return points;
-  }, [raysOnAzimuth, isSam, samVolume, currentAzimuth, selectedInst]);
+  }, [raysOnAzimuth, isSam, samVolume, currentAzimuth, selectedInst, selectedInstanceId, coverageVolumes]);
+
+  // Trạng thái nguồn dữ liệu DEM địa hình
+  const currentTerrainStatus = useMemo<'loaded' | 'flat_fallback' | 'sampling_error'>(() => {
+    if (isSam) return samVolume?.terrainGrid ? 'loaded' : 'flat_fallback';
+    const radarVol = selectedInstanceId ? coverageVolumes[selectedInstanceId] : null;
+    if (radarVol?.terrainGrid) return 'loaded';
+    if (field) return 'loaded';
+    return 'flat_fallback';
+  }, [isSam, samVolume, selectedInstanceId, coverageVolumes, field]);
 
   // Cao độ địa hình cao nhất trên hướng quét này
   const maxTerrainAltM = useMemo(() => {
@@ -288,9 +457,9 @@ export const RadarCrossSectionPanel: React.FC = () => {
 
   // === THUẬT TOÁN TÍNH TOÁN CÁC ĐOẠN KHÔNG NHÌN THẤY (BLIND SEGMENTS / SHADOW) ===
   const blindAnalysis = useMemo(() => {
-    if (terrainPoints.length === 0 || isSam || !selectedInst) return null;
+    if (terrainPoints.length === 0 || !selectedInst) return null;
 
-    const ha = selectedInst.antennaHeightAGL || 15;
+    const ha = selectedInst.antennaHeightAGL || (isSam ? 8.2 : 15);
     const radarGroundAltM = terrainPoints[0]?.altM || selectedInst.altitude || 0;
     const hRad = radarGroundAltM + ha;
     const k = kFactor || 4 / 3;
@@ -452,7 +621,7 @@ export const RadarCrossSectionPanel: React.FC = () => {
 
   // Đường bay mục tiêu H_mt (nét đứt vàng hổ phách)
   let targetLineD = '';
-  if (terrainPoints.length > 0 && !isSam) {
+  if (terrainPoints.length > 0) {
     const getTgtAlt = (alt: number) => (isTargetAgl ? alt + hMt : hMt);
     targetLineD = `M ${toX(0)} ${toY(getTgtAlt(terrainPoints[0].altM))}`;
     terrainPoints.forEach((p) => {
@@ -475,25 +644,33 @@ export const RadarCrossSectionPanel: React.FC = () => {
   const spyderSrPoints: { altM: number; dNomM: number; dEffM: number }[] = [];
 
   let samOuterPathD = '';
+  let samOuterEffectivePathD = '';
   let samDeadConePathD = '';
   let spyderMrPathD = '';
+  let spyderMrEffectivePathD = '';
   let spyderSrPathD = '';
+  let spyderSrEffectivePathD = '';
+  let samLosVisibleClipD = '';
 
-  if (isSam && selectedInst) {
+  // Panel vẫn giữ các hook/trạng thái khi đóng; chỉ dựng đường cong SVG lúc hiển thị.
+  if (showCrossSection && isSam && selectedInst) {
     const centerAltM = (selectedInst.altitude || 0) + (selectedInst.antennaHeightAGL || 6);
 
     if (isSpyder && spyderCfg) {
-      const mrDMaxM = spyderCfg.mr.dMaxKm * 1000;
-      const mrHMaxM = spyderCfg.mr.hMaxM;
-      const srDMaxM = spyderCfg.sr.dMaxKm * 1000;
-      const srHMaxM = spyderCfg.sr.hMaxM;
+      const mrDMaxM = (samProfile?.dMaxKm || spyderCfg.mr.dMaxKm) * 1000;
+      const mrHMaxM = samProfile?.hMaxM || spyderCfg.mr.hMaxM;
+      const ratio = samProfile?.dMaxKm ? samProfile.dMaxKm / (spyderCfg.mr.dMaxKm || 50.0) : 1;
+      const srDMaxM = Math.round(spyderCfg.sr.dMaxKm * 1000 * Math.min(1, ratio));
+      const srHMaxM = Math.round(spyderCfg.sr.hMaxM * (samProfile?.hMaxM ? Math.min(1, samProfile.hMaxM / 16000) : 1));
+
+      const isVolumeMatchingMode = samVolume && (!samVolume.mode || samVolume.mode === activeSamMode);
 
       for (let s = 0; s <= numPearSteps; s++) {
         const deltaH = (s / numPearSteps) * mrHMaxM;
         const altM = centerAltM + deltaH;
         const dNom = calculateSpyderDomeMaxRange(deltaH, mrDMaxM, mrHMaxM);
         let dEff = dNom;
-        if (samVolume?.effectiveRanges && deltaH > 0) {
+        if (isVolumeMatchingMode && samVolume?.effectiveRanges && deltaH > 0) {
           let bestB = 0;
           let minSpan = 999999;
           for (let b = 0; b < samVolume.altitudeBands.length; b++) {
@@ -524,7 +701,7 @@ export const RadarCrossSectionPanel: React.FC = () => {
         const altM = centerAltM + deltaH;
         const dNom = calculateSpyderDomeMaxRange(deltaH, srDMaxM, srHMaxM);
         let dEff = dNom;
-        if (srVol?.effectiveRanges && deltaH > 0) {
+        if (isVolumeMatchingMode && srVol?.effectiveRanges && deltaH > 0) {
           let bestB = 0;
           let minSpan = 999999;
           for (let b = 0; b < srVol.altitudeBands.length; b++) {
@@ -555,6 +732,12 @@ export const RadarCrossSectionPanel: React.FC = () => {
           spyderMrPathD += ` L ${toX(spyderMrPoints[i].dNomM)} ${toY(spyderMrPoints[i].altM)}`;
         }
         spyderMrPathD += ` L ${toX(0)} ${toY(centerAltM + mrHMaxM)} Z`;
+
+        spyderMrEffectivePathD = `M ${toX(0)} ${toY(centerAltM)} L ${toX(spyderMrPoints[0].dEffM)} ${toY(spyderMrPoints[0].altM)}`;
+        for (let i = 1; i < spyderMrPoints.length; i++) {
+          spyderMrEffectivePathD += ` L ${toX(spyderMrPoints[i].dEffM)} ${toY(spyderMrPoints[i].altM)}`;
+        }
+        spyderMrEffectivePathD += ` L ${toX(0)} ${toY(centerAltM + mrHMaxM)} Z`;
       }
 
       if (spyderSrPoints.length > 0) {
@@ -563,6 +746,12 @@ export const RadarCrossSectionPanel: React.FC = () => {
           spyderSrPathD += ` L ${toX(spyderSrPoints[i].dNomM)} ${toY(spyderSrPoints[i].altM)}`;
         }
         spyderSrPathD += ` L ${toX(0)} ${toY(centerAltM + srHMaxM)} Z`;
+
+        spyderSrEffectivePathD = `M ${toX(0)} ${toY(centerAltM)} L ${toX(spyderSrPoints[0].dEffM)} ${toY(spyderSrPoints[0].altM)}`;
+        for (let i = 1; i < spyderSrPoints.length; i++) {
+          spyderSrEffectivePathD += ` L ${toX(spyderSrPoints[i].dEffM)} ${toY(spyderSrPoints[i].altM)}`;
+        }
+        spyderSrEffectivePathD += ` L ${toX(0)} ${toY(centerAltM + srHMaxM)} Z`;
       }
     } else {
       const dMaxM = samDMaxKm * 1000;
@@ -584,7 +773,8 @@ export const RadarCrossSectionPanel: React.FC = () => {
         }
 
         let dEff = dNom;
-        if (samVolume && samVolume.effectiveRanges && deltaH > 0) {
+        const isVolumeMatchingMode = samVolume && (!samVolume.mode || samVolume.mode === activeSamMode);
+        if (isVolumeMatchingMode && samVolume && samVolume.effectiveRanges && deltaH > 0) {
           let bestB = 0;
           let minSpan = 999999;
           for (let b = 0; b < samVolume.altitudeBands.length; b++) {
@@ -629,6 +819,16 @@ export const RadarCrossSectionPanel: React.FC = () => {
         }
         samOuterPathD += ' Z';
 
+        samOuterEffectivePathD = `M ${toX(samPearPoints[0].dMinM)} ${toY(samPearPoints[0].altM)}`;
+        for (let i = 1; i < samPearPoints.length; i++) {
+          samOuterEffectivePathD += ` L ${toX(samPearPoints[i].dMinM)} ${toY(samPearPoints[i].altM)}`;
+        }
+        samOuterEffectivePathD += ` L ${toX(lastP.dEffM)} ${toY(lastP.altM)}`;
+        for (let i = samPearPoints.length - 2; i >= 0; i--) {
+          samOuterEffectivePathD += ` L ${toX(samPearPoints[i].dEffM)} ${toY(samPearPoints[i].altM)}`;
+        }
+        samOuterEffectivePathD += ' Z';
+
         samDeadConePathD = `M ${toX(0)} ${toY(samPearPoints[0].altM)} L ${toX(0)} ${toY(lastP.altM)} L ${toX(lastP.dMinM)} ${toY(lastP.altM)}`;
         for (let i = samPearPoints.length - 2; i >= 0; i--) {
           samDeadConePathD += ` L ${toX(samPearPoints[i].dMinM)} ${toY(samPearPoints[i].altM)}`;
@@ -636,12 +836,96 @@ export const RadarCrossSectionPanel: React.FC = () => {
         samDeadConePathD += ` L ${toX(0)} ${toY(samPearPoints[0].altM)} Z`;
       }
     }
+
+    // Dựng đa giác vùng nhìn thấy được (phía trên bóng núi) để clip quả lê WEZ
+    if (terrainPoints.length > 0) {
+      const ha = selectedInst.antennaHeightAGL || 8.2;
+      const radarGround = terrainPoints[0]?.altM || selectedInst.altitude || 0;
+      const hRad = radarGround + ha;
+      const k = kFactor || 4 / 3;
+      const RePrime = k * 6371000;
+      const minEl = selectedInst.minElevationDeg !== undefined ? selectedInst.minElevationDeg : 0.5;
+      const tanMinEl = Math.tan((minEl * Math.PI) / 180);
+
+      let maxTheta = tanMinEl;
+      const clipPoints: { distM: number; minVisAltM: number }[] = [];
+
+      // Điểm gốc tại anten
+      clipPoints.push({ distM: 0, minVisAltM: Math.max(hRad, radarGround + samHMinM) });
+
+      for (let i = 1; i < terrainPoints.length; i++) {
+        const pt = terrainPoints[i];
+        const dist = pt.distM;
+        const terrAlt = pt.altM;
+        const hz = (dist * dist) / (2 * RePrime);
+        const thetaTerrain = Math.atan2(terrAlt - hRad - hz, dist);
+
+        if (thetaTerrain > maxTheta) {
+          maxTheta = thetaTerrain;
+        }
+
+        const shadowAlt = hRad + dist * Math.tan(maxTheta) + hz;
+        const minVisAlt = Math.max(terrAlt, shadowAlt, radarGround + samHMinM);
+        clipPoints.push({ distM: dist, minVisAltM: minVisAlt });
+      }
+
+      const lastDist = clipPoints[clipPoints.length - 1].distM;
+      if (lastDist < curDistMaxM) {
+        const dist = curDistMaxM;
+        const hz = (dist * dist) / (2 * RePrime);
+        const shadowAlt = hRad + dist * Math.tan(maxTheta) + hz;
+        clipPoints.push({ distM: dist, minVisAltM: shadowAlt });
+      }
+
+      const topAlt = curAltMaxM + 10000;
+      let dStr = `M ${toX(clipPoints[0].distM)} ${toY(clipPoints[0].minVisAltM)}`;
+      for (let i = 1; i < clipPoints.length; i++) {
+        dStr += ` L ${toX(clipPoints[i].distM)} ${toY(clipPoints[i].minVisAltM)}`;
+      }
+      dStr += ` L ${toX(clipPoints[clipPoints.length - 1].distM)} ${toY(topAlt)}`;
+      dStr += ` L ${toX(0)} ${toY(topAlt)} Z`;
+      samLosVisibleClipD = dStr;
+    }
   }
 
   // Thống kê tia / vật cản
   const totalRaysOnAz = raysOnAzimuth.length;
   const occludedRaysOnAz = raysOnAzimuth.filter((r) => r.hasOcclusion).length;
   const firstOcclusion = raysOnAzimuth.find((r) => r.hasOcclusion)?.occlusionPoint;
+
+  // Chùm tia quang tuyến radar của tổ hợp tên lửa (TAR / FCR)
+  const samRays = useMemo(() => {
+    if (!isSam || !selectedInst || terrainPoints.length === 0) return [];
+    const radarGround = terrainPoints[0]?.altM || selectedInst.altitude || 0;
+    const ha = selectedInst.antennaHeightAGL || 8.2;
+    const hRad = radarGround + ha;
+    const k = kFactor || 4 / 3;
+    const RePrime = k * 6371000;
+    const minEl = selectedInst.minElevationDeg !== undefined ? Math.max(0.5, selectedInst.minElevationDeg) : 0.5;
+    const maxEl = Math.min(35, selectedInst.maxElevationDeg !== undefined ? selectedInst.maxElevationDeg : 45);
+    const maxRange = Math.min(curDistMaxM, (selectedInst.batteryConfig?.tarRangeKm || selectedInst.rangeKm || 100) * 1000);
+
+    const rays: { el: number; endDistM: number; endAltM: number }[] = [];
+    for (let el = minEl; el <= maxEl; el += 2.5) {
+      const elRad = (el * Math.PI) / 180;
+      let endDistM = maxRange;
+      let endAltM = hRad + maxRange * Math.tan(elRad) + (maxRange * maxRange) / (2 * RePrime);
+
+      for (let i = 1; i < terrainPoints.length; i++) {
+        const pt = terrainPoints[i];
+        if (pt.distM > maxRange) break;
+        const hz = (pt.distM * pt.distM) / (2 * RePrime);
+        const rayAltAtP = hRad + pt.distM * Math.tan(elRad) + hz;
+        if (pt.altM >= rayAltAtP) {
+          endDistM = pt.distM;
+          endAltM = pt.altM;
+          break;
+        }
+      }
+      rays.push({ el, endDistM, endAltM });
+    }
+    return rays;
+  }, [isSam, selectedInst, terrainPoints, curDistMaxM, kFactor]);
 
   // Thang chia toạ độ động thích ứng theo tỷ lệ Zoom
   const yTicks = useMemo(() => {
@@ -900,6 +1184,34 @@ export const RadarCrossSectionPanel: React.FC = () => {
     }
 
     if (isSam && selectedInst) {
+      // 1. Kiểm tra che khuất địa hình (LOS) từ ăng-ten đài điều khiển/radar qua địa hình phía trước
+      const radarGround = terrainPoints[0]?.altM || selectedInst.altitude || 0;
+      const ha = selectedInst.antennaHeightAGL || 8.2;
+      const hRad = radarGround + ha;
+      const k = kFactor || 4 / 3;
+      const RePrime = k * 6371000;
+      const hzTarget = (distM * distM) / (2 * RePrime);
+      const thetaTarget = Math.atan2(altM - hRad - hzTarget, distM);
+
+      let isBlockedByTerrain = false;
+      if (terrainPoints.length > 0) {
+        for (const tp of terrainPoints) {
+          if (tp.distM > 0 && tp.distM < distM) {
+            const hzP = (tp.distM * tp.distM) / (2 * RePrime);
+            const rayHAtP = hRad + tp.distM * Math.tan(thetaTarget) + hzP;
+            if (tp.altM > rayHAtP) {
+              isBlockedByTerrain = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (isBlockedByTerrain) {
+        return 'Bị che khuất bởi địa hình (Nằm trong Vùng mù Radar/Tên lửa)';
+      }
+
+      // 2. Nếu không bị che khuất, kiểm tra giới hạn hình học WEZ
       if (isSpyder && spyderCfg) {
         const centerAltM = (selectedInst.altitude || 0) + (selectedInst.antennaHeightAGL || 6);
         const deltaH = Math.max(0, altM - centerAltM);
@@ -911,17 +1223,21 @@ export const RadarCrossSectionPanel: React.FC = () => {
           if (distKm < spyderCfg.sr.dMinKm) {
             return `Trong nón chết SPYDER-SR (< ${spyderCfg.sr.dMinKm}km)`;
           }
-          return 'Trong Vùng Tiêu Diệt SPYDER-SR (Tầm Ngắn - Python-5)';
+          return 'Trong Vùng Hỏa Lực Tiêu Diệt Thực Tế (LOS Thông Suốt)';
         }
         const mrMaxAtAlt = calculateSpyderDomeMaxRange(deltaH, spyderCfg.mr.dMaxKm * 1000, spyderCfg.mr.hMaxM);
         if (distM <= mrMaxAtAlt && deltaH <= spyderCfg.mr.hMaxM) {
           if (distKm < spyderCfg.mr.dMinKm) {
             return `Trong nón chết SPYDER-MR (< ${spyderCfg.mr.dMinKm}km)`;
           }
-          return 'Trong Vùng Tiêu Diệt SPYDER-MR (Tầm Trung - Derby-MR)';
+          return 'Trong Vùng Hỏa Lực Tiêu Diệt Thực Tế (LOS Thông Suốt)';
         }
         if (deltaH > spyderCfg.mr.hMaxM) {
           return `Vượt trần hỏa lực SPYDER-MR (> ${(spyderCfg.mr.hMaxM / 1000).toFixed(0)}km)`;
+        }
+        const tarRangeKm = selectedInst.batteryConfig?.tarRangeKm || 100;
+        if (distKm <= tarRangeKm) {
+          return 'Ngoài tầm bắn WEZ - Trong vùng Radar Chỉ thị (TAR) phát hiện';
         }
         return `Vượt cự ly hỏa lực Spyder (> ${distKm.toFixed(1)}km)`;
       }
@@ -939,7 +1255,12 @@ export const RadarCrossSectionPanel: React.FC = () => {
       if (altM > samHMaxM) return `Vượt trần hỏa lực H_max (${(samHMaxM / 1000).toFixed(0)}km)`;
       if (distM < dMinAtH) return `Nằm trong nón mù đỉnh đầu (${maxEl}°)`;
       if (deltaH > 0 && distM > dLaunchLimitM) return `Dưới góc ngẩng bệ phóng (${minEl}°)`;
-      if (distM <= dMaxAtH) return 'Trong Vùng Tiêu Diệt (100% D_max)';
+      if (distM <= dMaxAtH) return 'Trong Vùng Hỏa Lực Tiêu Diệt Thực Tế (LOS Thông Suốt)';
+
+      const tarRangeKm = selectedInst.batteryConfig?.tarRangeKm || (selectedInst.rangeKm ? selectedInst.rangeKm * 1.5 : 150);
+      if (distKm <= tarRangeKm) {
+        return 'Ngoài tầm bắn WEZ - Trong vùng Radar Chỉ thị (TAR) phát hiện';
+      }
       return 'Ngoài vùng hỏa lực';
     } else if (selectedInst) {
       const radarAltM = (selectedInst.altitude || 0) + (selectedInst.antennaHeightAGL || 15);
@@ -1095,38 +1416,32 @@ export const RadarCrossSectionPanel: React.FC = () => {
                 }`}
               >
                 {isSam
-                  ? isSpyder
+                  ? samProfile?.modeVi
+                    ? samProfile.modeVi.toUpperCase()
+                    : isSpyder
                     ? 'SAM SPYDER (VÒM KÉP)'
-                    : 'SAM WEZ PECHORA'
-                  : `MẶT CẮT $\\beta = ${currentAzimuth}^\\circ$`}
+                    : 'SAM HỎA LỰC WEZ'
+                  : `MẶT CẮT β = ${currentAzimuth}°`}
               </span>
             </div>
             <p className="text-[10.5px] text-slate-400 font-sans">
               {isSam
-                ? 'Mô phỏng quả lê khí động học hoặc vòm kép Spyder theo mặt cắt thẳng đứng.'
+                ? `Chế độ: ${samProfile?.modeVi || activeSamMode} • Xạ giới: ${samDMinKm}-${samDMaxKm}km • Trần: ${samHMaxM}m • V_max: ${samVMps}m/s`
                 : `Khảo sát che khuất địa hình & búp sóng phát xạ theo hướng phương vị ${currentAzimuth}°.`}
             </p>
           </div>
         </div>
 
-        {/* Thanh chọn chế độ bắn chuyên biệt cho SAM */}
-        {isSam && (
-          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800/80">
-            {(
-              [
-                { id: 'head_on', label: 'Bắn đón', shortLabel: 'Đón' },
-                { id: 'tail_chase', label: 'Bắn đuổi', shortLabel: 'Đuổi' },
-                { id: 'jamming_passive', label: 'Nhiễu tiêu cực', shortLabel: 'Nhiễu-TC' },
-                { id: 'jamming_active', label: 'Nhiễu tích cực', shortLabel: 'Nhiễu-TK' },
-                { id: 'tbk_optical', label: 'Quang học TBK', shortLabel: 'TBK' },
-              ] as const
-            ).map((m) => {
+        {/* Thanh chọn chế độ bắn chuyên biệt cho SAM (Động theo từng loại khí tài) */}
+        {isSam && availableModes.length > 0 && (
+          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800/80 flex-wrap">
+            {availableModes.map((m) => {
               const isActive = activeSamMode === m.id;
               return (
                 <button
                   key={m.id}
                   onClick={() => setSamEngagementMode(selectedInst.instanceId, m.id)}
-                  title={m.label}
+                  title={`${m.label} • Tầm: ${m.dMaxKm}km • Trần: ${m.hMaxM / 1000}km`}
                   className={`px-2 py-0.5 text-[10.5px] font-mono rounded-lg transition-all ${
                     isActive
                       ? 'bg-rose-600 text-white font-bold shadow-md shadow-rose-950/60'
@@ -1245,81 +1560,96 @@ export const RadarCrossSectionPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Thanh Tham Số Khảo Sát Quân Sự (Dành cho Radar: H_mt & Trạng Thái Mù) */}
-      {!isSam && (
-        <div className="px-3.5 py-1.5 bg-slate-950/80 border-b border-slate-800/80 flex items-center justify-between gap-3 text-xs flex-wrap">
-          {/* Cụm chọn độ cao mục tiêu H_mt */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono font-bold text-amber-300 flex items-center gap-1.5">
-              <span>Độ cao mục tiêu (H_mt):</span>
-            </span>
-
-            <div className="flex items-center gap-1">
-              {[50, 100, 200, 300, 500, 1000].map((alt) => (
-                <button
-                  key={alt}
-                  onClick={() => setTargetHeightMeters(alt)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all border ${
-                    hMt === alt
-                      ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.5)]'
-                      : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-amber-500/40 hover:text-amber-200'
-                  }`}
-                  title={`Khảo sát vùng mù khi mục tiêu bay ở độ cao ${alt}m`}
-                >
-                  {alt}m
-                </button>
-              ))}
-            </div>
-
-            {/* Công tắc chế độ AGL (bám đất) vs MSL (tuyệt đối) */}
-            <button
-              onClick={() => setIsTargetAgl(!isTargetAgl)}
-              className={`ml-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold border transition-colors ${
-                isTargetAgl
-                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
-                  : 'bg-indigo-950/80 text-indigo-300 border-indigo-500/50'
-              }`}
-              title="Chuyển đổi: Bám theo địa hình (AGL như trong ảnh sách) hoặc Bay bằng so với mực nước biển (MSL)"
-            >
-              {isTargetAgl ? 'Bám đất (AGL)' : 'Mực biển (MSL)'}
-            </button>
-          </div>
-
-          {/* Tóm tắt tình trạng che khuất & mốc chân trời */}
-          <div className="flex items-center gap-3 font-mono text-[11px]">
-            {blindAnalysis && blindAnalysis.segments.length > 0 ? (
-              <div className="flex items-center gap-2">
-                <span className="text-rose-400 font-bold flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                  <span>{blindAnalysis.segments.length} đoạn mù:</span>
-                </span>
-                <span className="text-slate-300">
-                  {blindAnalysis.segments.map((s) => (
-                    <span key={s.id} className="mr-2 text-rose-300/90 font-medium">
-                      Đoạn {s.id}: <strong className="text-white">{s.rBdKm}</strong>-
-                      <strong className="text-white">{s.rKtKm}km</strong> (dài {s.lengthKm}km)
-                    </span>
-                  ))}
-                </span>
-                <span className="text-slate-400 border-l border-slate-800 pl-2">
-                  Tổng mù: <strong className="text-rose-400">{blindAnalysis.totalBlindKm}km</strong>
-                </span>
-              </div>
-            ) : (
-              <div className="text-emerald-400 font-semibold">
-                ✓ Tầm nhìn thông thoáng đến chân trời D_tn (Không có đoạn mù do núi chắn)
-              </div>
-            )}
-
-            {blindAnalysis && (
-              <div className="border-l border-slate-800 pl-3 text-purple-300">
-                Chân trời D_tn:{' '}
-                <strong className="text-purple-200">{blindAnalysis.dTnKm}km</strong>
-              </div>
-            )}
-          </div>
+      {/* 1b. Banner trạng thái DEM & Đồng bộ tính toán */}
+      {currentTerrainStatus !== 'loaded' && (
+        <div className="bg-amber-950/80 border-b border-amber-600/60 px-3.5 py-1.5 flex items-center justify-between text-[11px] text-amber-300">
+          <span className="flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>Chế độ địa hình phẳng mô phỏng (Chưa nạp được dữ liệu DEM hoặc máy chủ địa hình không khả dụng)</span>
+          </span>
+          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-amber-900/60 border border-amber-500/50">DEM FALLBACK</span>
         </div>
       )}
+      {(isCalculatingVolume || isCalculatingLOS) && (
+        <div className="bg-cyan-950/70 border-b border-cyan-600/50 px-3.5 py-1 flex items-center gap-2 text-[10.5px] text-cyan-300">
+          <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
+          <span>Đang tính toán đồng bộ bề mặt địa hình 3D...</span>
+        </div>
+      )}
+
+      {/* 2. Thanh Tham Số Khảo Sát Quân Sự (H_mt & Trạng Thái Mù) */}
+      <div className="px-3.5 py-1.5 bg-slate-950/80 border-b border-slate-800/80 flex items-center justify-between gap-3 text-xs flex-wrap">
+        {/* Cụm chọn độ cao mục tiêu H_mt */}
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono font-bold text-amber-300 flex items-center gap-1.5">
+            <span>Độ cao mục tiêu (H_mt):</span>
+          </span>
+
+          <div className="flex items-center gap-1">
+            {[50, 100, 200, 300, 500, 1000].map((alt) => (
+              <button
+                key={alt}
+                onClick={() => setTargetHeightMeters(alt)}
+                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all border ${
+                  hMt === alt
+                    ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.5)]'
+                    : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-amber-500/40 hover:text-amber-200'
+                }`}
+                title={`Khảo sát vùng mù khi mục tiêu bay ở độ cao ${alt}m`}
+              >
+                {alt}m
+              </button>
+            ))}
+          </div>
+
+          {/* Công tắc chế độ AGL (bám đất) vs MSL (tuyệt đối) */}
+          <button
+            onClick={() => setIsTargetAgl(!isTargetAgl)}
+            className={`ml-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold border transition-colors ${
+              isTargetAgl
+                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/50'
+                : 'bg-indigo-950/80 text-indigo-300 border-indigo-500/50'
+            }`}
+            title="Chuyển đổi: Bám theo địa hình (AGL như trong ảnh sách) hoặc Bay bằng so với mực nước biển (MSL)"
+          >
+            {isTargetAgl ? 'Bám đất (AGL)' : 'Mực biển (MSL)'}
+          </button>
+        </div>
+
+        {/* Tóm tắt tình trạng che khuất & mốc chân trời */}
+        <div className="flex items-center gap-3 font-mono text-[11px]">
+          {blindAnalysis && blindAnalysis.segments.length > 0 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-rose-400 font-bold flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                <span>{blindAnalysis.segments.length} đoạn mù:</span>
+              </span>
+              <span className="text-slate-300">
+                {blindAnalysis.segments.map((s) => (
+                  <span key={s.id} className="mr-2 text-rose-300/90 font-medium">
+                    Đoạn {s.id}: <strong className="text-white">{s.rBdKm}</strong>-
+                    <strong className="text-white">{s.rKtKm}km</strong> (dài {s.lengthKm}km)
+                  </span>
+                ))}
+              </span>
+              <span className="text-slate-400 border-l border-slate-800 pl-2">
+                Tổng mù: <strong className="text-rose-400">{blindAnalysis.totalBlindKm}km</strong>
+              </span>
+            </div>
+          ) : (
+            <div className="text-emerald-400 font-semibold">
+              ✓ Tầm nhìn thông thoáng đến chân trời D_tn (Không có đoạn mù do núi chắn)
+            </div>
+          )}
+
+          {blindAnalysis && (
+            <div className="border-l border-slate-800 pl-3 text-purple-300">
+              Chân trời D_tn:{' '}
+              <strong className="text-purple-200">{blindAnalysis.dTnKm}km</strong>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* 3. Thân Biểu Đồ SVG Mặt Cắt */}
       <div className="relative p-2 bg-slate-950/95 flex flex-col items-center">
@@ -1387,6 +1717,13 @@ export const RadarCrossSectionPanel: React.FC = () => {
                 <clipPath id="chartAreaClip">
                   <rect x={padLeft} y={padTop} width={chartW} height={chartH} />
                 </clipPath>
+
+                {/* Giới hạn vùng nhìn thấy phía trên bóng núi để cắt khuyết quả lê WEZ */}
+                {samLosVisibleClipD && (
+                  <clipPath id="samLosVisibleClip">
+                    <path d={samLosVisibleClipD} />
+                  </clipPath>
+                )}
 
                 {/* Gradient nền địa hình núi non */}
                 <linearGradient id="terrainGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1518,7 +1855,7 @@ export const RadarCrossSectionPanel: React.FC = () => {
 
               {/* KHUNG VÙNG VẼ ĐỒ THỊ (CÓ CLIP-PATH) */}
               <g clipPath="url(#chartAreaClip)">
-                {/* 1. NẾU LÀ RADAR: VẼ CÁC TIA QUÉT QUANG TUYẾN LOS */}
+                {/* 1. NẾU LÀ RADAR ĐỘC LẬP: VẼ CÁC TIA QUÉT QUANG TUYẾN LOS */}
                 {!isSam &&
                   raysOnAzimuth.map((ray) => {
                     const el = ray.elevationDeg;
@@ -1548,51 +1885,115 @@ export const RadarCrossSectionPanel: React.FC = () => {
                     );
                   })}
 
-                {/* 2. NẾU LÀ SAM: VẼ VÒM HỎA LỰC SAM */}
+                {/* 1b. NẾU LÀ SAM: VẼ CHÙM TIA QUANG TUYẾN RADAR (TAR / FCR) MÀU XANH DƯƠNG NHẠT */}
+                {isSam &&
+                  samRays.map((ray) => {
+                    const originX = toX(0);
+                    const radarGround = terrainPoints[0]?.altM || selectedInst.altitude || 0;
+                    const ha = selectedInst.antennaHeightAGL || 8.2;
+                    const originY = toY(radarGround + ha);
+                    const visX = toX(ray.endDistM);
+                    const visY = toY(ray.endAltM);
+
+                    return (
+                      <line
+                        key={`sam-ray-${ray.el}`}
+                        x1={originX}
+                        y1={originY}
+                        x2={visX}
+                        y2={visY}
+                        stroke="#38bdf8"
+                        strokeWidth="1.2"
+                        strokeOpacity="0.30"
+                      />
+                    );
+                  })}
+
+                {/* 2. NẾU LÀ SAM: VẼ VÒM HỎA LỰC SAM (LỚP LÝ THUYẾT & LỚP THỰC TẾ CẮT NÚI) */}
                 {isSam && isSpyder && (
                   <g>
+                    {/* Lớp Lý thuyết (Nominal) - Nét đứt mảnh, mờ */}
                     {spyderMrPathD && (
                       <path
                         d={spyderMrPathD}
                         fill="#0ea5e9"
-                        fillOpacity="0.22"
+                        fillOpacity="0.08"
                         stroke="#38bdf8"
-                        strokeWidth="2.2"
+                        strokeWidth="1.5"
+                        strokeDasharray="4 3"
                       />
                     )}
                     {spyderSrPathD && (
                       <path
                         d={spyderSrPathD}
                         fill="#10b981"
-                        fillOpacity="0.32"
+                        fillOpacity="0.08"
                         stroke="#10b981"
-                        strokeWidth="2.2"
+                        strokeWidth="1.5"
+                        strokeDasharray="4 3"
                       />
                     )}
+
+                    {/* Lớp Thực tế (Effective) - Cắt khuyết bóng núi qua samLosVisibleClip */}
+                    <g clipPath={samLosVisibleClipD ? 'url(#samLosVisibleClip)' : undefined}>
+                      {(spyderMrEffectivePathD || spyderMrPathD) && (
+                        <path
+                          d={spyderMrEffectivePathD || spyderMrPathD}
+                          fill="#0ea5e9"
+                          fillOpacity="0.35"
+                          stroke="#38bdf8"
+                          strokeWidth="2.2"
+                        />
+                      )}
+                      {(spyderSrEffectivePathD || spyderSrPathD) && (
+                        <path
+                          d={spyderSrEffectivePathD || spyderSrPathD}
+                          fill="#10b981"
+                          fillOpacity="0.38"
+                          stroke="#10b981"
+                          strokeWidth="2.2"
+                        />
+                      )}
+                    </g>
                   </g>
                 )}
 
                 {isSam && !isSpyder && (
                   <g>
+                    {/* Lớp Lý thuyết (Nominal) - Nét đứt mảnh, mờ */}
                     {samOuterPathD && (
                       <path
                         d={samOuterPathD}
                         fill={selectedInst.color || '#f43f5e'}
-                        fillOpacity="0.32"
+                        fillOpacity="0.08"
                         stroke={selectedInst.color || '#f43f5e'}
-                        strokeWidth="2.2"
-                      />
-                    )}
-                    {samDeadConePathD && (
-                      <path
-                        d={samDeadConePathD}
-                        fill="#020617"
-                        fillOpacity="0.8"
-                        stroke="#f43f5e"
-                        strokeWidth="1.6"
+                        strokeWidth="1.5"
                         strokeDasharray="4 3"
                       />
                     )}
+
+                    {/* Lớp Thực tế (Effective) - Cắt khuyết bóng núi qua samLosVisibleClip */}
+                    <g clipPath={samLosVisibleClipD ? 'url(#samLosVisibleClip)' : undefined}>
+                      {(samOuterEffectivePathD || samOuterPathD) && (
+                        <path
+                          d={samOuterEffectivePathD || samOuterPathD}
+                          fill={selectedInst.color || '#f43f5e'}
+                          fillOpacity="0.35"
+                          stroke={selectedInst.color || '#f43f5e'}
+                          strokeWidth="2.2"
+                        />
+                      )}
+                      {samDeadConePathD && (
+                        <path
+                          d={samDeadConePathD}
+                          fill="#020617"
+                          fillOpacity="0.8"
+                          stroke="#f43f5e"
+                          strokeWidth="1.6"
+                          strokeDasharray="4 3"
+                        />
+                      )}
+                    </g>
                   </g>
                 )}
 
